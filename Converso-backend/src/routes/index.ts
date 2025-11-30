@@ -12,6 +12,7 @@ import profilesRoutes from './profiles.routes';
 import workspaceRoutes from './workspace.routes';
 import routingRulesRoutes from './routingRules.routes';
 import integrationsRoutes from './integrations.routes';
+import emailSyncRoutes from './emailSync.routes';
 import testRoutes from './test.routes';
 
 const router = Router();
@@ -30,6 +31,7 @@ router.use('/profiles', profilesRoutes);
 router.use('/workspace', workspaceRoutes);
 router.use('/routing-rules', routingRulesRoutes);
 router.use('/integrations', integrationsRoutes);
+router.use('/emails', emailSyncRoutes);
 
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {

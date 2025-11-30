@@ -61,9 +61,10 @@ export function ConversationList({
   };
 
   const handleToggleRead = (conversation: Conversation) => {
+    const currentReadStatus = conversation.isRead ?? (conversation as any).is_read ?? false;
     toggleRead.mutate({ 
       conversationId: conversation.id, 
-      isRead: conversation.isRead 
+      isRead: !currentReadStatus // Toggle: if read, mark as unread, and vice versa
     });
   };
 
@@ -90,46 +91,50 @@ export function ConversationList({
 
   return (
     <div>
-        {conversations.map((conversation) => (
-        <div
-          key={conversation.id}
-          className={cn(
-            "flex items-start gap-2 p-2 transition-colors border-b cursor-pointer rounded-sm",
-            "hover:bg-muted/40",
-            conversation.selected && "bg-accent/30 border border-border",
-            selectedId === conversation.id && "bg-accent/20 border-l-2 border-l-primary shadow-sm"
-          )}
-        >
-          <Checkbox 
-            className="mt-0.5 h-3.5 w-3.5" 
-            checked={conversation.selected}
-            onCheckedChange={() => onToggleSelect?.(conversation.id)}
-            onClick={(e) => e.stopPropagation()}
-          />
+        {conversations.map((conversation) => {
+          // Determine if email is unread (show dot if unread)
+          const isUnread = !(conversation.isRead ?? (conversation as any).is_read ?? false);
           
-          <div 
-            className="flex-1 min-w-0"
-            onClick={() => onConversationClick(conversation.id)}
-          >
-            {/* Line 1: Sender Name (left) + Timestamp (right) */}
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <span className={cn("text-sm", !conversation.isRead ? "font-bold" : "font-normal truncate")}>
-                {conversation.senderName}
-              </span>
-              <div className="flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
-                <span className="text-xs text-muted-foreground">{formatTimeAgo(conversation.timestamp)}</span>
-                {!conversation.isRead && (
-                  <span className="text-muted-foreground text-xs">●</span>
-                )}
-              </div>
-            </div>
-
-            {/* Line 2: Email Subject */}
-            {conversation.subject && (
-              <p className={cn("text-xs text-foreground mb-1 truncate", !conversation.isRead && "font-bold")}>
-                {conversation.subject}
-              </p>
+          return (
+          <div
+            key={conversation.id}
+            className={cn(
+              "flex items-start gap-2 p-2 transition-colors border-b cursor-pointer rounded-sm",
+              "hover:bg-muted/40",
+              conversation.selected && "bg-accent/30 border border-border",
+              selectedId === conversation.id && "bg-accent/20 border-l-2 border-l-primary shadow-sm"
             )}
+          >
+            <Checkbox 
+              className="mt-0.5 h-3.5 w-3.5" 
+              checked={conversation.selected}
+              onCheckedChange={() => onToggleSelect?.(conversation.id)}
+              onClick={(e) => e.stopPropagation()}
+            />
+            
+            <div 
+              className="flex-1 min-w-0"
+              onClick={() => onConversationClick(conversation.id)}
+            >
+              {/* Line 1: Sender Name (left) + Timestamp (right) */}
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={cn("text-sm truncate", isUnread && "font-bold")}>
+                  {conversation.senderName}
+                </span>
+                <div className="flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                  <span className="text-xs text-muted-foreground">{formatTimeAgo(conversation.timestamp)}</span>
+                  {isUnread && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-foreground flex-shrink-0"></span>
+                  )}
+                </div>
+              </div>
+
+              {/* Line 2: Email Subject */}
+              {conversation.subject && (
+                <p className={cn("text-xs text-foreground mb-1 truncate", isUnread && "font-bold")}>
+                  {conversation.subject}
+                </p>
+              )}
 
             {/* Line 3: Email Preview (2 lines max) */}
             <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
@@ -169,7 +174,7 @@ export function ConversationList({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover border shadow-md z-50">
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleRead(conversation); }}>
-                {conversation.isRead ? (
+                {(conversation.isRead ?? (conversation as any).is_read) ? (
                   <>
                     <Check className="h-4 w-4 mr-2" />
                     Mark as Unread
@@ -236,8 +241,9 @@ export function ConversationList({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        ))}
+          </div>
+          );
+        })}
     </div>
   );
 }

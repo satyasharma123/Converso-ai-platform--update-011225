@@ -59,14 +59,19 @@ export const connectedAccountsService = {
   },
 
   /**
-   * Delete a connected account
+   * Delete a connected account and all associated data
+   * This will cascade delete:
+   * - All conversations received on this account
+   * - All messages in those conversations (automatic via CASCADE)
    */
   async deleteAccount(accountId: string, client?: SupabaseClient): Promise<void> {
     if (!accountId) {
       throw new Error('Account ID is required');
     }
 
-    return connectedAccountsApi.deleteConnectedAccount(accountId, client);
+    // Always use admin client for deletion to ensure cascade deletion works
+    // The client parameter is ignored here to ensure proper deletion
+    return connectedAccountsApi.deleteConnectedAccount(accountId);
   },
 
   /**

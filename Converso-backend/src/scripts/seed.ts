@@ -35,7 +35,7 @@ async function seedDatabase() {
     for (const user of users) {
       // Check if user already exists
       const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-      const existingUser = existingUsers?.users.find(u => u.email === user.email);
+      const existingUser = existingUsers?.users?.find((u: any) => u.email === user.email);
 
       if (existingUser) {
         logger.info(`✓ User already exists: ${user.email} (${existingUser.id})`);
@@ -78,14 +78,36 @@ async function seedDatabase() {
     ];
 
     for (const role of userRoles) {
-      const { error } = await supabaseAdmin
+      // Check if role exists first
+      const { data: existing } = await supabaseAdmin
         .from('user_roles')
-        .upsert(role, { onConflict: 'user_id' });
-      
-      if (error) {
-        logger.warn(`Role for ${role.user_id} error:`, error.message);
+        .select('id')
+        .eq('user_id', role.user_id)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing role
+        const { error } = await supabaseAdmin
+          .from('user_roles')
+          .update({ role: role.role })
+          .eq('user_id', role.user_id);
+        
+        if (error) {
+          logger.warn(`Role update for ${role.user_id} error:`, error.message);
+        } else {
+          logger.info(`✓ Updated role: ${role.user_id} -> ${role.role}`);
+        }
       } else {
-        logger.info(`✓ Created role: ${role.user_id} -> ${role.role}`);
+        // Insert new role
+        const { error } = await supabaseAdmin
+          .from('user_roles')
+          .insert(role);
+        
+        if (error) {
+          logger.warn(`Role for ${role.user_id} error:`, error.message);
+        } else {
+          logger.info(`✓ Created role: ${role.user_id} -> ${role.role}`);
+        }
       }
     }
 

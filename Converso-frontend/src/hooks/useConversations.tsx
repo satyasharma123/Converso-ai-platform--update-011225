@@ -84,11 +84,11 @@ export function useToggleRead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      toast.success('Status updated');
+      // No toast notification for read/unread changes
     },
     onError: (error) => {
       console.error('Error toggling read status:', error);
-      toast.error('Failed to update status');
+      // No toast notification for read/unread changes
     },
   });
 }

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabaseAdmin } from '../lib/supabase';
 import type { Message } from '../types';
 
 /**
@@ -6,7 +6,7 @@ import type { Message } from '../types';
  */
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('messages')
     .select('*')
     .eq('conversation_id', conversationId)
@@ -22,13 +22,13 @@ export async function sendMessage(
   content: string
 ): Promise<void> {
   // Get user profile for sender name
-  const { data: profile } = await supabase
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('full_name')
     .eq('id', userId)
     .single();
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('messages')
     .insert({
       conversation_id: conversationId,
@@ -41,14 +41,14 @@ export async function sendMessage(
   if (error) throw error;
 
   // Update conversation's last_message_at
-  await supabase
+  await supabaseAdmin
     .from('conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', conversationId);
 }
 
 export async function getMessageById(messageId: string): Promise<Message | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('messages')
     .select('*')
     .eq('id', messageId)

@@ -43,9 +43,8 @@ export default function Settings() {
   const [workspaceName, setWorkspaceName] = useState("");
 
   // Integrations state
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isEmailProviderModalOpen, setIsEmailProviderModalOpen] = useState(false);
   const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
-  const [newEmailAccount, setNewEmailAccount] = useState({ name: "", email: "", type: "email" as "email" | "linkedin" });
   const [newLinkedInAccount, setNewLinkedInAccount] = useState({ name: "", type: "linkedin" as "email" | "linkedin" });
   const [isAddingAccount, setIsAddingAccount] = useState(false);
 
@@ -153,55 +152,29 @@ export default function Settings() {
   };
 
   // Integration handlers
-  const handleSelectEmailType = async (type: string) => {
-    if (type === "Gmail") {
-      // Check if user is authenticated
-      if (!user?.id) {
-        toast.error("Please log in to connect Gmail");
-        return;
-      }
-      
-      // Redirect to Gmail OAuth flow with userId as query parameter
-      // This ensures the backend can identify the user even without auth headers
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      window.location.href = `${backendUrl}/api/integrations/gmail/connect?userId=${user.id}`;
-    } else {
-      // For other email types, show manual connection dialog
-      setIsEmailModalOpen(true);
-      setNewEmailAccount({ name: "", email: "", type: "email" });
+  const handleConnectEmail = () => {
+    if (!user?.id) {
+      toast.error("Please log in to connect email");
+      return;
     }
+    setIsEmailProviderModalOpen(true);
   };
 
-  const handleAddEmailAccount = async () => {
-    if (!newEmailAccount.name.trim() || !newEmailAccount.email.trim()) {
-      toast.error("Account name and email are required");
-      return;
-    }
-
+  const handleSelectEmailProvider = async (provider: "gmail" | "outlook") => {
     if (!user?.id) {
-      toast.error("User not authenticated");
+      toast.error("Please log in to connect email");
       return;
     }
 
-    setIsAddingAccount(true);
-
-    try {
-      await connectedAccountsApi.create({
-        account_name: newEmailAccount.name,
-        account_email: newEmailAccount.email,
-        account_type: "email",
-        is_active: true,
-        user_id: user.id,
-      });
-
-      toast.success("Email account connected successfully");
-      setIsEmailModalOpen(false);
-      setNewEmailAccount({ name: "", email: "", type: "email" });
-      refetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to connect email account");
-    } finally {
-      setIsAddingAccount(false);
+    setIsEmailProviderModalOpen(false);
+    
+    // Redirect to appropriate OAuth flow
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    
+    if (provider === "gmail") {
+      window.location.href = `${backendUrl}/api/integrations/gmail/connect?userId=${user.id}`;
+    } else if (provider === "outlook") {
+      window.location.href = `${backendUrl}/api/integrations/outlook/connect?userId=${user.id}`;
     }
   };
 
@@ -289,56 +262,52 @@ export default function Settings() {
                     <CardDescription>Connect your email accounts</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="flex gap-2">
-                      <Button onClick={() => handleSelectEmailType("Gmail")} disabled={!user?.id}>
-                        <Mail className="h-4 w-4 mr-2" />
-                        Connect Gmail
-                      </Button>
-                      <Button variant="outline" onClick={() => setIsEmailModalOpen(true)}>
-                        <Mail className="h-4 w-4 mr-2" />
-                        Add Other Email
-                      </Button>
-                    </div>
-                    <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
-                      <DialogTrigger asChild>
-                        <div style={{ display: 'none' }} />
-                      </DialogTrigger>
+                    <Button onClick={handleConnectEmail} disabled={!user?.id}>
+                      <Mail className="h-4 w-4 mr-2" />
+                      Connect Email
+                    </Button>
+                    
+                    <Dialog open={isEmailProviderModalOpen} onOpenChange={setIsEmailProviderModalOpen}>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Connect Email Account</DialogTitle>
+                          <DialogTitle>Choose Email Provider</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="account-name">Account Name</Label>
-                            <Input
-                              id="account-name"
-                              placeholder="e.g., Sales Team Email"
-                              value={newEmailAccount.name}
-                              onChange={(e) => setNewEmailAccount({ ...newEmailAccount, name: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="account-email">Email Address</Label>
-                            <Input
-                              id="account-email"
-                              type="email"
-                              placeholder="sales@company.com"
-                              value={newEmailAccount.email}
-                              onChange={(e) => setNewEmailAccount({ ...newEmailAccount, email: e.target.value })}
-                            />
-                          </div>
+                        <div className="space-y-3 py-4">
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start h-auto py-4"
+                            onClick={() => handleSelectEmailProvider("gmail")}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950 flex items-center justify-center">
+                                <Mail className="h-5 w-5 text-red-600 dark:text-red-400" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold">Gmail</div>
+                                <div className="text-xs text-muted-foreground">Connect your Gmail account</div>
+                              </div>
+                            </div>
+                          </Button>
+                          
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start h-auto py-4"
+                            onClick={() => handleSelectEmailProvider("outlook")}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+                                <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold">Outlook</div>
+                                <div className="text-xs text-muted-foreground">Connect your Outlook account</div>
+                              </div>
+                            </div>
+                          </Button>
                         </div>
                         <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsEmailModalOpen(false)}>Cancel</Button>
-                          <Button onClick={handleAddEmailAccount} disabled={isAddingAccount}>
-                            {isAddingAccount ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Connecting...
-                              </>
-                            ) : (
-                              "Connect"
-                            )}
+                          <Button variant="outline" onClick={() => setIsEmailProviderModalOpen(false)}>
+                            Cancel
                           </Button>
                         </DialogFooter>
                       </DialogContent>
@@ -350,22 +319,47 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Connected Accounts</Label>
                         <div className="space-y-2">
-                          {emailAccounts.map(account => (
-                            <div key={account.id} className="flex items-center justify-between p-3 border rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <Mail className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm">{account.account_email || account.account_name}</span>
-                                <Badge variant="outline" className="text-xs">Email</Badge>
+                          {emailAccounts.map(account => {
+                            // Determine provider badge
+                            const provider = (account as any).oauth_provider;
+                            const isGmail = provider === 'google';
+                            const isOutlook = provider === 'microsoft';
+                            
+                            return (
+                              <div key={account.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm">{account.account_email || account.account_name}</span>
+                                  {isGmail && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800"
+                                    >
+                                      Gmail
+                                    </Badge>
+                                  )}
+                                  {isOutlook && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className="text-xs bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
+                                    >
+                                      Outlook
+                                    </Badge>
+                                  )}
+                                  {!isGmail && !isOutlook && (
+                                    <Badge variant="outline" className="text-xs">Email</Badge>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveAccount(account.id)}
+                                >
+                                  Disconnect
+                                </Button>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRemoveAccount(account.id)}
-                              >
-                                Disconnect
-                              </Button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ) : (

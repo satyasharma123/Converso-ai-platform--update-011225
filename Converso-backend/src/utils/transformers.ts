@@ -35,8 +35,10 @@ export function transformMessage(msg: Message): any {
     senderId: msg.sender_id,
     senderName: msg.sender_name,
     content: msg.content,
+    email_body: (msg as any).email_body || null,
     isFromLead: msg.is_from_lead,
     createdAt: msg.created_at,
+    timestamp: msg.created_at,
     // Keep snake_case for compatibility
     conversation_id: msg.conversation_id,
     sender_id: msg.sender_id,

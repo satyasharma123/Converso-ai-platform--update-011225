@@ -1,26 +1,59 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseAdmin } from '../lib/supabase';
 import type { Conversation } from '../types';
 
 /**
  * API module for conversation-related database queries
  */
 
+/**
+ * Get workspace ID for a user
+ */
+async function getUserWorkspaceId(userId: string): Promise<string | null> {
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('workspace_id')
+    .eq('id', userId)
+    .single();
+
+  if (error || !profile?.workspace_id) {
+    // Fallback: get first workspace
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('id')
+      .limit(1)
+      .single();
+    
+    return workspace?.id || null;
+  }
+
+  return profile.workspace_id;
+}
+
 export async function getConversations(
   userId: string,
   userRole: 'admin' | 'sdr' | null,
   type?: 'email' | 'linkedin'
 ): Promise<Conversation[]> {
-  let query = supabase
+  // Get user's workspace
+  const workspaceId = await getUserWorkspaceId(userId);
+  
+  let query = supabaseAdmin
     .from('conversations')
     .select(`
       *,
       received_account:connected_accounts(
         account_name,
         account_email,
-        account_type
+        account_type,
+        oauth_provider
       )
     `)
     .order('last_message_at', { ascending: false });
+
+  // Filter by workspace if available
+  if (workspaceId) {
+    query = query.eq('workspace_id', workspaceId);
+  }
 
   // Filter by type if specified
   if (type) {
@@ -75,9 +108,9 @@ export async function toggleConversationReadStatus(
   conversationId: string,
   isRead: boolean
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('conversations')
-    .update({ is_read: !isRead })
+    .update({ is_read: isRead })
     .eq('id', conversationId);
 
   if (error) throw error;

@@ -65,22 +65,22 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
   };
 
   return (
-    <div className="space-y-3 h-fit">
+    <div className="h-fit px-5 py-4 pb-6 space-y-0">
       {/* Profile Section */}
-      <div className="pb-3">
-        <h2 className="text-[18px] font-bold text-foreground mb-1">{lead.name}</h2>
+      <div className="pb-5">
+        <h2 className="text-base font-semibold text-foreground mb-1.5 truncate pr-2">{lead.name}</h2>
         {lead.company && (
-          <p className="text-[14px] text-foreground mb-3">{lead.company}</p>
+          <p className="text-sm text-muted-foreground mb-4 truncate pr-2">{lead.company}</p>
         )}
         
-        <div className="flex items-center justify-between text-[14px]">
-          <span className="text-muted-foreground">{lead.source || "Sales Account"}</span>
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground truncate min-w-0">{lead.source || "Sales Account"}</span>
           
           {userRole === 'admin' && (
             <>
               {selectedSDR ? (
                 <Select value={selectedSDR} onValueChange={setSelectedSDR}>
-                  <SelectTrigger className="w-auto h-7 text-xs border-none bg-transparent hover:bg-muted/50">
+                  <SelectTrigger className="w-auto h-7 text-xs border-none bg-transparent hover:bg-muted/50 flex-shrink-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -93,7 +93,7 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
                 </Select>
               ) : (
                 <Select value={selectedSDR} onValueChange={setSelectedSDR}>
-                  <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-muted px-3">
+                  <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-muted px-3 flex-shrink-0">
                     <SelectValue placeholder="Assign SDR" />
                   </SelectTrigger>
                   <SelectContent>
@@ -111,19 +111,19 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
       </div>
 
       {/* Divider */}
-      <div className="border-t border-[#E8E8E8]" />
+      <div className="border-t border-border/40 mb-5" />
 
       {/* Lead Status Section */}
-      <div className="pt-2 pb-3 space-y-1.5">
+      <div className="pb-5 space-y-3.5">
         <div className="flex items-center justify-between">
-          <span className="text-[14px] text-foreground">Engagement</span>
-          <span className="text-[14px] text-foreground">{lead.engagementScore}/100</span>
+          <span className="text-sm text-muted-foreground">Engagement</span>
+          <span className="text-sm font-medium text-foreground">{lead.engagementScore}/100</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-[14px] text-foreground">Stage</span>
+          <span className="text-sm text-muted-foreground">Stage</span>
           <Select value={selectedStage} onValueChange={setSelectedStage}>
-            <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-[#3C3C3C] text-white border-none px-3">
+            <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-[#3C3C3C] text-white border-none px-3 flex-shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -137,40 +137,40 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-[14px] text-foreground">Messages</span>
-          <span className="text-[14px] text-foreground">{lead.messageCount}</span>
+          <span className="text-sm text-muted-foreground">Messages</span>
+          <span className="text-sm font-medium text-foreground">{lead.messageCount}</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-[14px] text-foreground">Last Response</span>
-          <span className="text-[14px] text-foreground">{lead.lastResponseTime}</span>
+          <span className="text-sm text-muted-foreground">Last Response</span>
+          <span className="text-sm font-medium text-foreground">{lead.lastResponseTime}</span>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="border-t border-[#E8E8E8]" />
+      <div className="border-t border-border/40 mb-5" />
 
       {/* Activity Section */}
-      <div className="pt-2 pb-3">
-        <h4 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Activity</h4>
-        <div className="space-y-1.5">
+      <div className="pb-5">
+        <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3.5">Activity</h4>
+        <div className="space-y-3">
           {timeline.slice(0, 3).map((event) => (
-            <div key={event.id} className="flex items-center justify-between text-[14px]">
-              <span className="text-foreground">{event.description}</span>
-              <span className="text-muted-foreground text-[13px]">{event.timestamp}</span>
+            <div key={event.id} className="flex items-start justify-between gap-3">
+              <span className="text-sm text-foreground flex-1 min-w-0 break-words">{event.description}</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">{event.timestamp}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Divider */}
-      <div className="border-t border-[#E8E8E8]" />
+      <div className="border-t border-border/40 mb-5" />
 
       {/* Comments Section */}
-      <div className="pt-2">
-        <h4 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Comments (Internal)</h4>
+      <div>
+        <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3.5">Comments (Internal)</h4>
         
-        <div className="relative mb-3 bg-[#F8F8F8] border border-[#E5E5E5] rounded-lg">
+        <div className="relative mb-4 bg-muted/30 border border-border/50 rounded-lg">
           <Textarea
             placeholder="Add a comment for internal team…"
             value={commentText}
@@ -180,7 +180,7 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
                 handleSubmitComment();
               }
             }}
-            className="min-h-[52px] text-[13px] resize-none border-0 bg-transparent p-3 pr-12 focus-visible:ring-0"
+            className="min-h-[52px] text-sm resize-none border-0 bg-transparent p-3 pr-12 focus-visible:ring-0 placeholder:text-muted-foreground"
           />
           <TooltipProvider>
             <Tooltip>
@@ -188,33 +188,33 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
                 <button
                   onClick={handleSubmitComment}
                   disabled={!commentText.trim()}
-                  className="absolute right-2 bottom-2 h-5 w-5 text-[#6A6874] hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                  className="absolute right-2.5 bottom-2.5 h-5 w-5 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                   aria-label="Submit comment"
                 >
-                  <Send className="h-5 w-5" />
+                  <Send className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Submit comment</p>
+                <p>Submit comment (Cmd/Ctrl + Enter)</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
 
         <ScrollArea className="max-h-[200px]">
-          <div className="space-y-3 pr-3">
+          <div className="space-y-4 pr-2">
             {comments.map((comment, index) => (
               <div key={comment.id}>
-                <div className="text-[13px] space-y-1">
+                <div className="text-sm space-y-1.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-[14px] text-foreground">{comment.username}</span>
+                    <span className="font-semibold text-sm text-foreground">{comment.username}</span>
                     <span className="text-muted-foreground">·</span>
-                    <span className="text-muted-foreground text-[13px]">{comment.timestamp}</span>
+                    <span className="text-xs text-muted-foreground">{comment.timestamp}</span>
                   </div>
-                  <p className="text-foreground leading-relaxed">{comment.text}</p>
+                  <p className="text-sm text-foreground leading-relaxed break-words">{comment.text}</p>
                 </div>
                 {index < comments.length - 1 && (
-                  <div className="border-t border-[#F0F0F0] mt-3"></div>
+                  <div className="border-t border-border/30 mt-4"></div>
                 )}
               </div>
             ))}

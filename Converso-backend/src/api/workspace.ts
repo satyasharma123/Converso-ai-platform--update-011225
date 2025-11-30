@@ -14,7 +14,7 @@ export interface Workspace {
 
 export async function getWorkspace(client?: SupabaseClient): Promise<Workspace | null> {
   // For now, we'll use a single workspace (can be extended to multi-tenant later)
-  const dbClient = client || supabase;
+  const dbClient = client || supabaseAdmin;
   const { data, error } = await dbClient
     .from('workspaces')
     .select('*')

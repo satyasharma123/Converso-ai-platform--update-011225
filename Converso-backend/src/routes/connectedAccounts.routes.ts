@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { connectedAccountsService } from '../services/connectedAccounts';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -98,16 +99,41 @@ router.put(
 
 /**
  * DELETE /api/connected-accounts/:id
- * Delete a connected account
+ * Delete a connected account and all associated data (conversations, messages)
  */
 router.delete(
   '/:id',
   optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
-    const client = req.supabaseClient || undefined;
-    await connectedAccountsService.deleteAccount(id, client);
-    res.json({ message: 'Connected account deleted successfully' });
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+    
+    try {
+      logger.info(`Deleting connected account: ${id}`);
+      
+      // Always use admin client for deletion to ensure cascade deletion works
+      // This bypasses RLS and ensures all related data is deleted
+      await connectedAccountsService.deleteAccount(id);
+      
+      logger.info(`Successfully deleted connected account: ${id}`);
+      
+      res.json({ 
+        message: 'Connected account and all associated data deleted successfully',
+        deleted: {
+          account: true,
+          conversations: true,
+          messages: true
+        }
+      });
+    } catch (error: any) {
+      logger.error('Error deleting connected account:', error);
+      res.status(500).json({ 
+        error: error.message || 'Failed to delete connected account'
+      });
+    }
   })
 );
 

@@ -147,3 +147,31 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .email-body-content {
+    @apply max-w-full break-words;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  .email-body-content img {
+    @apply max-w-full h-auto;
+  }
+  
+  .email-body-content a {
+    @apply text-blue-500 hover:underline;
+  }
+  
+  .email-body-content blockquote {
+    @apply border-l-4 border-muted pl-4 ml-0 my-2;
+  }
+  
+  .email-body-content p {
+    @apply mb-2;
+  }
+  
+  .email-body-content * {
+    max-width: 100%;
+  }
+}

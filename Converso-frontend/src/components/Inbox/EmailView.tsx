@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
-import { useAssignConversation, useUpdateConversationStage } from "@/hooks/useConversations";
+import { useAssignConversation, useUpdateConversationStage, useToggleRead } from "@/hooks/useConversations";
 import {
   Dialog,
   DialogContent,
@@ -24,11 +24,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SavedReplies } from "@/components/Inbox/SavedReplies";
 
+// Using type from props or defining compatible one
 interface Message {
   id: string;
   senderName: string;
   senderEmail?: string;
   content: string;
+  email_body?: string; // Full HTML body
   timestamp: string;
   isFromLead: boolean;
 }
@@ -42,6 +44,7 @@ interface EmailViewProps {
     status: string;
     assigned_to?: string;
     custom_stage_id?: string;
+    is_read?: boolean;
   };
   messages: Message[];
 }
@@ -60,10 +63,25 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const { data: pipelineStages } = usePipelineStages();
   const assignMutation = useAssignConversation();
   const updateStageMutation = useUpdateConversationStage();
+  const toggleRead = useToggleRead();
   
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
   const currentStage = pipelineStages?.find(stage => stage.id === conversation.custom_stage_id);
+
+  // Mark as read after 5 seconds
+  useEffect(() => {
+    if (!conversation.id || conversation.is_read) return;
+
+    const timer = setTimeout(() => {
+      toggleRead.mutate({ 
+        conversationId: conversation.id, 
+        isRead: true // Mark as read after 5 seconds
+      });
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [conversation.id, conversation.is_read, toggleRead]);
 
   const getInitials = (name: string) => {
     return name
@@ -96,7 +114,6 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   };
 
   const handleSelectTemplate = (content: string) => {
-    // Insert template at cursor position or append if no selection
     setReplyText((prev) => {
       if (prev) {
         return prev + "\n\n" + content;
@@ -107,16 +124,13 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
 
   const getReplyLabel = () => {
     switch (replyType) {
-      case "replyAll":
-        return "Reply All";
-      case "forward":
-        return "Forward";
-      default:
-        return "Reply";
+      case "replyAll": return "Reply All";
+      case "forward": return "Forward";
+      default: return "Reply";
     }
   };
 
-  const ReplyComposer = ({ isExpanded = false }: { isExpanded?: boolean }) => (
+  const renderReplyComposer = (isExpanded: boolean = false) => (
     <div className={isExpanded ? "space-y-4" : ""}>
       <div className={`border-t bg-background ${isExpanded ? "p-0" : ""}`}>
         <div className="px-6 py-3 border-b bg-muted/30 space-y-2">
@@ -187,7 +201,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
 
         {/* Formatting Toolbar */}
         <div className="px-6 py-2 bg-muted/30 border-y">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
             <Select defaultValue="sans">
               <SelectTrigger className="w-[100px] h-7 text-xs">
                 <SelectValue />
@@ -214,48 +228,34 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bold">
-              <Bold className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Italic">
-              <Italic className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Underline">
-              <Underline className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bold"><Bold className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Italic"><Italic className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Underline"><Underline className="h-3.5 w-3.5" /></Button>
+            </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Text Color">
-              <Palette className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Highlight">
-              <Highlighter className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Text Color"><Palette className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Highlight"><Highlighter className="h-3.5 w-3.5" /></Button>
+            </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bulleted List">
-              <List className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Numbered List">
-              <ListOrdered className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bulleted List"><List className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Numbered List"><ListOrdered className="h-3.5 w-3.5" /></Button>
+            </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Link">
-              <Link2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Image">
-              <Image className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Emoji">
-              <Smile className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Attach File">
-              <Paperclip className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Link"><Link2 className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Image"><Image className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Emoji"><Smile className="h-3.5 w-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Attach File"><Paperclip className="h-3.5 w-3.5" /></Button>
+            </div>
           </div>
         </div>
 
@@ -406,7 +406,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
                         </AvatarFallback>
                       </Avatar>
                       
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-1">
                           <div>
                             <p className="text-base font-semibold text-foreground">
@@ -421,9 +421,17 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
                       </div>
                     </div>
                     
-                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {message.content}
-                    </div>
+                    {message.email_body ? (
+                      <div 
+                        className="text-sm text-foreground email-body-content max-w-full"
+                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                        dangerouslySetInnerHTML={{ __html: message.email_body }}
+                      />
+                    ) : (
+                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
+                        {message.content}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -438,9 +446,17 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
                       &gt; wrote:
                     </p>
                     
-                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {message.content}
-                    </div>
+                    {message.email_body ? (
+                      <div 
+                        className="text-sm text-foreground email-body-content max-w-full opacity-80"
+                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                        dangerouslySetInnerHTML={{ __html: message.email_body }}
+                      />
+                    ) : (
+                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80">
+                        {message.content}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -449,7 +465,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
         </ScrollArea>
 
         {/* Reply Composition */}
-        {showReply && <ReplyComposer />}
+        {showReply && renderReplyComposer(false)}
       </div>
 
       {/* Expanded Compose Dialog */}
@@ -460,7 +476,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
               {getReplyLabel()}: {conversation.subject || "No Subject"}
             </DialogTitle>
           </DialogHeader>
-          <ReplyComposer isExpanded />
+          {renderReplyComposer(true)}
         </DialogContent>
       </Dialog>
     </>
