@@ -575,29 +575,6 @@ export default function EmailInbox() {
             {/* Drawer Content */}
             <div className="h-full flex flex-col">
               {/* Toggle Tab - Always visible on the left edge */}
-              <button
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className={cn(
-                  "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30",
-                  "flex flex-col items-center justify-center gap-1 py-3 px-2",
-                  "bg-white text-slate-900 border border-slate-200 rounded-l-lg shadow-lg",
-                  "hover:bg-slate-50 transition-all duration-200",
-                  "w-8 h-20"
-                )}
-                title={isProfileOpen ? "Collapse profile" : "Expand profile"}
-              >
-                {isProfileOpen ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-                <span className="text-[9px] font-semibold tracking-tight leading-tight text-center">
-                  Lead
-                  <br />
-                  Profile
-                </span>
-              </button>
-              
               {/* Drawer Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 flex-shrink-0">
                 <h3 className="font-semibold text-base text-foreground">Lead Profile</h3>
@@ -605,9 +582,13 @@ export default function EmailInbox() {
                   variant="ghost" 
                   size="icon" 
                   className="h-8 w-8 hover:bg-muted/50"
-                  onClick={() => setIsProfileOpen(false)}
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
                 >
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  {isProfileOpen ? (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                  )}
                 </Button>
               </div>
               
