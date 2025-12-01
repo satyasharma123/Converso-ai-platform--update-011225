@@ -5,7 +5,7 @@ import { EmailSidebar } from "@/components/Inbox/EmailSidebar";
 import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -572,6 +572,22 @@ export default function EmailInbox() {
               isProfileOpen ? "translate-x-0 w-[380px]" : "translate-x-[calc(100%-20px)] w-[380px]"
             )}
           >
+            <button
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className={cn(
+                "absolute left-0 top-6 -translate-x-full z-30",
+                "flex items-center justify-center w-6 h-10 rounded-l-lg border border-slate-200 bg-white shadow-md",
+                "hover:bg-slate-50 transition-colors"
+              )}
+              title={isProfileOpen ? "Collapse lead profile" : "Expand lead profile"}
+            >
+              <PanelLeft
+                className={cn(
+                  "h-4 w-4 text-slate-600 transition-transform duration-200",
+                  isProfileOpen ? "rotate-180" : "rotate-0"
+                )}
+              />
+            </button>
             {/* Drawer Content */}
             <div className="h-full flex flex-col">
               {/* Toggle Tab - Always visible on the left edge */}
