@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
+import { useUpdateConversationStage } from "@/hooks/useConversations";
 import { useAuth } from "@/hooks/useAuth";
 
 interface LeadProfilePanelProps {
@@ -41,9 +43,24 @@ interface Comment {
 export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfilePanelProps) {
   const { userRole } = useAuth();
   const [commentText, setCommentText] = useState("");
-  const [selectedStage, setSelectedStage] = useState(lead.stage || "new");
-  const [selectedSDR, setSelectedSDR] = useState(lead.assignedTo || "");
   const { data: teamMembers } = useTeamMembers();
+  const { data: pipelineStages = [] } = usePipelineStages();
+  const updateStageMutation = useUpdateConversationStage();
+  
+  // Find the current stage ID from the lead's stage name or use first stage as default
+  const currentStageId = pipelineStages.find(s => s.name === lead.stage)?.id || pipelineStages[0]?.id || null;
+  const [selectedStage, setSelectedStage] = useState<string | null>(currentStageId);
+  const [selectedSDR, setSelectedSDR] = useState(lead.assignedTo || "");
+  
+  const handleStageChange = (stageId: string) => {
+    setSelectedStage(stageId);
+    if (conversationId) {
+      updateStageMutation.mutate({
+        conversationId,
+        stageId: stageId === 'none' ? null : stageId
+      });
+    }
+  };
   
   const [comments, setComments] = useState<Comment[]>([
     { id: "1", username: "Sarah Admin", timestamp: "2h", text: "High priority outreach — responded quickly" },
@@ -122,16 +139,20 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Stage</span>
-          <Select value={selectedStage} onValueChange={setSelectedStage}>
+          <Select value={selectedStage || 'none'} onValueChange={handleStageChange}>
             <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-[#3C3C3C] text-white border-none px-3 flex-shrink-0">
-              <SelectValue />
+              <SelectValue placeholder="Select stage" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="new">New</SelectItem>
-              <SelectItem value="engaged">Engaged</SelectItem>
-              <SelectItem value="qualified">Qualified</SelectItem>
-              <SelectItem value="converted">Converted</SelectItem>
-              <SelectItem value="not_interested">Not Interested</SelectItem>
+              <SelectItem value="none">Unassigned</SelectItem>
+              {pipelineStages.map((stage) => (
+                <SelectItem key={stage.id} value={stage.id}>
+                  {stage.name}
+                </SelectItem>
+              ))}
+              {pipelineStages.length === 0 && (
+                <SelectItem value="none" disabled>No stages available</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

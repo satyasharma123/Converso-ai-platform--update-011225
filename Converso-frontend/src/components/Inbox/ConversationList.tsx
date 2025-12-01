@@ -1,3 +1,4 @@
+import React from "react";
 import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,11 +54,23 @@ export function ConversationList({
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
-  const { data: stages = [] } = usePipelineStages();
+  const { data: stages = [], isLoading: isLoadingStages, error: stagesError } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
   const favoriteConversation = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
   const { userRole } = useAuth();
+  
+  // Log for debugging
+  React.useEffect(() => {
+    if (stagesError) {
+      console.error('[ConversationList] Error loading stages:', stagesError);
+    }
+    if (stages && stages.length > 0) {
+      console.log('[ConversationList] Stages loaded:', stages.length, stages);
+    } else if (!isLoadingStages) {
+      console.warn('[ConversationList] No stages found. Please run the migration to seed default stages.');
+    }
+  }, [stages, stagesError, isLoadingStages]);
 
   const getStatusColor = (status: Conversation["status"]) => {
     switch (status) {
@@ -264,8 +277,11 @@ export function ConversationList({
                       {conversation.customStageId === stage.id && " ✓"}
                     </DropdownMenuItem>
                   ))}
-                  {stages.length === 0 && (
-                    <DropdownMenuItem disabled>No stages available</DropdownMenuItem>
+                  {isLoadingStages && (
+                    <DropdownMenuItem disabled>Loading stages...</DropdownMenuItem>
+                  )}
+                  {!isLoadingStages && stages.length === 0 && (
+                    <DropdownMenuItem disabled>No stages available. Go to Settings → Pipeline Stages to configure.</DropdownMenuItem>
                   )}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>

@@ -60,10 +60,19 @@ export default function EmailInbox() {
     (filterState.stage !== 'all' ? 1 : 0);
 
   const handleFilterChange = (key: 'sdr' | 'stage', value: string) => {
-    setFilterState((prev) => ({ ...prev, [key]: value }));
+    setFilterState((prev) => {
+      const newState = { ...prev, [key]: value };
+      console.log('[EmailInbox] Filter changed:', key, value, newState);
+      return newState;
+    });
+    // Close popover after filter change
+    setTimeout(() => setFilterPopoverOpen(false), 100);
   };
 
-  const clearFilters = () => setFilterState({ sdr: 'all', stage: 'all' });
+  const clearFilters = () => {
+    setFilterState({ sdr: 'all', stage: 'all' });
+    setFilterPopoverOpen(false);
+  };
 
   // Auto-trigger sync for all connected email accounts on mount
   useEffect(() => {
@@ -141,10 +150,20 @@ export default function EmailInbox() {
         (filterState.sdr === 'unassigned' && !assignedId) ||
         assignedId === filterState.sdr;
 
-      const stageId = (conv as any).custom_stage_id || (conv as any).customStageId;
+      const stageId = (conv as any).custom_stage_id || (conv as any).customStageId || null;
       const matchesStage =
         filterState.stage === 'all' ||
         stageId === filterState.stage;
+
+      // Debug logging for stage filter
+      if (filterState.stage !== 'all' && stageId) {
+        console.log('[Filter] Checking stage:', { 
+          conversationId: conv.id, 
+          stageId, 
+          filterStage: filterState.stage, 
+          matches: stageId === filterState.stage 
+        });
+      }
 
       return matchesAccount && matchesSearch && matchesFolder && matchesTab && matchesSdr && matchesStage;
     })
@@ -484,8 +503,8 @@ export default function EmailInbox() {
                     senderEmail: (selectedConv as any).senderEmail || selectedConv.sender_email || '',
                     subject: selectedConv.subject || '',
                     status: selectedConv.status,
-                    assigned_to: selectedConv.assigned_to,
-                    custom_stage_id: selectedConv.custom_stage_id,
+                    assigned_to: (selectedConv as any).assigned_to || (selectedConv as any).assignedTo,
+                    custom_stage_id: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
                     is_read: selectedConv.is_read
                   }} 
                   messages={messagesForSelected as any}

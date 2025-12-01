@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabaseAdmin } from '../lib/supabase';
 import type { PipelineStage } from '../types';
 
 /**
@@ -6,13 +6,22 @@ import type { PipelineStage } from '../types';
  */
 
 export async function getPipelineStages(): Promise<PipelineStage[]> {
-  const { data, error } = await supabase
+  // Use admin client to bypass RLS - stages should be visible to all authenticated users
+  const { data, error } = await supabaseAdmin
     .from('pipeline_stages')
     .select('*')
     .order('display_order', { ascending: true });
 
-  if (error) throw error;
-  return data as PipelineStage[];
+  if (error) {
+    console.error('[getPipelineStages] Error fetching stages:', error);
+    throw error;
+  }
+  
+  if (!data || data.length === 0) {
+    console.warn('[getPipelineStages] No pipeline stages found in database. Run the migration to seed default stages.');
+  }
+  
+  return (data || []) as PipelineStage[];
 }
 
 export async function createPipelineStage(

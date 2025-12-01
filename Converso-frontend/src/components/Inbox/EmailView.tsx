@@ -344,7 +344,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
                 <SelectValue placeholder="Stage" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Stage</SelectItem>
+                <SelectItem value="none">Unassigned</SelectItem>
                 {pipelineStages?.map((stage) => (
                   <SelectItem key={stage.id} value={stage.id}>
                     {stage.name}

@@ -1,18 +1,11 @@
 import { useState } from "react";
 import { Conversation } from "@/hooks/useConversations";
 import { useConversations } from "@/hooks/useConversations";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
 import { KanbanColumn } from "./KanbanColumn";
 import { LeadDetailsDialog } from "./LeadDetailsDialog";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const STAGES = [
-  { id: 'new', label: 'New' },
-  { id: 'engaged', label: 'Engaged' },
-  { id: 'qualified', label: 'Qualified' },
-  { id: 'converted', label: 'Converted' },
-  { id: 'not_interested', label: 'Not Interested' },
-] as const;
 
 interface KanbanBoardProps {
   filters: {
@@ -24,6 +17,7 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ filters }: KanbanBoardProps) {
   const { data: conversations = [], isLoading } = useConversations();
+  const { data: pipelineStages = [], isLoading: isLoadingStages } = usePipelineStages();
   const { userRole, user } = useAuth();
   const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -33,11 +27,11 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
     setDialogOpen(true);
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingStages) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {STAGES.map((stage) => (
-          <div key={stage.id} className="flex-shrink-0 w-80">
+        {[...Array(7)].map((_, index) => (
+          <div key={index} className="flex-shrink-0 w-80">
             <Skeleton className="h-[600px]" />
           </div>
         ))}
@@ -49,10 +43,10 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
     e.dataTransfer.setData('conversationId', conversationId);
   };
 
-  const handleDrop = (e: React.DragEvent, status: typeof STAGES[number]['id']) => {
+  const handleDrop = (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
-    // Mock data doesn't support updates
-    console.log('Drag and drop disabled for mock data');
+    // TODO: Implement drag and drop stage update
+    console.log('Drag and drop to stage:', stageId);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -60,7 +54,8 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   };
 
   const getConversationsByStage = (stageId: string) => {
-    let filtered = conversations?.filter(conv => conv.status === stageId) || [];
+    // Filter by custom_stage_id (database stage) instead of status
+    let filtered = conversations?.filter(conv => conv.custom_stage_id === stageId) || [];
     
     // SDR role filtering: only show assigned conversations
     if (userRole === 'sdr' && user) {
@@ -94,22 +89,28 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
 
   return (
     <>
-      <div className="h-full w-full overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-4 pb-4 h-full min-w-max">
-          {STAGES.map((stage) => (
-            <KanbanColumn
-              key={stage.id}
-              stage={stage}
-              conversations={getConversationsByStage(stage.id)}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              canDrag={userRole === 'admin'}
-              onLeadClick={handleLeadClick}
-            />
-          ))}
+      {pipelineStages.length === 0 ? (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">No pipeline stages found. Please configure stages in Settings.</p>
         </div>
-      </div>
+      ) : (
+        <div className="h-full w-full overflow-x-auto overflow-y-hidden">
+          <div className="flex gap-4 pb-4 h-full min-w-max">
+            {pipelineStages.map((stage) => (
+              <KanbanColumn
+                key={stage.id}
+                stage={{ id: stage.id, label: stage.name }}
+                conversations={getConversationsByStage(stage.id)}
+                onDragStart={handleDragStart}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                canDrag={userRole === 'admin'}
+                onLeadClick={handleLeadClick}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <LeadDetailsDialog 
         conversation={selectedLead}
