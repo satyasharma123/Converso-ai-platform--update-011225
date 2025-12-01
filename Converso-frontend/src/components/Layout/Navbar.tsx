@@ -1,14 +1,9 @@
-import { Bell, User } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 interface NavbarProps {
   userName?: string;
@@ -16,6 +11,19 @@ interface NavbarProps {
 }
 
 export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+  
+  const initials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background backdrop-blur supports-[backdrop-filter]:bg-background/95">
@@ -30,9 +38,18 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
         </Button>
 
         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{userName}</span>
-          <span className="text-xs uppercase bg-muted px-2 py-0.5 rounded-full">{role}</span>
+          <Avatar className="h-8 w-8 border border-border/60">
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="font-medium text-foreground">{userName}</span>
+            <span className="text-xs uppercase text-muted-foreground">{role}</span>
+          </div>
         </div>
+
+        <Button variant="outline" size="sm" onClick={handleLogout}>
+          Logout
+        </Button>
       </div>
     </header>
   );

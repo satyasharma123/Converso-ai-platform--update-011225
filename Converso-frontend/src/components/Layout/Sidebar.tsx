@@ -11,7 +11,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -39,20 +38,13 @@ const sdrItems = [
 
 interface SidebarProps {
   role?: "admin" | "sdr";
-  userName?: string;
 }
 
-export function Sidebar({ role = "admin", userName }: SidebarProps) {
+export function Sidebar({ role = "admin" }: SidebarProps) {
   const { open } = useSidebar();
   const items = role === "admin" ? adminItems : sdrItems;
   const { signOut } = useAuth();
   const navigate = useNavigate();
-
-  const initials = (userName || "User")
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
 
   const handleLogout = async () => {
     await signOut();
@@ -97,28 +89,11 @@ export function Sidebar({ role = "admin", userName }: SidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <div className="mt-auto px-3 pb-4 pt-3 border-t border-border/50 space-y-3">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9 border border-border/60">
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-            {open && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-medium truncate">{userName || "User"}</span>
-                <span className="text-xs text-muted-foreground capitalize truncate">{role}</span>
-              </div>
-            )}
-          </div>
-          {open ? (
-            <Button variant="secondary" size="sm" className="w-full" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          ) : (
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="w-full">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          )}
+        <div className="mt-auto px-3 pb-4 pt-3 border-t border-border/50">
+          <Button variant="secondary" size={open ? "sm" : "icon"} className="w-full gap-2" onClick={handleLogout}>
+            <LogOut className="h-4 w-4" />
+            {open && <span>Logout</span>}
+          </Button>
         </div>
       </SidebarContent>
     </ShadcnSidebar>

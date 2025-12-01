@@ -540,12 +540,7 @@ export default function EmailInbox() {
           </div>
 
           {/* Email View - Takes remaining space */}
-          <div
-            className={cn(
-              "flex-1 min-w-0 h-full overflow-hidden bg-background relative transition-[padding-right] duration-300 ease-in-out",
-              isProfileOpen ? "pr-[420px]" : "pr-0"
-            )}
-          >
+          <div className="flex-1 min-w-0 h-full overflow-hidden bg-background relative">
             {selectedConv ? (
               <div className="h-full flex flex-col">
                 <EmailView 
@@ -574,7 +569,7 @@ export default function EmailInbox() {
           <div 
             className={cn(
               "fixed top-[72px] right-0 h-[calc(100vh-72px)] bg-card border-l shadow-2xl transition-all duration-300 ease-in-out z-40",
-              isProfileOpen ? "translate-x-0 w-[400px]" : "translate-x-[calc(100%-36px)] w-[400px]"
+              isProfileOpen ? "translate-x-0 w-[380px]" : "translate-x-[calc(100%-20px)] w-[380px]"
             )}
           >
             {/* Drawer Content */}
@@ -585,17 +580,22 @@ export default function EmailInbox() {
                 className={cn(
                   "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30",
                   "flex flex-col items-center justify-center gap-1 py-3 px-2",
-                  "bg-slate-900 text-white rounded-l-md shadow-xl",
-                  "hover:bg-slate-800 transition-all duration-200",
-                  "w-10 h-24"
+                  "bg-white text-slate-900 border border-slate-200 rounded-l-lg shadow-lg",
+                  "hover:bg-slate-50 transition-all duration-200",
+                  "w-8 h-20"
                 )}
-                title={isProfileOpen ? "Close profile" : "Open profile"}
+                title={isProfileOpen ? "Collapse profile" : "Expand profile"}
               >
-                <User className="h-4 w-4" />
-                <div className="flex flex-col items-center gap-0.5 text-[9px] font-semibold tracking-tight">
-                  <span>LEAD</span>
-                  <span>PROFILE</span>
-                </div>
+                {isProfileOpen ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+                <span className="text-[9px] font-semibold tracking-tight leading-tight text-center">
+                  Lead
+                  <br />
+                  Profile
+                </span>
               </button>
               
               {/* Drawer Header */}
