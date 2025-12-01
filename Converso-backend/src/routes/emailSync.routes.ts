@@ -38,10 +38,31 @@ router.get(
       accountId
     );
 
+    // Parse progress from sync_error if status is in_progress
+    let progress: { synced: number; total?: number } | null = null;
+    if (status && status.status === 'in_progress' && status.sync_error) {
+      try {
+        const parsed = JSON.parse(status.sync_error);
+        if (parsed.synced !== undefined) {
+          progress = {
+            synced: parsed.synced,
+            total: parsed.total || undefined,
+          };
+        }
+      } catch {
+        // If parsing fails, sync_error is likely an actual error message
+        progress = null;
+      }
+    }
+
     res.json({ 
-      data: status || {
+      data: status ? {
+        ...status,
+        progress,
+      } : {
         status: 'pending', // Default to pending if no status found (so sync can be triggered)
         last_synced_at: null,
+        progress: null,
       }
     });
   })
@@ -167,6 +188,75 @@ router.get(
 );
 
 /**
+ * GET /api/emails/folder-counts
+ * Get email counts for different folders (inbox, unread, etc.)
+ */
+router.get(
+  '/folder-counts',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { workspace_id } = req.query;
+
+    if (!workspace_id) {
+      return res.status(400).json({ error: 'workspace_id is required' });
+    }
+
+    try {
+      // Get all connected email accounts for this workspace
+      const { data: connectedAccounts } = await supabaseAdmin
+        .from('connected_accounts')
+        .select('account_email, workspace_id')
+        .eq('account_type', 'email');
+
+      // Filter accounts by workspace_id if available, or get all email accounts
+      let accountEmails: string[] = [];
+      if (connectedAccounts) {
+        // If accounts have workspace_id, filter by it
+        const workspaceAccounts = connectedAccounts.filter(acc => 
+          !acc.workspace_id || acc.workspace_id === workspace_id
+        );
+        accountEmails = workspaceAccounts.map(acc => acc.account_email).filter(Boolean);
+        
+        // If no workspace-specific accounts, use all email accounts as fallback
+        if (accountEmails.length === 0) {
+          accountEmails = connectedAccounts.map(acc => acc.account_email).filter(Boolean);
+        }
+      }
+
+      // Get all email conversations for this workspace with folder information
+      const { data: conversations, error } = await supabaseAdmin
+        .from('conversations')
+        .select('id, is_read, email_folder')
+        .eq('workspace_id', workspace_id as string)
+        .eq('conversation_type', 'email');
+
+      if (error) {
+        logger.error('Error fetching conversations for folder counts:', error);
+        return res.status(500).json({ error: 'Failed to fetch folder counts' });
+      }
+
+      const emails = conversations || [];
+
+      // Calculate counts based on email_folder field
+      const counts = {
+        inbox: emails.filter(e => e.email_folder === 'inbox' || !e.email_folder).length,
+        unread: emails.filter(e => !e.is_read).length,
+        sent: emails.filter(e => e.email_folder === 'sent').length,
+        important: emails.filter(e => e.email_folder === 'important').length,
+        drafts: emails.filter(e => e.email_folder === 'drafts').length,
+        archive: emails.filter(e => e.email_folder === 'archive').length,
+        deleted: emails.filter(e => e.email_folder === 'deleted').length,
+      };
+
+      res.json({ data: counts });
+    } catch (error: any) {
+      logger.error('Error calculating folder counts:', error);
+      res.status(500).json({ error: 'Failed to calculate folder counts' });
+    }
+  })
+);
+
+/**
  * GET /api/emails/:id
  * Get email with full body (fetches from Gmail if not stored)
  */
@@ -208,12 +298,13 @@ router.get(
       });
     }
 
-    // Fetch body from Gmail API if not stored
-    if (conversation.gmail_message_id && conversation.received_account) {
+    // Fetch body from email API if not stored (supports both Gmail and Outlook)
+    const messageId = conversation.gmail_message_id || (conversation as any).outlook_message_id;
+    if (messageId && conversation.received_account) {
       try {
         const body = await fetchAndStoreEmailBody(
           id,
-          conversation.gmail_message_id,
+          messageId,
           conversation.received_account as any
         );
 

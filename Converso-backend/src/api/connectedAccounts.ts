@@ -70,63 +70,119 @@ export async function updateConnectedAccount(
 }
 
 export async function deleteConnectedAccount(accountId: string, client?: SupabaseClient): Promise<void> {
+  // Check if we have a proper admin client with service role key
+  // Without it, RLS will block us from seeing/deleting accounts
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('SUPABASE_SERVICE_ROLE_KEY is not set! Cannot delete accounts without admin privileges.');
+    throw new Error('Server configuration error: Admin key not configured. Please contact administrator.');
+  }
+
   // Always use admin client for deletion to bypass RLS and ensure cascade deletion works
   const dbClient = supabaseAdmin;
   
   // Verify account exists first
   const { data: account, error: checkError } = await dbClient
     .from('connected_accounts')
-    .select('id')
+    .select('id, account_email')
     .eq('id', accountId)
     .single();
 
-  if (checkError || !account) {
-    throw new Error(`Connected account not found: ${accountId}`);
+  if (checkError) {
+    if (checkError.code === 'PGRST116') {
+      // Account doesn't exist in the database
+      console.log(`Account ${accountId} not found in database - may have been already deleted`);
+      // Still return success - the end result is what the user wanted
+      return;
+    }
+    console.error(`Error checking account existence:`, checkError);
+    throw new Error(`Error checking account existence: ${checkError.message}`);
   }
 
-  // Delete sync status records for this account
-  const { error: syncStatusError } = await dbClient
-    .from('sync_status')
-    .delete()
-    .eq('account_id', accountId);
+  if (!account) {
+    console.log(`Account ${accountId} not found in database - may have been already deleted`);
+    return;
+  }
+  
+  console.log(`Found account to delete: ${accountId} (${account.account_email})`);
 
-  if (syncStatusError) {
-    console.error('Error deleting sync status:', syncStatusError);
-    // Don't throw - sync status deletion is not critical
+
+  console.log(`Starting deletion process for account ${accountId} (${account.account_email})`);
+
+  // Step 1: Delete sync status records for this account
+  // Note: sync_status table uses 'inbox_id' column which stores the account_id
+  try {
+    const { error: syncStatusError } = await dbClient
+      .from('sync_status')
+      .delete()
+      .eq('inbox_id', accountId);
+
+    if (syncStatusError) {
+      console.warn('Error deleting sync status:', syncStatusError);
+    } else {
+      console.log(`Deleted sync status records for account ${accountId}`);
+    }
+  } catch (err: any) {
+    console.warn('Exception deleting sync status:', err.message);
   }
 
-  // Get count of conversations before deletion (for logging)
-  const { count: conversationsCount } = await dbClient
-    .from('conversations')
-    .select('*', { count: 'exact', head: true })
-    .eq('received_on_account_id', accountId);
+  // Step 2: Get count of conversations before deletion (for logging)
+  let conversationsCount = 0;
+  try {
+    const { count } = await dbClient
+      .from('conversations')
+      .select('*', { count: 'exact', head: true })
+      .eq('received_on_account_id', accountId);
+    conversationsCount = count || 0;
+    console.log(`Found ${conversationsCount} conversations to delete for account ${accountId}`);
+  } catch (countError: any) {
+    console.warn('Could not count conversations:', countError.message);
+  }
 
-  // Delete all conversations associated with this account
+  // Step 3: Delete all conversations associated with this account
   // Messages will be automatically deleted due to CASCADE constraint on conversation_id
-  const { error: conversationsError } = await dbClient
-    .from('conversations')
-    .delete()
-    .eq('received_on_account_id', accountId);
+  try {
+    const { error: conversationsError } = await dbClient
+      .from('conversations')
+      .delete()
+      .eq('received_on_account_id', accountId);
 
-  if (conversationsError) {
-    console.error('Error deleting conversations:', conversationsError);
-    throw new Error(`Failed to delete related conversations: ${conversationsError.message}`);
+    if (conversationsError) {
+      console.error('Error deleting conversations:', conversationsError);
+      console.warn(`Continuing with account deletion despite conversation deletion error`);
+    } else {
+      console.log(`Deleted ${conversationsCount} conversations for account ${accountId}`);
+    }
+  } catch (err: any) {
+    console.warn('Exception deleting conversations:', err.message);
   }
 
-  console.log(`Deleted ${conversationsCount || 0} conversations for account ${accountId}`);
+  // Step 4: Messages will be automatically deleted via CASCADE constraint
+  // when their parent conversations are deleted, so no separate deletion needed
+  console.log('Messages will be deleted automatically via CASCADE when conversations are removed');
 
-  // Then delete the connected account itself
-  const { error } = await dbClient
+  // Step 5: Delete the connected account itself (CRITICAL - must succeed)
+  console.log(`Deleting connected account ${accountId}...`);
+  const { error, data } = await dbClient
     .from('connected_accounts')
     .delete()
-    .eq('id', accountId);
+    .eq('id', accountId)
+    .select();
 
   if (error) {
-    console.error('Error deleting connected account:', error);
-    throw new Error(`Failed to delete connected account: ${error.message}`);
+    console.error('CRITICAL: Error deleting connected account:', error);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    throw new Error(`Failed to delete connected account: ${error.message} (Code: ${error.code || 'UNKNOWN'})`);
   }
 
-  console.log(`Successfully deleted connected account ${accountId} and all associated data`);
+  if (!data || data.length === 0) {
+    console.warn(`No rows deleted for account ${accountId} - account may not exist`);
+    // Don't throw - account might have been deleted already
+    return;
+  }
+
+  console.log(`✅ Successfully deleted connected account ${accountId} (${account.account_email}) and all associated data`);
+  console.log(`   - Deleted ${conversationsCount} conversations`);
+  console.log(`   - Messages deleted via CASCADE`);
 }
 
 export async function toggleConnectedAccountStatus(

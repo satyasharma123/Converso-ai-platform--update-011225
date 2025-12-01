@@ -1,4 +1,4 @@
-import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive } from "lucide-react";
+import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ReceivedAccountBadge } from "./ReceivedAccountBadge";
 import { formatTimeAgo } from "@/utils/timeFormat";
-import { useToggleRead, useAssignConversation, useUpdateConversationStage } from "@/hooks/useConversations";
+import { useToggleRead, useAssignConversation, useUpdateConversationStage, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface Conversation {
   id: string;
@@ -38,6 +39,11 @@ interface ConversationListProps {
   onToggleSelect?: (id: string) => void;
 }
 
+const stripHtml = (value?: string) => {
+  if (!value) return '';
+  return value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+};
+
 export function ConversationList({
   conversations,
   onConversationClick,
@@ -49,6 +55,9 @@ export function ConversationList({
   const updateStage = useUpdateConversationStage();
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
+  const favoriteConversation = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
+  const { userRole } = useAuth();
 
   const getStatusColor = (status: Conversation["status"]) => {
     switch (status) {
@@ -80,6 +89,26 @@ export function ConversationList({
     toast.info('Archive feature coming soon');
   };
 
+  const handleFavorite = (conversationId: string, isFavorite: boolean) => {
+    favoriteConversation.mutate(
+      { conversationId, isFavorite },
+      {
+        onSuccess: () => {
+          toast.success(isFavorite ? "Added to favorites" : "Removed from favorites");
+        },
+        onError: () => {
+          toast.error("Failed to update favorite status");
+        },
+      }
+    );
+  };
+
+  const handleDelete = (conversationId: string) => {
+    const confirmed = window.confirm('Delete this email thread? This cannot be undone.');
+    if (!confirmed) return;
+    deleteConversation.mutate(conversationId);
+  };
+
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -94,7 +123,11 @@ export function ConversationList({
         {conversations.map((conversation) => {
           // Determine if email is unread (show dot if unread)
           const isUnread = !(conversation.isRead ?? (conversation as any).is_read ?? false);
-          
+          const assignedMember = teamMembers.find(member => member.id === conversation.assignedTo);
+          const assignedName = assignedMember?.full_name || conversation.assignedTo;
+          const previewText = stripHtml(conversation.preview);
+          const isFavorite = Boolean((conversation as any).isFavorite ?? (conversation as any).is_favorite);
+
           return (
           <div
             key={conversation.id}
@@ -138,7 +171,7 @@ export function ConversationList({
 
             {/* Line 3: Email Preview (2 lines max) */}
             <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-              {conversation.preview}
+              {previewText || conversation.preview}
             </p>
 
             {/* Line 4: Account Badge (left) + SDR Badge (right) */}
@@ -153,9 +186,9 @@ export function ConversationList({
                 )}
               </div>
               <div className="flex-shrink-0">
-                {conversation.assignedTo ? (
+                {assignedName ? (
                   <Badge variant="secondary" className="text-[9px] h-3.5 px-1">
-                    {conversation.assignedTo}
+                    {assignedName}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-orange-500 text-orange-500">
@@ -187,32 +220,34 @@ export function ConversationList({
                 )}
               </DropdownMenuItem>
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Assign to SDR
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
-                  <DropdownMenuItem 
-                    onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, null); }}
-                  >
-                    Unassigned
-                    {!conversation.assignedTo && " ✓"}
-                  </DropdownMenuItem>
-                  {teamMembers.map((member) => (
+              {userRole === 'admin' && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Assign to SDR
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
                     <DropdownMenuItem 
-                      key={member.id}
-                      onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, member.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, null); }}
                     >
-                      {member.full_name}
-                      {conversation.assignedTo === member.id && " ✓"}
+                      Unassigned
+                      {!conversation.assignedTo && " ✓"}
                     </DropdownMenuItem>
-                  ))}
-                  {teamMembers.length === 0 && (
-                    <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+                    {teamMembers.map((member) => (
+                      <DropdownMenuItem 
+                        key={member.id}
+                        onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, member.id); }}
+                      >
+                        {member.full_name}
+                        {conversation.assignedTo === member.id && " ✓"}
+                      </DropdownMenuItem>
+                    ))}
+                    {teamMembers.length === 0 && (
+                      <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
 
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
@@ -239,6 +274,30 @@ export function ConversationList({
                 <Archive className="h-4 w-4 mr-2" />
                 Archive
               </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleFavorite(conversation.id, !isFavorite); }}>
+                {isFavorite ? (
+                  <>
+                    <StarOff className="h-4 w-4 mr-2" />
+                    Remove Favorite
+                  </>
+                ) : (
+                  <>
+                    <Star className="h-4 w-4 mr-2" />
+                    Mark as Favorite
+                  </>
+                )}
+              </DropdownMenuItem>
+
+              {userRole === 'admin' && (
+                <DropdownMenuItem 
+                  className="text-destructive"
+                  onClick={(e) => { e.stopPropagation(); handleDelete(conversation.id); }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           </div>

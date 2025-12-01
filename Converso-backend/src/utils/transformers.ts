@@ -20,11 +20,17 @@ export function transformConversation(conv: Conversation): any {
     status: conv.status,
     isRead: conv.is_read,
     is_read: conv.is_read, // Keep both for compatibility
+    isFavorite: conv.is_favorite || false,
+    is_favorite: conv.is_favorite || false,
     assignedTo: conv.assigned_to,
     assigned_to: conv.assigned_to, // Keep both
     customStageId: conv.custom_stage_id,
     receivedAccount: conv.received_account,
     received_account: conv.received_account, // Keep both
+    receivedOnAccountId: conv.received_on_account_id,
+    received_on_account_id: conv.received_on_account_id,
+    emailFolder: conv.email_folder || 'inbox',
+    email_folder: conv.email_folder || 'inbox',
   };
 }
 

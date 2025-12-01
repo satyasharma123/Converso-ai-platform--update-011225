@@ -8,7 +8,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Check, CheckCheck, UserPlus, GitBranch, Archive, Trash2 } from "lucide-react";
+import { ChevronDown, Check, CheckCheck, UserPlus, GitBranch, Archive, Trash2, Star, StarOff } from "lucide-react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +22,8 @@ interface BulkActionsProps {
   onChangeStage: (stageId: string) => void;
   onArchive: () => void;
   onDelete: () => void;
+  onFavorite: () => void;
+  onUnfavorite: () => void;
   onClearSelection: () => void;
 }
 
@@ -33,6 +35,8 @@ export function BulkActions({
   onChangeStage,
   onArchive,
   onDelete,
+  onFavorite,
+  onUnfavorite,
   onClearSelection,
 }: BulkActionsProps) {
   const { userRole } = useAuth();
@@ -112,6 +116,16 @@ export function BulkActions({
           <DropdownMenuItem onClick={onArchive}>
             <Archive className="h-4 w-4 mr-2" />
             Archive
+          </DropdownMenuItem>
+
+          <DropdownMenuItem onClick={onFavorite}>
+            <Star className="h-4 w-4 mr-2" />
+            Mark as Favorite
+          </DropdownMenuItem>
+
+          <DropdownMenuItem onClick={onUnfavorite}>
+            <StarOff className="h-4 w-4 mr-2" />
+            Remove Favorite
           </DropdownMenuItem>
 
           <DropdownMenuItem onClick={onDelete} className="text-destructive">

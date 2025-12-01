@@ -1,7 +1,7 @@
-import { Inbox, Send, Archive, Trash2, Star, Clock, Flag, FolderOpen, Loader2 } from "lucide-react";
+import { Inbox, Send, Archive, Trash2, Star, Flag, FolderOpen, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { useIsEmailSyncInProgress, useEmailSyncStatus } from "@/hooks/useEmailSync";
+import { useIsEmailSyncInProgress, useEmailSyncStatus, useEmailFolderCounts } from "@/hooks/useEmailSync";
 
 interface EmailSidebarProps {
   onFolderChange?: (folder: string) => void;
@@ -9,23 +9,29 @@ interface EmailSidebarProps {
 }
 
 const folders = [
-  { id: "inbox", label: "Inbox", icon: Inbox, count: 281 },
-  { id: "sent", label: "Sent", icon: Send, count: 4 },
-  { id: "important", label: "Important", icon: Star, count: null },
-  { id: "snoozed", label: "Snoozed", icon: Clock, count: null },
-  { id: "drafts", label: "Drafts", icon: FolderOpen, count: 3 },
-  { id: "archive", label: "Archive", icon: Archive, count: null },
-  { id: "deleted", label: "Deleted Items", icon: Trash2, count: null },
+  { id: "inbox", label: "Inbox", icon: Inbox, countKey: "inbox" as const },
+  { id: "sent", label: "Sent", icon: Send, countKey: "sent" as const },
+  { id: "important", label: "Important", icon: Star, countKey: "important" as const },
+  { id: "drafts", label: "Drafts", icon: FolderOpen, countKey: "drafts" as const },
+  { id: "archive", label: "Archive", icon: Archive, countKey: "archive" as const },
+  { id: "deleted", label: "Deleted Items", icon: Trash2, countKey: "deleted" as const },
 ];
 
 export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps) {
   const [activeFolder, setActiveFolder] = useState("inbox");
   const isSyncing = useIsEmailSyncInProgress();
   const { data: syncStatuses = [] } = useEmailSyncStatus();
+  const { data: folderCounts } = useEmailFolderCounts();
 
   const handleFolderClick = (folderId: string) => {
     setActiveFolder(folderId);
     onFolderChange?.(folderId);
+  };
+
+  const getFolderCount = (countKey: string): number | null => {
+    if (!folderCounts) return null;
+    const count = folderCounts[countKey as keyof typeof folderCounts];
+    return count !== undefined && count > 0 ? count : null;
   };
 
   return (
@@ -43,6 +49,7 @@ export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps)
           {folders.map((folder) => {
             const Icon = folder.icon;
             const isActive = activeFolder === folder.id;
+            const count = getFolderCount(folder.countKey);
             
             return (
               <button
@@ -61,12 +68,12 @@ export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps)
                   <Icon className="h-3.5 w-3.5 flex-shrink-0" />
                   {!isCollapsed && <span>{folder.label}</span>}
                 </div>
-                {!isCollapsed && folder.count !== null && (
+                {!isCollapsed && count !== null && (
                   <span className={cn(
                     "text-[10px] font-medium",
                     isActive ? "text-primary" : "text-muted-foreground"
                   )}>
-                    {folder.count}
+                    {count}
                   </span>
                 )}
               </button>

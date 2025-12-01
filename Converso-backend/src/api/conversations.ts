@@ -146,3 +146,24 @@ export async function getConversationById(conversationId: string): Promise<Conve
   return data as Conversation | null;
 }
 
+export async function toggleFavoriteConversation(
+  conversationId: string,
+  isFavorite: boolean
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('conversations')
+    .update({ is_favorite: isFavorite })
+    .eq('id', conversationId);
+
+  if (error) throw error;
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('conversations')
+    .delete()
+    .eq('id', conversationId);
+
+  if (error) throw error;
+}
+

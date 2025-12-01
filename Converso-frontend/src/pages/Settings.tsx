@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Linkedin, Link, Loader2 } from "lucide-react";
+import { Mail, Linkedin, Link, Loader2, AlertTriangle } from "lucide-react";
 import { RulesEngine } from "@/components/Admin/RulesEngine";
 import { PipelineStages } from "@/components/Admin/PipelineStages";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Settings() {
   const { user, userRole } = useAuth();
@@ -28,6 +30,9 @@ export default function Settings() {
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
   const updateWorkspace = useUpdateWorkspace();
   const { data: connectedAccounts = [], isLoading: accountsLoading, refetch: refetchAccounts } = useConnectedAccounts();
+  const queryClient = useQueryClient();
+  const [accountToDelete, setAccountToDelete] = useState<{ id: string; email: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Get active tab from URL or default
   const activeTab = searchParams.get('tab') || (userRole === 'admin' ? 'rules' : 'profile');
@@ -211,13 +216,31 @@ export default function Settings() {
     }
   };
 
-  const handleRemoveAccount = async (accountId: string) => {
+  const handleRemoveAccount = async (account: { id: string; email?: string; name?: string }) => {
+    // Show confirmation dialog
+    setAccountToDelete({
+      id: account.id,
+      email: account.email || account.name || 'this account'
+    });
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!accountToDelete) return;
+
+    setIsDeleting(true);
     try {
-      await connectedAccountsApi.delete(accountId);
+      await connectedAccountsApi.delete(accountToDelete.id);
+      
+      // Invalidate and refetch connected accounts
+      await queryClient.invalidateQueries({ queryKey: ['connected_accounts'] });
+      await refetchAccounts();
+      
       toast.success("Account disconnected successfully");
-      refetchAccounts();
+      setAccountToDelete(null);
     } catch (error: any) {
       toast.error(error.message || "Failed to disconnect account");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -353,7 +376,11 @@ export default function Settings() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => handleRemoveAccount(account.id)}
+                                  onClick={() => handleRemoveAccount({
+                                    id: account.id,
+                                    email: account.account_email,
+                                    name: account.account_name
+                                  })}
                                 >
                                   Disconnect
                                 </Button>
@@ -367,6 +394,58 @@ export default function Settings() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Confirmation Dialog for Account Disconnection */}
+                <AlertDialog open={!!accountToDelete} onOpenChange={(open) => !open && setAccountToDelete(null)}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-destructive" />
+                        Disconnect Account?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="pt-2">
+                        Are you sure you want to disconnect <strong>{accountToDelete?.email || accountToDelete?.name || 'this account'}</strong>?
+                        <br /><br />
+                        <span className="text-destructive font-medium">
+                          This action will permanently delete all associated data:
+                        </span>
+                        <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+                          {accountToDelete?.email ? (
+                            <>
+                              <li>All synced emails and conversations</li>
+                              <li>All messages and email threads</li>
+                              <li>Email sync history</li>
+                            </>
+                          ) : (
+                            <>
+                              <li>All conversations and messages</li>
+                              <li>All associated data and history</li>
+                            </>
+                          )}
+                        </ul>
+                        <br />
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={confirmDeleteAccount}
+                        disabled={isDeleting}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Disconnecting...
+                          </>
+                        ) : (
+                          'Confirm Disconnect'
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
 
                 <Card>
                   <CardHeader>
@@ -427,7 +506,10 @@ export default function Settings() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleRemoveAccount(account.id)}
+                                onClick={() => handleRemoveAccount({
+                                  id: account.id,
+                                  name: account.account_name
+                                })}
                               >
                                 Disconnect
                               </Button>

@@ -129,9 +129,19 @@ router.delete(
         }
       });
     } catch (error: any) {
-      logger.error('Error deleting connected account:', error);
-      res.status(500).json({ 
-        error: error.message || 'Failed to delete connected account'
+      logger.error('Error deleting connected account:', {
+        accountId: id,
+        error: error.message,
+        stack: error.stack,
+        details: error,
+      });
+      
+      const errorMessage = error?.message || 'Failed to delete connected account';
+      const statusCode = error?.statusCode || 500;
+      
+      res.status(statusCode).json({ 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   })

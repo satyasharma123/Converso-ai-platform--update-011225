@@ -61,6 +61,20 @@ export const conversationsApi = {
   async updateStage(conversationId: string, stageId: string | null): Promise<void> {
     await apiClient.patch(`/api/conversations/${conversationId}/stage`, { stageId });
   },
+
+  /**
+   * Toggle favorite flag
+   */
+  async toggleFavorite(conversationId: string, isFavorite: boolean): Promise<void> {
+    await apiClient.patch(`/api/conversations/${conversationId}/favorite`, { isFavorite });
+  },
+
+  /**
+   * Delete a conversation
+   */
+  async delete(conversationId: string): Promise<void> {
+    await apiClient.delete(`/api/conversations/${conversationId}`);
+  },
 };
 
 // ==================== Messages API ====================

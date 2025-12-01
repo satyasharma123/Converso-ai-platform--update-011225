@@ -79,6 +79,22 @@ export const conversationsService = {
     return conversationsApi.updateConversationStage(conversationId, stageId);
   },
 
+  async toggleFavorite(conversationId: string, isFavorite: boolean): Promise<void> {
+    if (!conversationId) {
+      throw new Error('Conversation ID is required');
+    }
+
+    return conversationsApi.toggleFavoriteConversation(conversationId, isFavorite);
+  },
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    if (!conversationId) {
+      throw new Error('Conversation ID is required');
+    }
+
+    return conversationsApi.deleteConversation(conversationId);
+  },
+
   /**
    * Get a single conversation by ID
    */

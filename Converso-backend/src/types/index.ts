@@ -11,9 +11,11 @@ export interface Conversation {
   conversation_type: 'email' | 'linkedin';
   status: 'new' | 'engaged' | 'qualified' | 'converted' | 'not_interested';
   is_read: boolean;
+  is_favorite?: boolean | null;
   assigned_to?: string;
   custom_stage_id?: string;
   received_on_account_id?: string;
+  email_folder?: string | null;
   received_account?: {
     account_name: string;
     account_email?: string;

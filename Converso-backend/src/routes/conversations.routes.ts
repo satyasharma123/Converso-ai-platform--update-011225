@@ -114,5 +114,38 @@ router.patch(
   })
 );
 
+/**
+ * PATCH /api/conversations/:id/favorite
+ * Toggle favorite flag on a conversation
+ */
+router.patch(
+  '/:id/favorite',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { isFavorite } = req.body;
+
+    if (typeof isFavorite !== 'boolean') {
+      return res.status(400).json({ error: 'isFavorite must be a boolean' });
+    }
+
+    await conversationsService.toggleFavorite(id, isFavorite);
+    res.json({ message: 'Favorite status updated successfully' });
+  })
+);
+
+/**
+ * DELETE /api/conversations/:id
+ * Delete a conversation (and cascaded messages)
+ */
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    await conversationsService.deleteConversation(id);
+    res.json({ message: 'Conversation deleted successfully' });
+  })
+);
+
 export default router;
 

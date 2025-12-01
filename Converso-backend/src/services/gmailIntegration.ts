@@ -26,6 +26,7 @@ interface GmailMessageMetadata {
   snippet: string;
   headers: Array<{ name: string; value: string }>;
   internalDate: string;
+  folder?: string; // Track which folder this email belongs to
 }
 
 /**
@@ -47,13 +48,14 @@ function getDaysAgoTimestamp(days: number): number {
 }
 
 /**
- * Fetch email metadata from Gmail (last 90 days only)
+ * Fetch email metadata from Gmail for a specific folder (last 90 days only)
  * Returns only metadata, not full body for performance
  */
 export async function fetchGmailEmailMetadata(
   account: ConnectedAccount,
   daysBack: number = 90,
-  pageToken?: string
+  pageToken?: string,
+  folder: string = 'inbox'
 ): Promise<{
   messages: GmailMessageMetadata[];
   nextPageToken?: string;
@@ -68,8 +70,30 @@ export async function fetchGmailEmailMetadata(
     // Calculate timestamp for 90 days ago
     const afterTimestamp = getDaysAgoTimestamp(daysBack);
     
-    // Build query: last 90 days, in inbox
-    const query = `after:${afterTimestamp} in:inbox`;
+    // Build query based on folder
+    let query = `after:${afterTimestamp}`;
+    switch (folder) {
+      case 'inbox':
+        query += ' in:inbox';
+        break;
+      case 'sent':
+        query += ' in:sent';
+        break;
+      case 'important':
+        query += ' is:starred';
+        break;
+      case 'drafts':
+        query += ' in:drafts';
+        break;
+      case 'archive':
+        query += ' -in:inbox -in:sent -in:drafts -in:trash';
+        break;
+      case 'deleted':
+        query += ' in:trash';
+        break;
+      default:
+        query += ' in:inbox';
+    }
     
     // List messages (metadata only, no body)
     const response = await gmail.users.messages.list({
@@ -99,6 +123,7 @@ export async function fetchGmailEmailMetadata(
           snippet: message.data.snippet || '',
           headers: message.data.payload?.headers || [],
           internalDate: message.data.internalDate || '',
+          folder: folder, // Track which folder this email belongs to
         } as GmailMessageMetadata;
       })
     );
@@ -108,8 +133,8 @@ export async function fetchGmailEmailMetadata(
       nextPageToken: response.data.nextPageToken || undefined,
     };
   } catch (error: any) {
-    logger.error('Error fetching Gmail email metadata:', error);
-    throw new Error(`Failed to fetch Gmail emails: ${error.message}`);
+    logger.error(`Error fetching Gmail email metadata for folder ${folder}:`, error);
+    throw new Error(`Failed to fetch Gmail emails from ${folder}: ${error.message}`);
   }
 }
 
@@ -140,31 +165,53 @@ export async function fetchGmailEmailBody(
       return '';
     }
 
-    // Extract body from payload
+    // Extract body from payload - handle nested parts recursively
     let body = '';
     
-    // Check if body is directly in payload
+    // Recursive function to extract body from parts
+    const extractBodyFromParts = (parts: any[]): string => {
+      let extractedBody = '';
+      
+      for (const part of parts) {
+        // If this part has nested parts, recurse
+        if (part.parts && part.parts.length > 0) {
+          const nestedBody = extractBodyFromParts(part.parts);
+          if (nestedBody) {
+            extractedBody = nestedBody;
+            break; // Prefer first found body
+          }
+        }
+        
+        // Check if this part has body data
+        if (part.body?.data) {
+          const partBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
+          const mimeType = part.mimeType?.toLowerCase() || '';
+          
+          // Prefer text/html for rich content, but fallback to text/plain
+          if (mimeType === 'text/html' || (mimeType === 'text/plain' && !extractedBody)) {
+            extractedBody = partBody;
+          }
+        }
+      }
+      
+      return extractedBody;
+    };
+    
+    // Check if body is directly in payload (simple emails)
     if (payload.body?.data) {
       body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
     } 
-    // Check parts for body
-    else if (payload.parts) {
-      // Find text/plain or text/html part
-      const textPart = payload.parts.find(p => 
-        p.mimeType === 'text/plain' || p.mimeType === 'text/html'
-      );
+    // Check parts for body (multipart emails)
+    else if (payload.parts && payload.parts.length > 0) {
+      body = extractBodyFromParts(payload.parts);
       
-      if (textPart?.body?.data) {
-        body = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
-      }
-      
-      // If no text part found, try to get from first part
+      // If still no body, try getting from first part directly
       if (!body && payload.parts[0]?.body?.data) {
         body = Buffer.from(payload.parts[0].body.data, 'base64').toString('utf-8');
       }
     }
 
-    return body;
+    return body || '';
   } catch (error: any) {
     logger.error('Error fetching Gmail email body:', error);
     throw new Error(`Failed to fetch email body: ${error.message}`);
@@ -245,6 +292,7 @@ export function parseGmailMessageMetadata(message: GmailMessageMetadata) {
     snippet: message.snippet,
     date: new Date(parseInt(message.internalDate)),
     timestamp: new Date(parseInt(message.internalDate)),
+    folder: message.folder || 'inbox', // Include folder information
   };
 }
 

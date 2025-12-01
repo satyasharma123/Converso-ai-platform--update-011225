@@ -9,16 +9,21 @@ import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
 import { toast } from "sonner";
-import { useAssignConversation, useUpdateConversationStage, useToggleRead } from "@/hooks/useConversations";
+import { useAssignConversation, useUpdateConversationStage, useToggleRead, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { useEmailSyncStatus, useInitEmailSync } from "@/hooks/useEmailSync";
 import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { cn } from "@/lib/utils";
 
 export default function EmailInbox() {
@@ -39,6 +44,26 @@ export default function EmailInbox() {
   const { data: syncStatuses = [] } = useEmailSyncStatus();
   const initSync = useInitEmailSync();
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
+  const { data: teamMembers = [] } = useTeamMembers();
+  const { data: stages = [] } = usePipelineStages();
+  const toggleFavoriteConversation = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
+  const [tabValue, setTabValue] = useState<'all' | 'unread' | 'favorites'>('all');
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const [filterState, setFilterState] = useState<{ sdr: string; stage: string }>({
+    sdr: 'all',
+    stage: 'all',
+  });
+
+  const activeFilterCount =
+    (filterState.sdr !== 'all' ? 1 : 0) +
+    (filterState.stage !== 'all' ? 1 : 0);
+
+  const handleFilterChange = (key: 'sdr' | 'stage', value: string) => {
+    setFilterState((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => setFilterState({ sdr: 'all', stage: 'all' });
 
   // Auto-trigger sync for all connected email accounts on mount
   useEffect(() => {
@@ -87,17 +112,41 @@ export default function EmailInbox() {
   // Apply filters
   const filteredConversations = conversations
     .filter(conv => {
-      // Fix filter logic to use ID if available, fallback to name for robustness
-      const accountId = (conv as any).received_on_account_id || (conv as any).receivedAccount?.id;
-      const matchesAccount = accountFilter === 'all' || 
-        accountId === accountFilter ||
-        conv.received_account?.account_name === accountFilter;
+      const accountId =
+        (conv as any).received_on_account_id ||
+        (conv as any).receivedOnAccountId ||
+        (conv as any).received_account?.id;
+      const matchesAccount =
+        accountFilter === 'all' ||
+        accountId === accountFilter;
 
-      const matchesSearch = searchQuery === '' || 
-        (conv.sender_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        conv.subject?.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      return matchesAccount && matchesSearch;
+      const searchTarget = `${conv.sender_name || ''} ${conv.sender_email || ''} ${conv.subject || ''}`.toLowerCase();
+      const matchesSearch =
+        searchQuery === '' ||
+        searchTarget.includes(searchQuery.toLowerCase());
+
+      const folder = (conv as any).email_folder || (conv as any).emailFolder || 'inbox';
+      const matchesFolder = folder === selectedFolder;
+
+      const isUnread = !(conv.is_read ?? (conv as any).isRead ?? false);
+      const isFavorite = Boolean((conv as any).is_favorite ?? (conv as any).isFavorite);
+      const matchesTab =
+        tabValue === 'all' ||
+        (tabValue === 'unread' && isUnread) ||
+        (tabValue === 'favorites' && isFavorite);
+
+      const assignedId = (conv as any).assigned_to || (conv as any).assignedTo;
+      const matchesSdr =
+        filterState.sdr === 'all' ||
+        (filterState.sdr === 'unassigned' && !assignedId) ||
+        assignedId === filterState.sdr;
+
+      const stageId = (conv as any).custom_stage_id || (conv as any).customStageId;
+      const matchesStage =
+        filterState.stage === 'all' ||
+        stageId === filterState.stage;
+
+      return matchesAccount && matchesSearch && matchesFolder && matchesTab && matchesSdr && matchesStage;
     })
     .map(conv => ({
       ...conv,
@@ -152,8 +201,37 @@ export default function EmailInbox() {
     toast.info('Bulk archive feature coming soon');
   };
 
-  const handleBulkDelete = () => {
-    toast.info('Bulk delete feature coming soon');
+  const handleBulkFavorite = async (isFavorite: boolean) => {
+    if (selectedConversations.length === 0) {
+      toast.info('Select messages to update favorites');
+      return;
+    }
+
+    await Promise.all(
+      selectedConversations.map(id =>
+        toggleFavoriteConversation.mutateAsync({ conversationId: id, isFavorite })
+      )
+    );
+    setSelectedConversations([]);
+    toast.success(isFavorite ? 'Marked as favorite' : 'Removed favorites');
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedConversations.length === 0) {
+      toast.info('Select messages to delete');
+      return;
+    }
+
+    const confirmed = window.confirm('Delete selected email threads? This cannot be undone.');
+    if (!confirmed) return;
+
+    await Promise.all(selectedConversations.map(id => deleteConversation.mutateAsync(id)));
+    setSelectedConversations([]);
+  };
+
+  const handleFolderChange = (folder: string) => {
+    setSelectedFolder(folder);
+    setSelectedConversations([]);
   };
 
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
@@ -181,19 +259,6 @@ export default function EmailInbox() {
   return (
     <AppLayout role={userRole} userName={user?.email}>
       <div className="flex flex-col h-[calc(100vh-100px)] overflow-hidden">
-        {/* Sync Progress Banner */}
-        {isAnySyncInProgress && (
-          <div className="bg-blue-50 dark:bg-blue-950 border-b border-blue-200 dark:border-blue-800 px-4 py-2 flex-shrink-0">
-            <div className="flex items-center gap-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-              <span className="font-medium text-blue-700 dark:text-blue-300">🔄 Email sync in progress...</span>
-              <span className="text-xs text-muted-foreground ml-2">
-                Syncing: {syncStatuses.filter((s: any) => s.status === 'in_progress').map((s: any) => s.accountName).join(', ')}
-              </span>
-            </div>
-          </div>
-        )}
-        
         {/* Main Content Area */}
         <div className="flex flex-1 overflow-hidden relative">
           {/* Left Section: Sidebar + Conversations */}
@@ -204,7 +269,7 @@ export default function EmailInbox() {
               isSidebarCollapsed ? "w-[60px]" : "w-[200px]"
             )}>
               <div className="h-full overflow-hidden">
-                <EmailSidebar onFolderChange={setSelectedFolder} isCollapsed={isSidebarCollapsed} />
+                <EmailSidebar onFolderChange={handleFolderChange} isCollapsed={isSidebarCollapsed} />
               </div>
               
               {/* Collapse Button - Styled like Breakcold */}
@@ -227,7 +292,7 @@ export default function EmailInbox() {
             {/* Conversation List */}
             <div className="w-[320px] h-full border-r bg-background flex flex-col flex-shrink-0">
               <div className="p-3 space-y-2 border-b flex-shrink-0">
-                <Tabs defaultValue="all" className="w-full">
+                <Tabs value={tabValue} onValueChange={(value) => setTabValue(value as 'all' | 'unread' | 'favorites')} className="w-full">
                   <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
                     <TabsTrigger 
                       value="all" 
@@ -266,9 +331,63 @@ export default function EmailInbox() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0">
-                    <Filter className="h-3.5 w-3.5" />
-                  </Button>
+                  <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0 relative">
+                        <Filter className="h-3.5 w-3.5" />
+                        {activeFilterCount > 0 && (
+                          <Badge className="absolute -top-1 -right-1 text-[10px] px-1 py-0 leading-none">
+                            {activeFilterCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 space-y-4">
+                      <div>
+                        <p className="text-[11px] font-medium mb-1 text-muted-foreground">SDR</p>
+                        <Select value={filterState.sdr} onValueChange={(value) => handleFilterChange('sdr', value)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="All SDRs" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem className="text-xs" value="all">All Accounts</SelectItem>
+                            <SelectItem className="text-xs" value="unassigned">Unassigned</SelectItem>
+                            {teamMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.id} className="text-xs">
+                                {member.full_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <p className="text-[11px] font-medium mb-1 text-muted-foreground">Stage</p>
+                        <Select value={filterState.stage} onValueChange={(value) => handleFilterChange('stage', value)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="All Stages" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem className="text-xs" value="all">All stages</SelectItem>
+                            {stages.map(stage => (
+                              <SelectItem key={stage.id} value={stage.id} className="text-xs">
+                                {stage.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Button variant="ghost" size="sm" className="text-xs" onClick={clearFilters}>
+                          Clear
+                        </Button>
+                        <Button size="sm" className="text-xs" onClick={() => setFilterPopoverOpen(false)}>
+                          Apply
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -289,6 +408,8 @@ export default function EmailInbox() {
                     onChangeStage={handleBulkChangeStage}
                     onArchive={handleBulkArchive}
                     onDelete={handleBulkDelete}
+                    onFavorite={() => handleBulkFavorite(true)}
+                    onUnfavorite={() => handleBulkFavorite(false)}
                     onClearSelection={() => setSelectedConversations([])}
                   />
                 </div>
@@ -348,7 +469,12 @@ export default function EmailInbox() {
           </div>
 
           {/* Email View - Takes remaining space */}
-          <div className="flex-1 min-w-0 h-full overflow-hidden bg-background relative">
+          <div
+            className={cn(
+              "flex-1 min-w-0 h-full overflow-hidden bg-background relative transition-[padding-right] duration-300 ease-in-out",
+              isProfileOpen ? "pr-[340px]" : ""
+            )}
+          >
             {selectedConv ? (
               <div className="h-full flex flex-col">
                 <EmailView 
@@ -378,9 +504,10 @@ export default function EmailInbox() {
                 "absolute top-4 z-30 flex items-center justify-center",
                 "w-8 h-8 bg-card border rounded-l-lg shadow-md",
                 "hover:bg-accent transition-colors",
-                isProfileOpen ? "right-[340px] border-r-0" : "right-0"
+                isProfileOpen ? "border-r-0" : ""
               )}
               title={isProfileOpen ? "Close profile" : "Open profile"}
+              style={{ right: isProfileOpen ? 340 : 0 }}
             >
               {isProfileOpen ? (
                 <PanelRightClose className="h-4 w-4 text-muted-foreground" />

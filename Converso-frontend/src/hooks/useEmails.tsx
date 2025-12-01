@@ -33,7 +33,7 @@ export function useEmails(days: number = 30) {
       if (!workspace) return [];
 
       const emails = await apiClient.get<EmailConversation[]>(
-        `/emails?workspace_id=${workspace.id}&days=${days}&limit=50`
+        `/api/emails?workspace_id=${workspace.id}&days=${days}&limit=50`
       );
       return emails || [];
     },
@@ -55,7 +55,7 @@ export function useEmailsInfinite() {
       const before = pageParam || new Date().toISOString();
       
       const emails = await apiClient.get<EmailConversation[]>(
-        `/emails/load-more?workspace_id=${workspace.id}&before=${before}&limit=50`
+        `/api/emails/load-more?workspace_id=${workspace.id}&before=${before}&limit=50`
       );
 
       // Get the oldest email timestamp as next cursor
@@ -84,7 +84,7 @@ export function useEmailWithBody(conversationId: string | null) {
       if (!conversationId) return null;
 
       const email = await apiClient.get<EmailConversation & { body?: string }>(
-        `/emails/${conversationId}`
+        `/api/emails/${conversationId}`
       );
       return email;
     },

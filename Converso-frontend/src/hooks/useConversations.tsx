@@ -116,3 +116,38 @@ export function useUpdateConversationStage() {
     },
   });
 }
+
+export function useToggleFavoriteConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ conversationId, isFavorite }: { conversationId: string; isFavorite: boolean }) => {
+      return conversationsApi.toggleFavorite(conversationId, isFavorite);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    },
+    onError: (error) => {
+      console.error('Error toggling favorite:', error);
+      toast.error('Failed to update favorite status');
+    },
+  });
+}
+
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (conversationId: string) => {
+      return conversationsApi.delete(conversationId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Conversation deleted');
+    },
+    onError: (error) => {
+      console.error('Error deleting conversation:', error);
+      toast.error('Failed to delete conversation');
+    },
+  });
+}

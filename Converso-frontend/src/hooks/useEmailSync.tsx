@@ -12,6 +12,10 @@ export interface SyncStatus {
   sync_error: string | null;
   created_at: string;
   updated_at: string;
+  progress?: {
+    synced: number;
+    total?: number;
+  } | null;
 }
 
 /**
@@ -43,6 +47,7 @@ export function useEmailSyncStatus() {
               accountName: account.account_name,
               status: status?.status || 'pending',
               lastSyncedAt: status?.last_synced_at || null,
+              progress: status?.progress || null,
             };
           } catch (error) {
             console.error(`Error fetching sync status for ${account.id}:`, error);
@@ -52,6 +57,7 @@ export function useEmailSyncStatus() {
               accountName: account.account_name,
               status: 'pending' as const,
               lastSyncedAt: null,
+              progress: null,
             };
           }
         })
@@ -86,6 +92,49 @@ export function useInitEmailSync() {
     mutationFn: async (accountId: string) => {
       return apiClient.post('/api/emails/init-sync', { account_id: accountId });
     },
+  });
+}
+
+/**
+ * Interface for folder email counts
+ */
+export interface EmailFolderCounts {
+  inbox: number;
+  unread: number;
+  sent: number;
+  important: number;
+  snoozed: number;
+  drafts: number;
+  archive: number;
+  deleted: number;
+}
+
+/**
+ * Hook to get email folder counts
+ */
+export function useEmailFolderCounts() {
+  const { data: workspace } = useWorkspace();
+
+  return useQuery({
+    queryKey: ['email-folder-counts', workspace?.id],
+    queryFn: async () => {
+      if (!workspace) {
+        return null;
+      }
+
+      try {
+        const counts = await apiClient.get<EmailFolderCounts>(
+          `/api/emails/folder-counts?workspace_id=${workspace.id}`
+        );
+        return counts;
+      } catch (error) {
+        console.error('Error fetching folder counts:', error);
+        return null;
+      }
+    },
+    enabled: !!workspace,
+    staleTime: 30 * 1000, // Cache for 30 seconds
+    refetchInterval: 60 * 1000, // Refetch every minute
   });
 }
 

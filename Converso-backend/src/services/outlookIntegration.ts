@@ -36,16 +36,18 @@ interface OutlookMessageMetadata {
       address: string;
     };
   };
+  folder?: string; // Track which folder this email belongs to
 }
 
 /**
- * Fetch email metadata from Outlook (last 90 days only)
+ * Fetch email metadata from Outlook for a specific folder (last 90 days only)
  * Returns only metadata, not full body for performance
  */
 export async function fetchOutlookEmailMetadata(
   account: ConnectedAccount,
   daysBack: number = 90,
-  skipToken?: string
+  skipToken?: string,
+  folder: string = 'inbox'
 ): Promise<{
   messages: OutlookMessageMetadata[];
   nextSkipToken?: string;
@@ -60,8 +62,39 @@ export async function fetchOutlookEmailMetadata(
     dateThreshold.setDate(dateThreshold.getDate() - daysBack);
     const filterDate = dateThreshold.toISOString();
 
-    // Build Microsoft Graph API URL
-    let url = `https://graph.microsoft.com/v1.0/me/messages?$filter=receivedDateTime ge ${filterDate}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,from&$orderby=receivedDateTime desc&$top=100`;
+    // Build Microsoft Graph API URL based on folder
+    let baseUrl = 'https://graph.microsoft.com/v1.0/me';
+    switch (folder) {
+      case 'inbox':
+        baseUrl += '/messages';
+        break;
+      case 'sent':
+        baseUrl += `/mailFolders('SentItems')/messages`;
+        break;
+      case 'drafts':
+        baseUrl += `/mailFolders('Drafts')/messages`;
+        break;
+      case 'archive':
+        baseUrl += `/mailFolders('Archive')/messages`;
+        break;
+      case 'deleted':
+        baseUrl += `/mailFolders('DeletedItems')/messages`;
+        break;
+      case 'important':
+        // For important, we filter by flag
+        baseUrl += '/messages';
+        break;
+      default:
+        baseUrl += '/messages';
+    }
+
+    // Build filter - for important, add flag filter
+    let filter = `receivedDateTime ge ${filterDate}`;
+    if (folder === 'important') {
+      filter += ` and flag/flagStatus eq 'flagged'`;
+    }
+
+    let url = `${baseUrl}?$filter=${encodeURIComponent(filter)}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,from&$orderby=receivedDateTime desc&$top=100`;
 
     if (skipToken) {
       url += `&$skiptoken=${skipToken}`;
@@ -79,10 +112,11 @@ export async function fetchOutlookEmailMetadata(
       const errorMessage = errorData?.error?.message || errorData?.message || response.statusText;
       const statusCode = response.status;
       
-      logger.error(`Outlook API error [${statusCode}]:`, {
+      logger.error(`Outlook API error [${statusCode}] for folder ${folder}:`, {
         status: statusCode,
         error: errorData,
         account: account.account_email,
+        folder,
       });
       
       // Handle specific error cases
@@ -94,7 +128,7 @@ export async function fetchOutlookEmailMetadata(
         throw new Error(`Outlook API rate limit exceeded. Please try again later. (${errorMessage})`);
       }
       
-      throw new Error(`Failed to fetch Outlook emails: ${errorMessage} (Status: ${statusCode})`);
+      throw new Error(`Failed to fetch Outlook emails from ${folder}: ${errorMessage} (Status: ${statusCode})`);
     }
 
     const data: any = await response.json();
@@ -105,6 +139,7 @@ export async function fetchOutlookEmailMetadata(
       bodyPreview: msg.bodyPreview || '',
       receivedDateTime: msg.receivedDateTime,
       from: msg.from,
+      folder: folder, // Track which folder this email belongs to
     }));
 
     return {
@@ -112,8 +147,8 @@ export async function fetchOutlookEmailMetadata(
       nextSkipToken: data['@odata.nextLink'] ? extractSkipToken(data['@odata.nextLink']) : undefined,
     };
   } catch (error: any) {
-    logger.error('Error fetching Outlook email metadata:', error);
-    throw new Error(`Failed to fetch Outlook emails: ${error.message}`);
+    logger.error(`Error fetching Outlook email metadata for folder ${folder}:`, error);
+    throw new Error(`Failed to fetch Outlook emails from ${folder}: ${error.message}`);
   }
 }
 
@@ -142,8 +177,9 @@ export async function fetchOutlookEmailBody(
   }
 
   try {
+    // Fetch body with both HTML and text formats
     const response = await fetch(
-      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body`,
+      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview`,
       {
         headers: {
           Authorization: `Bearer ${account.oauth_access_token}`,
@@ -153,23 +189,51 @@ export async function fetchOutlookEmailBody(
     );
 
     if (!response.ok) {
-      const errorData: any = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(`Failed to fetch email body: ${errorData?.error?.message || errorData?.message || response.statusText}`);
+      const statusCode = response.status;
+      let errorData: any = {};
+      
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { error: { message: response.statusText } };
+      }
+
+      const errorMessage = errorData?.error?.message || errorData?.message || response.statusText;
+      
+      // Handle specific error cases
+      if (statusCode === 401) {
+        throw new Error(`Outlook token expired or invalid. Please reconnect your account. (${errorMessage})`);
+      } else if (statusCode === 403) {
+        throw new Error(`Outlook API permission denied. Please check app permissions. (${errorMessage})`);
+      } else if (statusCode === 404) {
+        throw new Error(`Email message not found. It may have been deleted. (${errorMessage})`);
+      } else if (statusCode === 429) {
+        throw new Error(`Outlook API rate limit exceeded. Please try again later. (${errorMessage})`);
+      }
+      
+      throw new Error(`Failed to fetch email body: ${errorMessage} (Status: ${statusCode})`);
     }
 
     const message: any = await response.json();
     
-    // Extract body content
+    // Extract body content - prefer HTML, fallback to text, then bodyPreview
     if (message?.body?.content) {
-      // If HTML, we might want to strip HTML tags for plain text
-      // For now, return as-is
       return message.body.content;
+    }
+
+    // Fallback to bodyPreview if body is not available
+    if (message?.bodyPreview) {
+      return message.bodyPreview;
     }
 
     return '';
   } catch (error: any) {
-    logger.error('Error fetching Outlook email body:', error);
-    throw new Error(`Failed to fetch email body: ${error.message}`);
+    logger.error('Error fetching Outlook email body:', {
+      messageId,
+      accountEmail: account.account_email,
+      error: error.message,
+    });
+    throw error;
   }
 }
 
@@ -191,6 +255,7 @@ export function parseOutlookMessageMetadata(message: OutlookMessageMetadata) {
     snippet: message.bodyPreview || '',
     date: new Date(message.receivedDateTime),
     timestamp: new Date(message.receivedDateTime),
+    folder: message.folder || 'inbox', // Include folder information
   };
 }
 
