@@ -543,7 +543,7 @@ export default function EmailInbox() {
           <div
             className={cn(
               "flex-1 min-w-0 h-full overflow-hidden bg-background relative transition-[padding-right] duration-300 ease-in-out",
-              isProfileOpen ? "pr-[340px]" : ""
+              isProfileOpen ? "pr-[420px]" : "pr-0"
             )}
           >
             {selectedConv ? (
@@ -573,40 +573,41 @@ export default function EmailInbox() {
           {/* Right Profile Drawer - Slides in/out */}
           <div 
             className={cn(
-              "absolute top-0 right-0 h-full bg-card border-l shadow-lg transition-transform duration-300 ease-in-out z-20",
-              isProfileOpen ? "translate-x-0" : "translate-x-full"
+              "fixed top-[72px] right-0 h-[calc(100vh-72px)] bg-card border-l shadow-2xl transition-all duration-300 ease-in-out z-40",
+              isProfileOpen ? "translate-x-0 w-[400px]" : "translate-x-[calc(100%-36px)] w-[400px]"
             )}
-            style={{ width: '340px' }}
           >
             {/* Drawer Content */}
             <div className="h-full flex flex-col">
-              {/* Toggle Button for Profile Drawer - On top of drawer */}
+              {/* Toggle Tab - Always visible on the left edge */}
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 className={cn(
-                  "absolute -left-3 top-4 z-30 flex items-center justify-center",
-                  "w-8 h-8 bg-card border rounded-l-lg shadow-md",
-                  "hover:bg-accent transition-colors"
+                  "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30",
+                  "flex flex-col items-center justify-center gap-1 py-3 px-2",
+                  "bg-slate-900 text-white rounded-l-md shadow-xl",
+                  "hover:bg-slate-800 transition-all duration-200",
+                  "w-10 h-24"
                 )}
                 title={isProfileOpen ? "Close profile" : "Open profile"}
               >
-                {isProfileOpen ? (
-                  <PanelRightClose className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <PanelRightOpen className="h-4 w-4 text-muted-foreground" />
-                )}
+                <User className="h-4 w-4" />
+                <div className="flex flex-col items-center gap-0.5 text-[9px] font-semibold tracking-tight">
+                  <span>LEAD</span>
+                  <span>PROFILE</span>
+                </div>
               </button>
               
               {/* Drawer Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border/40 flex-shrink-0">
-                <h3 className="font-semibold text-sm text-foreground">Lead Profile</h3>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 flex-shrink-0">
+                <h3 className="font-semibold text-base text-foreground">Lead Profile</h3>
                 <Button 
                   variant="ghost" 
                   size="icon" 
                   className="h-8 w-8 hover:bg-muted/50"
                   onClick={() => setIsProfileOpen(false)}
                 >
-                  <PanelRightClose className="h-4 w-4 text-muted-foreground" />
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </div>
               
@@ -619,10 +620,10 @@ export default function EmailInbox() {
                     conversationId={selectedConv.id}
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                    <User className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                    <p className="text-sm text-muted-foreground">No lead selected</p>
-                    <p className="text-xs text-muted-foreground mt-1">Select an email to view lead details</p>
+                  <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                    <User className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                    <p className="text-sm font-medium text-muted-foreground">No lead selected</p>
+                    <p className="text-xs text-muted-foreground mt-1.5">Select an email to view lead details</p>
                   </div>
                 )}
               </div>
