@@ -85,3 +85,4 @@ SELECT pg_notify('pgrst', 'reload schema');
 - Users can add more stages beyond the 7 defaults
 - All stage dropdowns across the app now dynamically load from database
 
+

@@ -80,3 +80,4 @@ After following these steps:
 - ✅ Stages appear in Settings → Pipeline Stages
 - ✅ 7 default stages visible everywhere
 
+

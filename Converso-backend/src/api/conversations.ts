@@ -120,7 +120,7 @@ export async function updateConversationStage(
   conversationId: string,
   stageId: string | null
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('conversations')
     .update({ custom_stage_id: stageId })
     .eq('id', conversationId);

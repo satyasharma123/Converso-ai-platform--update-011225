@@ -25,6 +25,7 @@ export function transformConversation(conv: Conversation): any {
     assignedTo: conv.assigned_to,
     assigned_to: conv.assigned_to, // Keep both
     customStageId: conv.custom_stage_id,
+    custom_stage_id: conv.custom_stage_id, // Keep both for compatibility
     receivedAccount: conv.received_account,
     received_account: conv.received_account, // Keep both
     receivedOnAccountId: conv.received_on_account_id,

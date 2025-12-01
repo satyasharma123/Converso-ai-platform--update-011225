@@ -7,3 +7,4 @@ CREATE INDEX IF NOT EXISTS idx_conversations_is_favorite
   ON public.conversations(is_favorite)
   WHERE conversation_type = 'email';
 
+

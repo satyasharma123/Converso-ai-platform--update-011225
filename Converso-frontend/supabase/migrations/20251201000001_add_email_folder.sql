@@ -14,3 +14,4 @@ UPDATE public.conversations
 SET email_folder = 'inbox'
 WHERE conversation_type = 'email' AND email_folder IS NULL;
 
+

@@ -87,3 +87,4 @@ If you want to run everything at once:
 cd "/Users/satyasharma/Documents/Cursor Codes/Converso-AI-Platform" && git add -A && git commit -m "Fix: Add toast notification for individual email favorite action and fix horizontal scroll with dynamic email body panel width" && git push -u origin main
 ```
 
+

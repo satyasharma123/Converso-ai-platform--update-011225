@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, Reply, Paperclip, MoreVertical, Forward, Maximize2, ReplyAll, Bold, Italic, Underline, List, ListOrdered, Link2, Image, Smile, Highlighter, Type, Palette } from "lucide-react";
+import { Send, Reply, Paperclip, MoreVertical, Forward, Maximize2, ReplyAll, Bold, Italic, Underline, List, ListOrdered, Link2, Image, Smile, Highlighter, Palette, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead } from "@/hooks/useConversations";
+import { useSendMessage } from "@/hooks/useMessages";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,31 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SavedReplies } from "@/components/Inbox/SavedReplies";
+import { toast } from "sonner";
+import ReactQuill, { Quill } from "react-quill";
+import "react-quill/dist/quill.snow.css";
+import { cn } from "@/lib/utils";
+import "./email-editor.css";
+
+const FONT_OPTIONS = ["sans-serif", "serif", "monospace", "arial", "times-new-roman", "courier-new"];
+const SIZE_OPTIONS = ["12px", "14px", "16px", "18px", "20px", "24px"];
+const COLOR_OPTIONS = ["#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080", "#008080", "#808080"];
+const EMOJI_LIST = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓'];
+const QUILL_FORMATS = ["font", "size", "bold", "italic", "underline", "color", "background", "list", "bullet", "ordered", "link", "image"];
+const quillModules = {
+  toolbar: false,
+  history: { delay: 500, maxStack: 100, userOnly: true },
+};
+
+if (typeof window !== "undefined") {
+  const Font = Quill.import("formats/font");
+  Font.whitelist = FONT_OPTIONS;
+  Quill.register(Font, true);
+
+  const Size = Quill.import("formats/size");
+  Size.whitelist = SIZE_OPTIONS;
+  Quill.register(Size, true);
+}
 
 // Using type from props or defining compatible one
 interface Message {
@@ -49,8 +74,14 @@ interface EmailViewProps {
   messages: Message[];
 }
 
+interface Attachment {
+  id: string;
+  file: File;
+  preview?: string;
+}
+
 export function EmailView({ conversation, messages }: EmailViewProps) {
-  const [replyText, setReplyText] = useState("");
+  const [replyContent, setReplyContent] = useState("");
   const [showReply, setShowReply] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
@@ -58,12 +89,25 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const [bccText, setBccText] = useState("");
   const [expandedCompose, setExpandedCompose] = useState(false);
   const [replyType, setReplyType] = useState<"reply" | "replyAll" | "forward">("reply");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [fontFamily, setFontFamily] = useState(FONT_OPTIONS[0]);
+  const [fontSize, setFontSize] = useState(SIZE_OPTIONS[0]);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkText, setLinkText] = useState("");
+  const inlineQuillRef = useRef<ReactQuill | null>(null);
+  const dialogQuillRef = useRef<ReactQuill | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   
   const { data: teamMembers } = useTeamMembers();
   const { data: pipelineStages } = usePipelineStages();
   const assignMutation = useAssignConversation();
   const updateStageMutation = useUpdateConversationStage();
   const toggleRead = useToggleRead();
+  const sendMessage = useSendMessage();
   
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
@@ -83,6 +127,22 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
     return () => clearTimeout(timer);
   }, [conversation.id, conversation.is_read, toggleRead]);
 
+  useEffect(() => {
+    if (!showReply) return;
+    const timeout = setTimeout(() => {
+    (expandedCompose ? dialogQuillRef.current : inlineQuillRef.current)?.getEditor().focus();
+    }, 150);
+    return () => clearTimeout(timeout);
+  }, [showReply, expandedCompose]);
+
+useEffect(() => {
+  if (!showReply) return;
+  const editor = getActiveEditor();
+  if (!editor) return;
+  editor.format("font", fontFamily);
+  editor.format("size", fontSize);
+}, [fontFamily, fontSize, expandedCompose, showReply]);
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -92,16 +152,165 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
       .slice(0, 2);
   };
 
-  const handleSend = () => {
-    if (!replyText.trim()) return;
-    // Handle sending logic here
-    setReplyText("");
-    setShowReply(false);
-    setShowCc(false);
-    setShowBcc(false);
-    setCcText("");
-    setBccText("");
-    setExpandedCompose(false);
+  const getActiveEditor = () =>
+    (expandedCompose ? dialogQuillRef.current : inlineQuillRef.current)?.getEditor();
+
+  const handleEditorChange = (content: string) => {
+    setReplyContent(content);
+  };
+
+  const applyFormat = (format: string, value?: any) => {
+    const editor = getActiveEditor();
+    if (!editor) return;
+    editor.focus();
+    editor.format(format, value ?? true);
+    setReplyContent(editor.root.innerHTML);
+  };
+
+  const handleListFormat = (type: "bullet" | "ordered") => {
+    const editor = getActiveEditor();
+    if (!editor) return;
+    const current = editor.getFormat();
+    const isActive = current.list === type;
+    editor.format("list", isActive ? false : type);
+    setReplyContent(editor.root.innerHTML);
+  };
+
+  const handleInsertLink = () => {
+    const editor = getActiveEditor();
+    if (!editor) return;
+    const selection = editor.getSelection();
+    setLinkText(selection && selection.length > 0 ? editor.getText(selection.index, selection.length) : "");
+    setLinkUrl("");
+    setShowLinkDialog(true);
+  };
+
+  const handleConfirmLink = () => {
+    if (!linkUrl.trim()) {
+      toast.error("Please enter a URL");
+      return;
+    }
+
+    const editor = getActiveEditor();
+    if (!editor) return;
+
+    const selection = editor.getSelection(true);
+    const linkTextToUse = linkText.trim();
+
+    if (selection && selection.length > 0) {
+      editor.format("link", linkUrl);
+    } else if (linkTextToUse) {
+      editor.insertText(selection ? selection.index : editor.getLength(), linkTextToUse, "link", linkUrl);
+      editor.setSelection((selection ? selection.index : editor.getLength()) + linkTextToUse.length, 0);
+    } else {
+      editor.insertText(selection ? selection.index : editor.getLength(), linkUrl, "link", linkUrl);
+      editor.setSelection((selection ? selection.index : editor.getLength()) + linkUrl.length, 0);
+    }
+
+    setShowLinkDialog(false);
+    setLinkUrl("");
+    setLinkText("");
+    editor.focus();
+    setReplyContent(editor.root.innerHTML);
+  };
+
+  const handleInsertImage = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const editor = getActiveEditor();
+      if (!editor || typeof event.target?.result !== "string") return;
+      const selection = editor.getSelection(true);
+      editor.insertEmbed(selection ? selection.index : editor.getLength(), "image", event.target.result, "user");
+      editor.setSelection((selection ? selection.index : editor.getLength()) + 1, 0);
+      setReplyContent(editor.root.innerHTML);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleInsertEmoji = (emoji: string) => {
+    const editor = getActiveEditor();
+    if (!editor) return;
+    const selection = editor.getSelection(true);
+    editor.insertText(selection ? selection.index : editor.getLength(), emoji, "user");
+    editor.setSelection((selection ? selection.index : editor.getLength()) + emoji.length, 0);
+    setReplyContent(editor.root.innerHTML);
+    setShowEmojiPicker(false);
+  };
+
+  const handleFileAttach = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      const attachment: Attachment = {
+        id: `${file.name}-${Date.now()}-${Math.random()}`,
+        file,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      };
+      setAttachments((prev) => [...prev, attachment]);
+    });
+    e.target.value = "";
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const attachment = prev.find((a) => a.id === id);
+      if (attachment?.preview) {
+        URL.revokeObjectURL(attachment.preview);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+  const handleSend = async () => {
+    const editor =
+      getActiveEditor() ||
+      inlineQuillRef.current?.getEditor() ||
+      dialogQuillRef.current?.getEditor();
+    const plainText = editor?.getText().trim() ?? replyContent.replace(/<[^>]+>/g, "").trim();
+
+    if (!plainText && attachments.length === 0) {
+      toast.error("Please enter a message or attach a file");
+      return;
+    }
+
+    try {
+      await sendMessage.mutateAsync({
+        conversationId: conversation.id,
+        content: replyContent || plainText,
+      });
+
+      toast.success("Reply sent");
+      setReplyContent("");
+      setAttachments([]);
+      setShowReply(false);
+      setShowCc(false);
+      setShowBcc(false);
+      setCcText("");
+      setBccText("");
+      setExpandedCompose(false);
+      inlineQuillRef.current?.getEditor()?.setText("");
+      dialogQuillRef.current?.getEditor()?.setText("");
+    } catch (error) {
+      console.error("Error sending reply:", error);
+      toast.error("Failed to send reply");
+    }
   };
 
   const handleReplyClick = (type: "reply" | "replyAll" | "forward") => {
@@ -114,12 +323,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   };
 
   const handleSelectTemplate = (content: string) => {
-    setReplyText((prev) => {
-      if (prev) {
-        return prev + "\n\n" + content;
-      }
-      return content;
-    });
+    setReplyContent((prev) => (prev ? `${prev}<p>${content}</p>` : `<p>${content}</p>`));
   };
 
   const getReplyLabel = () => {
@@ -188,73 +392,280 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
           )}
         </div>
         
-        <div className="px-6 py-4">
-          <Textarea
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Type your reply..."
-            className={`resize-none border-0 focus-visible:ring-0 text-sm p-0 ${
-              isExpanded ? "min-h-[400px]" : "min-h-[120px]"
-            }`}
-          />
+        <div className="px-6 py-4 space-y-4">
+          <div
+            className={cn(
+              "rounded-lg bg-transparent ring-0 focus-within:ring-0",
+              isExpanded ? "min-h-[360px]" : "min-h-[200px]"
+            )}
+          >
+            <ReactQuill
+              ref={(instance) => {
+                if (!instance) return;
+                if (isExpanded) {
+                  dialogQuillRef.current = instance;
+                } else {
+                  inlineQuillRef.current = instance;
+                }
+              }}
+              theme="snow"
+              value={replyContent}
+              onChange={handleEditorChange}
+              modules={quillModules}
+              formats={QUILL_FORMATS}
+              placeholder="Type your reply..."
+              className="email-quill h-full"
+              style={{ minHeight: isExpanded ? 340 : 160 }}
+            />
+          </div>
+
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-xs"
+                >
+                  {attachment.preview ? (
+                    <img
+                      src={attachment.preview}
+                      alt={attachment.file.name}
+                      className="h-10 w-10 rounded object-cover"
+                    />
+                  ) : (
+                    <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <div className="flex flex-col max-w-[140px]">
+                    <span className="truncate font-medium">{attachment.file.name}</span>
+                    <span className="text-muted-foreground">
+                      {(attachment.file.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => handleRemoveAttachment(attachment.id)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Formatting Toolbar */}
         <div className="px-6 py-2 bg-muted/30 border-y">
           <div className="flex items-center gap-1 overflow-x-auto">
-            <Select defaultValue="sans">
+            <Select value={fontFamily} onValueChange={(value) => {
+              setFontFamily(value);
+              applyFormat("font", value);
+            }}>
               <SelectTrigger className="w-[100px] h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sans">Sans Serif</SelectItem>
-                <SelectItem value="serif">Serif</SelectItem>
-                <SelectItem value="mono">Mono</SelectItem>
+                {FONT_OPTIONS.map((font) => (
+                  <SelectItem key={font} value={font}>
+                    {font.replace("-", " ")}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             
-            <Select defaultValue="14">
+            <Select value={fontSize} onValueChange={(value) => {
+              setFontSize(value);
+              applyFormat("size", value);
+            }}>
               <SelectTrigger className="w-[70px] h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="12">12</SelectItem>
-                <SelectItem value="14">14</SelectItem>
-                <SelectItem value="16">16</SelectItem>
-                <SelectItem value="18">18</SelectItem>
-                <SelectItem value="20">20</SelectItem>
+                {SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={size}>
+                    {size.replace("px", "")}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bold"><Bold className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Italic"><Italic className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Underline"><Underline className="h-3.5 w-3.5" /></Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Bold"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("bold");
+                }}
+              >
+                <Bold className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Italic"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("italic");
+                }}
+              >
+                <Italic className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Underline"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("underline");
+                }}
+              >
+                <Underline className="h-3.5 w-3.5" />
+              </Button>
             </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Text Color"><Palette className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Highlight"><Highlighter className="h-3.5 w-3.5" /></Button>
+              <DropdownMenu open={showColorPicker} onOpenChange={setShowColorPicker}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Text Color">
+                    <Palette className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-40 p-2">
+                  <div className="grid grid-cols-5 gap-2">
+                    {COLOR_OPTIONS.map((color) => (
+                      <button
+                        key={color}
+                        className="h-6 w-6 rounded-full border"
+                        style={{ backgroundColor: color }}
+                        onClick={() => {
+                          applyFormat("color", color);
+                          setShowColorPicker(false);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Highlight"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyFormat("background", "#fff59d");
+                }}
+              >
+                <Highlighter className="h-3.5 w-3.5" />
+              </Button>
             </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Bulleted List"><List className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Numbered List"><ListOrdered className="h-3.5 w-3.5" /></Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Bulleted List"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleListFormat("bullet");
+                }}
+              >
+                <List className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Numbered List"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleListFormat("ordered");
+                }}
+              >
+                <ListOrdered className="h-3.5 w-3.5" />
+              </Button>
             </div>
             
             <Separator orientation="vertical" className="h-5 mx-1" />
             
             <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Link"><Link2 className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Image"><Image className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Emoji"><Smile className="h-3.5 w-3.5" /></Button>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Attach File"><Paperclip className="h-3.5 w-3.5" /></Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Insert Link"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleInsertLink();
+                }}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Insert Image"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleInsertImage();
+                }}
+              >
+                <Image className="h-3.5 w-3.5" />
+              </Button>
+              <DropdownMenu open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Insert Emoji">
+                    <Smile className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64 h-48 overflow-y-auto p-2">
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJI_LIST.map((emoji) => (
+                      <button
+                        key={emoji}
+                        className="h-8 w-8 text-lg hover:bg-muted rounded transition-colors"
+                        onClick={() => handleInsertEmoji(emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                title="Attach File"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleFileAttach();
+                }}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+              </Button>
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageFileChange}
+              />
             </div>
           </div>
         </div>
@@ -292,7 +703,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
             <Button
               size="sm"
               onClick={handleSend}
-              disabled={!replyText.trim()}
+              disabled={!replyContent.trim()}
               className="h-7 text-xs px-3"
             >
               <Send className="h-3 w-3 mr-1.5" />
@@ -465,18 +876,66 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
         </ScrollArea>
 
         {/* Reply Composition */}
-        {showReply && renderReplyComposer(false)}
+        {showReply && !expandedCompose && renderReplyComposer(false)}
       </div>
 
       {/* Expanded Compose Dialog */}
-      <Dialog open={expandedCompose} onOpenChange={setExpandedCompose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-          <DialogHeader className="px-6 py-4 border-b">
-            <DialogTitle className="text-base">
-              {getReplyLabel()}: {conversation.subject || "No Subject"}
-            </DialogTitle>
+      {expandedCompose && (
+        <Dialog open={expandedCompose} onOpenChange={setExpandedCompose}>
+          <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+            <DialogHeader className="px-6 py-4 border-b">
+              <DialogTitle className="text-base">
+                {getReplyLabel()}: {conversation.subject || "No Subject"}
+              </DialogTitle>
+            </DialogHeader>
+            {renderReplyComposer(true)}
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Insert Link</DialogTitle>
           </DialogHeader>
-          {renderReplyComposer(true)}
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label htmlFor="link-text" className="text-sm font-medium">
+                Link Text
+              </label>
+              <Input
+                id="link-text"
+                value={linkText}
+                onChange={(e) => setLinkText(e.target.value)}
+                placeholder="Display text"
+              />
+            </div>
+            <div className="grid gap-2">
+              <label htmlFor="link-url" className="text-sm font-medium">
+                URL
+              </label>
+              <Input
+                id="link-url"
+                type="url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://example.com"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLinkDialog(false);
+                setLinkUrl("");
+                setLinkText("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmLink}>Insert Link</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

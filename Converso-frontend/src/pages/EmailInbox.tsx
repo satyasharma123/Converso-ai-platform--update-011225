@@ -118,6 +118,20 @@ export default function EmailInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, connectedAccounts.length, syncStatuses.length]);
 
+  // Debug: Log all conversations with their stage IDs when filter is active
+  useEffect(() => {
+    if (filterState.stage !== 'all') {
+      console.log('[Filter Debug] All conversations with stages:', conversations.map(conv => ({
+        id: conv.id,
+        subject: (conv as any).subject?.substring(0, 40),
+        custom_stage_id: (conv as any).custom_stage_id,
+        customStageId: (conv as any).customStageId,
+        assignedStageId: (conv as any).custom_stage_id || (conv as any).customStageId || 'NULL'
+      })));
+      console.log('[Filter Debug] Active stage filter:', filterState.stage);
+    }
+  }, [filterState.stage, conversations]);
+
   // Apply filters
   const filteredConversations = conversations
     .filter(conv => {
@@ -150,27 +164,65 @@ export default function EmailInbox() {
         (filterState.sdr === 'unassigned' && !assignedId) ||
         assignedId === filterState.sdr;
 
+      // Get stage ID from conversation - check multiple possible property names
       const stageId = (conv as any).custom_stage_id || (conv as any).customStageId || null;
+      
+      // Normalize stage IDs for comparison (convert to string, trim whitespace)
+      const normalizedStageId = stageId ? String(stageId).trim() : null;
+      const normalizedFilterStage = filterState.stage !== 'all' ? String(filterState.stage).trim() : 'all';
+      
       const matchesStage =
-        filterState.stage === 'all' ||
-        stageId === filterState.stage;
+        normalizedFilterStage === 'all' ||
+        (normalizedStageId !== null && normalizedStageId === normalizedFilterStage);
 
-      // Debug logging for stage filter
-      if (filterState.stage !== 'all' && stageId) {
-        console.log('[Filter] Checking stage:', { 
-          conversationId: conv.id, 
-          stageId, 
-          filterStage: filterState.stage, 
-          matches: stageId === filterState.stage 
-        });
+      // Enhanced debug logging for stage filter
+      if (normalizedFilterStage !== 'all') {
+        const matches = normalizedStageId === normalizedFilterStage;
+        if (matches || normalizedStageId) {
+          console.log('[Filter] Stage check:', { 
+            conversationId: conv.id,
+            conversationSubject: (conv as any).subject?.substring(0, 30),
+            stageId: normalizedStageId, 
+            filterStage: normalizedFilterStage, 
+            matches,
+            stageIdType: typeof normalizedStageId,
+            filterStageType: typeof normalizedFilterStage
+          });
+        }
       }
 
-      return matchesAccount && matchesSearch && matchesFolder && matchesTab && matchesSdr && matchesStage;
+      const allMatches = matchesAccount && matchesSearch && matchesFolder && matchesTab && matchesSdr && matchesStage;
+      
+      // Log when a conversation matches all filters (only when stage filter is active)
+      if (filterState.stage !== 'all' && allMatches) {
+        console.log('[Filter] ✅ Conversation passed all filters:', {
+          id: conv.id,
+          subject: (conv as any).subject?.substring(0, 30),
+          stageId: normalizedStageId,
+          matches: { account: matchesAccount, search: matchesSearch, folder: matchesFolder, tab: matchesTab, sdr: matchesSdr, stage: matchesStage }
+        });
+      }
+      
+      return allMatches;
     })
     .map(conv => ({
       ...conv,
       selected: selectedConversations.includes(conv.id),
     }));
+
+  // Debug: Log filtered results count
+  useEffect(() => {
+    if (filterState.stage !== 'all') {
+      console.log('[Filter Debug] Filtered results:', {
+        totalConversations: conversations.length,
+        filteredCount: filteredConversations.length,
+        activeStageFilter: filterState.stage,
+        activeSdrFilter: filterState.sdr,
+        activeFolder: selectedFolder,
+        activeTab: tabValue
+      });
+    }
+  }, [filteredConversations.length, filterState, conversations.length, selectedFolder, tabValue]);
 
   const handleToggleSelect = (id: string) => {
     setSelectedConversations(prev => 
@@ -516,24 +568,6 @@ export default function EmailInbox() {
               </div>
             )}
 
-            {/* Toggle Button for Profile Drawer - Moved to top-right */}
-            <button
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className={cn(
-                "absolute top-4 z-30 flex items-center justify-center",
-                "w-8 h-8 bg-card border rounded-l-lg shadow-md",
-                "hover:bg-accent transition-colors",
-                isProfileOpen ? "border-r-0" : ""
-              )}
-              title={isProfileOpen ? "Close profile" : "Open profile"}
-              style={{ right: isProfileOpen ? 340 : 0 }}
-            >
-              {isProfileOpen ? (
-                <PanelRightClose className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
           </div>
 
           {/* Right Profile Drawer - Slides in/out */}
@@ -546,6 +580,23 @@ export default function EmailInbox() {
           >
             {/* Drawer Content */}
             <div className="h-full flex flex-col">
+              {/* Toggle Button for Profile Drawer - On top of drawer */}
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className={cn(
+                  "absolute -left-3 top-4 z-30 flex items-center justify-center",
+                  "w-8 h-8 bg-card border rounded-l-lg shadow-md",
+                  "hover:bg-accent transition-colors"
+                )}
+                title={isProfileOpen ? "Close profile" : "Open profile"}
+              >
+                {isProfileOpen ? (
+                  <PanelRightClose className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <PanelRightOpen className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+              
               {/* Drawer Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/40 flex-shrink-0">
                 <h3 className="font-semibold text-sm text-foreground">Lead Profile</h3>
