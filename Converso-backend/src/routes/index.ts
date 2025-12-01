@@ -13,6 +13,7 @@ import workspaceRoutes from './workspace.routes';
 import routingRulesRoutes from './routingRules.routes';
 import integrationsRoutes from './integrations.routes';
 import emailSyncRoutes from './emailSync.routes';
+import emailTemplatesRoutes from './emailTemplates.routes';
 import testRoutes from './test.routes';
 
 const router = Router();
@@ -32,6 +33,7 @@ router.use('/workspace', workspaceRoutes);
 router.use('/routing-rules', routingRulesRoutes);
 router.use('/integrations', integrationsRoutes);
 router.use('/emails', emailSyncRoutes);
+router.use('/email-templates', emailTemplatesRoutes);
 
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {

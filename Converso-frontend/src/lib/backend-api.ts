@@ -322,3 +322,63 @@ export const routingRulesApi = {
   },
 };
 
+// ==================== Email Templates API ====================
+
+export interface EmailTemplate {
+  id: string;
+  workspace_id: string;
+  created_by: string | null;
+  title: string;
+  content: string;
+  category: string;
+  shortcut: string | null;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const emailTemplatesApi = {
+  /**
+   * Get all email templates
+   */
+  async list(): Promise<EmailTemplate[]> {
+    return apiClient.get<EmailTemplate[]>('/api/email-templates');
+  },
+
+  /**
+   * Get a single email template by ID
+   */
+  async getById(id: string): Promise<EmailTemplate> {
+    return apiClient.get<EmailTemplate>(`/api/email-templates/${id}`);
+  },
+
+  /**
+   * Create a new email template
+   */
+  async create(template: {
+    title: string;
+    content: string;
+    category: string;
+    shortcut?: string;
+  }): Promise<EmailTemplate> {
+    return apiClient.post<EmailTemplate>('/api/email-templates', template);
+  },
+
+  /**
+   * Update an email template
+   */
+  async update(
+    id: string,
+    updates: Partial<Omit<EmailTemplate, 'id' | 'workspace_id' | 'created_by' | 'created_at' | 'updated_at' | 'is_default'>>
+  ): Promise<EmailTemplate> {
+    return apiClient.patch<EmailTemplate>(`/api/email-templates/${id}`, updates);
+  },
+
+  /**
+   * Delete an email template
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.delete(`/api/email-templates/${id}`);
+  },
+};
+
