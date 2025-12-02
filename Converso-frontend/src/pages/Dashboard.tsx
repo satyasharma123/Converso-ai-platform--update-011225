@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/Layout/AppLayout";
 import { StatsCard } from "@/components/Dashboard/StatsCard";
 import { Mail, Linkedin, Users, CheckCircle, Clock, TrendingUp, AlertCircle, MessageSquare } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export default function Dashboard() {
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
+  
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">

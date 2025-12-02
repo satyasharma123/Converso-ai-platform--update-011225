@@ -33,6 +33,17 @@ export const conversationsService = {
   },
 
   /**
+   * Bulk reassign conversations from one SDR to another
+   */
+  async bulkReassignConversations(fromSdrId: string, toSdrId: string | null): Promise<{ count: number }> {
+    if (!fromSdrId) {
+      throw new Error('From SDR ID is required');
+    }
+
+    return conversationsApi.bulkReassignConversations(fromSdrId, toSdrId);
+  },
+
+  /**
    * Update conversation status
    */
   async updateStatus(

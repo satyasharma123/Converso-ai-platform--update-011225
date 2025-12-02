@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Search, Mail, Linkedin, Clock } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ReceivedAccountBadge } from "@/components/Inbox/ReceivedAccountBadge";
@@ -21,7 +23,12 @@ export default function ConversationsInbox() {
   const [activeTab, setActiveTab] = useState('all');
   
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
   const { data: conversations = [], isLoading } = useConversations();
+  
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
   // Apply filters
   const filteredConversations = conversations.filter(conv => {
@@ -59,7 +66,7 @@ export default function ConversationsInbox() {
   };
 
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold">Conversations</h1>

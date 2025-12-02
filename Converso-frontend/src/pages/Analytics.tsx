@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PerformanceMetrics } from "@/components/Analytics/PerformanceMetrics";
 import { mockAnalytics } from "@/utils/mockData";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import {
   BarChart,
   Bar,
@@ -24,9 +26,14 @@ import {
 
 export default function Analytics() {
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
+  
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
   
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Analytics & Performance</h1>

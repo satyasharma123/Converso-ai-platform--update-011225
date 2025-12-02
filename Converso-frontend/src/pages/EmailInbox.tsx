@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
@@ -36,7 +37,12 @@ export default function EmailInbox() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
   const { data: conversations = [], isLoading, error: conversationsError } = useConversations('email');
+  
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
   const toggleRead = useToggleRead();
@@ -44,7 +50,6 @@ export default function EmailInbox() {
   const { data: syncStatuses = [] } = useEmailSyncStatus();
   const initSync = useInitEmailSync();
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
-  const { data: teamMembers = [] } = useTeamMembers();
   const { data: stages = [] } = usePipelineStages();
   const toggleFavoriteConversation = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
@@ -447,7 +452,7 @@ export default function EmailInbox() {
   const isAnySyncInProgress = syncStatuses.some((s: any) => s.status === 'in_progress');
 
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-100px)] overflow-hidden">
         {/* Main Content Area */}
         <div className="flex flex-1 overflow-hidden relative">

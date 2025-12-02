@@ -15,13 +15,22 @@ export function useEmailTemplates() {
     queryFn: async () => {
       try {
         console.log('[useEmailTemplates] Fetching templates...');
-        const templates = await emailTemplatesApi.list();
-        console.log('[useEmailTemplates] Fetched templates:', templates);
-        return templates || [];
+        const response = await emailTemplatesApi.list();
+        console.log('[useEmailTemplates] Raw response:', response);
+        
+        // Handle both array and object with data property
+        const templates = Array.isArray(response) ? response : (response?.data || response || []);
+        console.log('[useEmailTemplates] Processed templates:', templates);
+        console.log('[useEmailTemplates] Templates count:', templates?.length || 0);
+        
+        return Array.isArray(templates) ? templates : [];
       } catch (error: any) {
         console.error('[useEmailTemplates] Error fetching templates:', error);
         console.error('[useEmailTemplates] Error details:', error?.response || error?.message || error);
-        toast.error(`Failed to load templates: ${error?.message || 'Unknown error'}`);
+        // Only show toast for actual errors, not for empty results
+        if (error?.message && !error.message.includes('404')) {
+          toast.error(`Failed to load templates: ${error?.message || 'Unknown error'}`);
+        }
         return [];
       }
     },

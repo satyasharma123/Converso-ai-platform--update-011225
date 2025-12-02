@@ -41,3 +41,42 @@
   font-size: 24px;
 }
 
+/* Fix numbered list font size to match selected font size */
+.email-quill .ql-editor ol,
+.email-quill .ql-editor ul {
+  font-size: inherit;
+}
+
+.email-quill .ql-editor ol li,
+.email-quill .ql-editor ul li {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* Ensure list markers (numbers/bullets) match the font size */
+.email-quill .ql-editor ol li::marker,
+.email-quill .ql-editor ul li::marker {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* Override Quill's default list styling */
+.email-quill .ql-editor ol li.ql-indent-1,
+.email-quill .ql-editor ul li.ql-indent-1,
+.email-quill .ql-editor ol li.ql-indent-2,
+.email-quill .ql-editor ul li.ql-indent-2,
+.email-quill .ql-editor ol li.ql-indent-3,
+.email-quill .ql-editor ul li.ql-indent-3,
+.email-quill .ql-editor ol li.ql-indent-4,
+.email-quill .ql-editor ul li.ql-indent-4,
+.email-quill .ql-editor ol li.ql-indent-5,
+.email-quill .ql-editor ul li.ql-indent-5,
+.email-quill .ql-editor ol li.ql-indent-6,
+.email-quill .ql-editor ul li.ql-indent-6,
+.email-quill .ql-editor ol li.ql-indent-7,
+.email-quill .ql-editor ul li.ql-indent-7,
+.email-quill .ql-editor ol li.ql-indent-8,
+.email-quill .ql-editor ul li.ql-indent-8 {
+  font-size: inherit;
+}
+

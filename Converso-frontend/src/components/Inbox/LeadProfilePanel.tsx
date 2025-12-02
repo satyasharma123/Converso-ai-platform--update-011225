@@ -93,11 +93,17 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
   };
 
   const handleSDRChange = (sdrId: string) => {
-    setSelectedSDR(sdrId);
+    const newSdrId = sdrId === 'unassigned' ? '' : sdrId;
+    setSelectedSDR(newSdrId);
     if (conversationId) {
       assignMutation.mutate({
         conversationId,
         sdrId: sdrId === 'unassigned' ? null : sdrId
+      }, {
+        onSuccess: () => {
+          // Update local state after successful assignment
+          setSelectedSDR(newSdrId);
+        }
       });
     }
   };
@@ -165,7 +171,10 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
   };
 
   // Get assigned SDR name
-  const assignedSDRName = teamMembers?.find(m => m.id === selectedSDR)?.full_name || "Unassigned";
+  // Get assigned SDR name - check both selectedSDR and lead.assignedToId for real-time updates
+  const currentSdrId = selectedSDR || lead.assignedToId || "";
+  const assignedSDR = teamMembers?.find(m => m.id === currentSdrId);
+  const assignedSDRName = assignedSDR?.full_name || "Unassigned";
 
   return (
     <div className="h-fit px-5 py-4 space-y-6 text-sm">
@@ -334,7 +343,7 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
           {userRole === 'admin' ? (
             <Select value={selectedSDR || 'unassigned'} onValueChange={handleSDRChange}>
               <SelectTrigger className="w-auto h-6 text-xs rounded-full bg-muted px-2.5 flex-shrink-0 border-none">
-                <SelectValue placeholder="Assign SDR" />
+                <SelectValue placeholder={assignedSDRName} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="unassigned">Unassigned</SelectItem>

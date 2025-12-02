@@ -143,6 +143,21 @@ useEffect(() => {
   editor.format("size", fontSize);
 }, [fontFamily, fontSize, expandedCompose, showReply]);
 
+// Set default font size when editor is first created
+useEffect(() => {
+  if (!showReply) return;
+  const timeout = setTimeout(() => {
+    const editor = getActiveEditor();
+    if (!editor) return;
+    // Set default font size if no content exists
+    if (!replyContent || replyContent.trim() === '' || replyContent === '<p><br></p>') {
+      editor.format("font", fontFamily);
+      editor.format("size", fontSize);
+    }
+  }, 200);
+  return () => clearTimeout(timeout);
+}, [showReply, expandedCompose]);
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -163,7 +178,17 @@ useEffect(() => {
     const editor = getActiveEditor();
     if (!editor) return;
     editor.focus();
-    editor.format(format, value ?? true);
+    
+    // If value is provided, use it directly (for color, background, etc.)
+    if (value !== undefined) {
+      editor.format(format, value);
+    } else {
+      // For toggle formats (bold, italic, underline), check current state and toggle
+      const current = editor.getFormat();
+      const isActive = current[format] === true;
+      editor.format(format, isActive ? false : true);
+    }
+    
     setReplyContent(editor.root.innerHTML);
   };
 
@@ -407,6 +432,14 @@ useEffect(() => {
                 } else {
                   inlineQuillRef.current = instance;
                 }
+                // Set default font and size when editor is created
+                setTimeout(() => {
+                  const editor = instance.getEditor();
+                  if (editor) {
+                    editor.format("font", fontFamily);
+                    editor.format("size", fontSize);
+                  }
+                }, 100);
               }}
               theme="snow"
               value={replyContent}
@@ -563,7 +596,13 @@ useEffect(() => {
                 title="Highlight"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  applyFormat("background", "#fff59d");
+                  const editor = getActiveEditor();
+                  if (!editor) return;
+                  editor.focus();
+                  const current = editor.getFormat();
+                  const isActive = current.background === "#fff59d" || current.background === "rgb(255, 245, 157)";
+                  editor.format("background", isActive ? false : "#fff59d");
+                  setReplyContent(editor.root.innerHTML);
                 }}
               >
                 <Highlighter className="h-3.5 w-3.5" />
@@ -719,6 +758,11 @@ useEffect(() => {
     assignMutation.mutate({ 
       conversationId: conversation.id, 
       sdrId: sdrId === 'unassigned' ? null : sdrId 
+    }, {
+      onSuccess: () => {
+        // Force a refetch to update the UI
+        // The query invalidation in the hook should handle this, but we ensure it here
+      }
     });
   };
 
@@ -738,10 +782,10 @@ useEffect(() => {
           <div className="flex items-center gap-2 mb-3">
             <Select value={conversation.assigned_to || 'unassigned'} onValueChange={handleAssign}>
               <SelectTrigger className="w-[140px] h-7 text-xs">
-                <SelectValue placeholder="Assign" />
+                <SelectValue placeholder={assignedSdr ? assignedSdr.full_name : 'Assign'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="unassigned">Assign</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
                 {sdrs.map((sdr) => (
                   <SelectItem key={sdr.id} value={sdr.id}>
                     {sdr.full_name}

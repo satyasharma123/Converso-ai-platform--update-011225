@@ -1,19 +1,26 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { KanbanBoard } from "@/components/Pipeline/KanbanBoard";
 import { PipelineFilters } from "@/components/Pipeline/PipelineFilters";
 import { useState } from "react";
 
 export default function SalesPipeline() {
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
   const [filters, setFilters] = useState({
     assignedTo: "all",
     channelType: "all",
     search: "",
   });
 
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
+
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-80px)] overflow-x-hidden overflow-y-hidden">
         {/* Fixed Header */}
         <div className="flex-shrink-0 pb-4 border-b">

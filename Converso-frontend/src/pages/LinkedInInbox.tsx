@@ -8,6 +8,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
@@ -20,7 +22,12 @@ export default function LinkedInInbox() {
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   
   const { user, userRole } = useAuth();
+  const { data: userProfile } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
   const { data: conversations = [], isLoading } = useConversations('linkedin');
+  
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
   // Apply filters
   const filteredConversations = conversations
@@ -73,7 +80,7 @@ export default function LinkedInInbox() {
   ] : [];
 
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-120px)]">
         <div className="overflow-hidden lg:col-span-3 flex flex-col">
           <div className="space-y-2 mb-3">

@@ -39,6 +39,16 @@ export const conversationsApi = {
   },
 
   /**
+   * Bulk reassign conversations from one SDR to another
+   */
+  async bulkReassign(fromSdrId: string, toSdrId: string | null): Promise<{ count: number }> {
+    return apiClient.post<{ count: number }>('/api/conversations/bulk-reassign', {
+      fromSdrId,
+      toSdrId,
+    });
+  },
+
+  /**
    * Update conversation status
    */
   async updateStatus(
@@ -173,10 +183,38 @@ export const teamMembersApi = {
   },
 
   /**
+   * Create a new team member
+   */
+  async create(data: {
+    email: string;
+    full_name: string;
+    role?: 'admin' | 'sdr';
+  }): Promise<TeamMember> {
+    return apiClient.post<TeamMember>('/api/team-members', data);
+  },
+
+  /**
+   * Update team member profile
+   */
+  async update(id: string, updates: {
+    full_name?: string;
+    email?: string;
+  }): Promise<TeamMember> {
+    return apiClient.patch<TeamMember>(`/api/team-members/${id}`, updates);
+  },
+
+  /**
    * Update team member role
    */
   async updateRole(id: string, role: 'admin' | 'sdr'): Promise<void> {
     await apiClient.patch(`/api/team-members/${id}/role`, { role });
+  },
+
+  /**
+   * Delete a team member
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.delete(`/api/team-members/${id}`);
   },
 };
 

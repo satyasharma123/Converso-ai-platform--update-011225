@@ -75,12 +75,30 @@ export async function assignConversation(
   conversationId: string,
   sdrId: string | null
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('conversations')
     .update({ assigned_to: sdrId })
     .eq('id', conversationId);
 
   if (error) throw error;
+}
+
+/**
+ * Bulk reassign conversations from one SDR to another (or unassign)
+ */
+export async function bulkReassignConversations(
+  fromSdrId: string,
+  toSdrId: string | null
+): Promise<{ count: number }> {
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .update({ assigned_to: toSdrId })
+    .eq('assigned_to', fromSdrId)
+    .select('id');
+
+  if (error) throw error;
+
+  return { count: data?.length || 0 };
 }
 
 export async function updateConversationStatus(

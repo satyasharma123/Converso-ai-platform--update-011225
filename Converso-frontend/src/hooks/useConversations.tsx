@@ -179,3 +179,27 @@ export function useUpdateLeadProfile() {
     },
   });
 }
+
+export function useBulkReassignConversations() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      fromSdrId,
+      toSdrId,
+    }: {
+      fromSdrId: string;
+      toSdrId: string | null;
+    }) => {
+      return conversationsApi.bulkReassign(fromSdrId, toSdrId);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success(`Successfully reassigned ${data.count} conversation(s)`);
+    },
+    onError: (error) => {
+      console.error('Error bulk reassigning conversations:', error);
+      toast.error('Failed to reassign conversations');
+    },
+  });
+}

@@ -62,6 +62,30 @@ router.patch(
 );
 
 /**
+ * POST /api/conversations/bulk-reassign
+ * Bulk reassign conversations from one SDR to another
+ */
+router.post(
+  '/bulk-reassign',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { fromSdrId, toSdrId } = req.body;
+
+    if (!fromSdrId) {
+      return res.status(400).json({ error: 'fromSdrId is required' });
+    }
+
+    const result = await conversationsService.bulkReassignConversations(
+      fromSdrId,
+      toSdrId || null
+    );
+    res.json({ 
+      message: `Successfully reassigned ${result.count} conversation(s)`,
+      count: result.count
+    });
+  })
+);
+
+/**
  * PATCH /api/conversations/:id/status
  * Update conversation status
  */

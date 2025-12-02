@@ -1,17 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { teamMembersService } from '../services/teamMembers';
 import { asyncHandler } from '../utils/errorHandler';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
+import { supabaseAdmin } from '../lib/supabase';
 
 const router = Router();
 
 /**
  * GET /api/team-members
- * Get all team members
+ * Get all team members (filtered by workspace if user is authenticated)
  */
 router.get(
   '/',
-  asyncHandler(async (req: Request, res: Response) => {
-    const members = await teamMembersService.getMembers();
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
+    const members = await teamMembersService.getMembers(userId);
     res.json({ data: members });
   })
 );
@@ -40,7 +44,8 @@ router.get(
  */
 router.patch(
   '/:id/role',
-  asyncHandler(async (req: Request, res: Response) => {
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { role } = req.body;
 
@@ -50,6 +55,76 @@ router.patch(
 
     await teamMembersService.updateRole(id, role);
     res.json({ message: 'Role updated successfully' });
+  })
+);
+
+/**
+ * POST /api/team-members
+ * Create a new team member
+ */
+router.post(
+  '/',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
+    const { email, full_name, role = 'sdr' } = req.body;
+
+    if (!email || !full_name) {
+      return res.status(400).json({ error: 'Email and full_name are required' });
+    }
+
+    if (role !== 'admin' && role !== 'sdr') {
+      return res.status(400).json({ error: 'Role must be either admin or sdr' });
+    }
+
+    // Get workspace ID for the current user
+    let workspaceId: string | undefined;
+    if (userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', userId)
+        .single();
+      workspaceId = profile?.workspace_id;
+    }
+
+    const member = await teamMembersService.createMember(email, full_name, role, workspaceId);
+    res.status(201).json({ data: member });
+  })
+);
+
+/**
+ * PATCH /api/team-members/:id
+ * Update a team member's profile
+ */
+router.patch(
+  '/:id',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+    const { full_name, email } = req.body;
+
+    if (!full_name && !email) {
+      return res.status(400).json({ error: 'At least one field (full_name or email) is required' });
+    }
+
+    const member = await teamMembersService.updateMember(id, { full_name, email });
+    res.json({ data: member });
+  })
+);
+
+/**
+ * DELETE /api/team-members/:id
+ * Delete a team member
+ */
+router.delete(
+  '/:id',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+
+    await teamMembersService.deleteMember(id);
+    res.json({ message: 'Team member deleted successfully' });
   })
 );
 

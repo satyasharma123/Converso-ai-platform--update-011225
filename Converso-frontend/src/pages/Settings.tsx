@@ -26,6 +26,10 @@ export default function Settings() {
   const { user, userRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: profile, isLoading: profileLoading } = useProfile();
+  const { data: teamMembers = [] } = useTeamMembers();
+  
+  const currentUserMember = teamMembers.find(m => m.id === user?.id);
+  const userDisplayName = profile?.full_name || currentUserMember?.full_name || user?.email || "User";
   const updateProfile = useUpdateProfile();
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
   const updateWorkspace = useUpdateWorkspace();
@@ -248,7 +252,7 @@ export default function Settings() {
   const linkedInAccounts = connectedAccounts.filter(acc => acc.account_type === "linkedin");
 
   return (
-    <AppLayout role={userRole} userName={user?.email}>
+    <AppLayout role={userRole} userName={userDisplayName}>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
