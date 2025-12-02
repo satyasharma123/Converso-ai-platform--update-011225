@@ -14,6 +14,23 @@ interface LeadTileProps {
   onClick?: () => void;
 }
 
+// Safe timestamp formatter
+const formatTimestamp = (timestamp: string | undefined | null): string => {
+  if (!timestamp) return 'No date';
+  
+  try {
+    const date = new Date(timestamp);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid date';
+    }
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return 'Invalid date';
+  }
+};
+
 export function LeadTile({ conversation, onDragStart, canDrag, onClick }: LeadTileProps) {
   const { data: teamMembers } = useTeamMembers();
 
@@ -76,7 +93,7 @@ export function LeadTile({ conversation, onDragStart, canDrag, onClick }: LeadTi
 
       <div className="flex items-center justify-end pt-1">
         <span className="text-xs text-muted-foreground">
-          {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
+          {formatTimestamp(conversation.last_message_at)}
         </span>
       </div>
     </Card>

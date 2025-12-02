@@ -14,6 +14,23 @@ interface LeadDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Safe timestamp formatter
+const formatTimestamp = (timestamp: string | undefined | null): string => {
+  if (!timestamp) return 'No date';
+  
+  try {
+    const date = new Date(timestamp);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid date';
+    }
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return 'Invalid date';
+  }
+};
+
 export function LeadDetailsDialog({ conversation, open, onOpenChange }: LeadDetailsDialogProps) {
   const { data: teamMembers } = useTeamMembers();
   const { data: messages = [] } = useMessages(conversation?.id || null);
@@ -96,7 +113,7 @@ export function LeadDetailsDialog({ conversation, open, onOpenChange }: LeadDeta
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">Last message:</span>
                     <span className="font-medium">
-                      {formatDistanceToNow(new Date(conversation.last_message_at), { addSuffix: true })}
+                      {formatTimestamp(conversation.last_message_at)}
                     </span>
                   </div>
                 </div>
@@ -127,7 +144,7 @@ export function LeadDetailsDialog({ conversation, open, onOpenChange }: LeadDeta
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{message.sender_name}</span>
                         <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
+                          {formatTimestamp(message.created_at)}
                         </span>
                       </div>
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
