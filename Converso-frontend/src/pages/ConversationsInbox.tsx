@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import "@/components/Inbox/email-editor.css";
 
 export default function ConversationsInbox() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
@@ -184,36 +185,36 @@ export default function ConversationsInbox() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-180px)]">
-                {/* Left Panel - Conversation List */}
-                <div className="lg:col-span-4 flex flex-col bg-background rounded-lg border overflow-hidden">
-                  <div className="p-3 border-b space-y-3">
-                    <TabsList className="bg-muted w-full">
-                      <TabsTrigger value="all" className="flex-1 text-xs">
-                        All ({conversations.length})
+                {/* Left Panel - Conversation List (Reduced Width) */}
+                <div className="lg:col-span-3 flex flex-col bg-background rounded-lg border overflow-hidden">
+                  <div className="p-3 border-b space-y-2.5">
+                    <TabsList className="bg-muted w-full h-8">
+                      <TabsTrigger value="all" className="flex-1 text-xs py-1">
+                        All
                       </TabsTrigger>
-                      <TabsTrigger value="email" className="flex-1 text-xs">
+                      <TabsTrigger value="email" className="flex-1 text-xs py-1">
                         <Mail className="h-3 w-3 mr-1" />
-                        Email ({emailCount})
+                        {emailCount}
                       </TabsTrigger>
-                      <TabsTrigger value="linkedin" className="flex-1 text-xs">
+                      <TabsTrigger value="linkedin" className="flex-1 text-xs py-1">
                         <Linkedin className="h-3 w-3 mr-1" />
-                        LinkedIn ({linkedinCount})
+                        {linkedinCount}
                       </TabsTrigger>
                     </TabsList>
 
                     <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                       <Input 
-                        placeholder="Search conversations..." 
-                        className="pl-8 h-9 text-sm"
+                        placeholder="Search..." 
+                        className="pl-7 h-8 text-xs"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                       />
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="h-9 text-xs flex-1">
+                        <SelectTrigger className="h-8 text-xs flex-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -226,11 +227,11 @@ export default function ConversationsInbox() {
                         </SelectContent>
                       </Select>
                       <Select value={readFilter} onValueChange={setReadFilter}>
-                        <SelectTrigger className="h-9 text-xs flex-1">
+                        <SelectTrigger className="h-8 text-xs flex-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All Messages</SelectItem>
+                          <SelectItem value="all">All</SelectItem>
                           <SelectItem value="unread">Unread</SelectItem>
                           <SelectItem value="read">Read</SelectItem>
                         </SelectContent>
@@ -240,8 +241,8 @@ export default function ConversationsInbox() {
 
                   <ScrollArea className="flex-1">
                     {filteredConversations.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4">
-                        No conversations found
+                      <div className="flex items-center justify-center h-full text-xs text-muted-foreground p-4">
+                        No conversations
                       </div>
                     ) : (
                       <div className="divide-y">
@@ -249,69 +250,62 @@ export default function ConversationsInbox() {
                           <div
                             key={conv.id}
                             className={cn(
-                              "flex items-start gap-3 p-3 hover:bg-accent/50 transition-colors cursor-pointer",
+                              "flex items-start gap-2 p-2.5 hover:bg-accent/50 transition-colors cursor-pointer",
                               selectedConversation === conv.id && "bg-accent",
                               !conv.is_read && "bg-muted/30"
                             )}
                             onClick={() => handleConversationClick(conv.id)}
                           >
-                            <Avatar className="h-10 w-10 flex-shrink-0">
-                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                            <Avatar className="h-8 w-8 flex-shrink-0">
+                              <AvatarFallback className="bg-primary/10 text-primary text-[10px]">
                                 {conv.sender_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'UN'}
                               </AvatarFallback>
                             </Avatar>
 
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 space-y-0.5">
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="flex items-center gap-1 flex-1 min-w-0">
                                   <span className={cn(
-                                    "text-sm font-medium truncate",
+                                    "text-xs font-medium truncate",
                                     !conv.is_read && "font-semibold"
                                   )}>
                                     {conv.sender_name || 'Unknown'}
                                   </span>
                                   {conv.conversation_type === "email" ? (
-                                    <Mail className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                    <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                                   ) : (
-                                    <Linkedin className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+                                    <Linkedin className="h-3 w-3 text-blue-600 flex-shrink-0" />
                                   )}
                                 </div>
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                                   {formatTimestamp(conv.last_message_at)}
                                 </span>
                               </div>
 
                               {conv.subject && (
                                 <p className={cn(
-                                  "text-sm line-clamp-1",
+                                  "text-xs line-clamp-1",
                                   !conv.is_read ? "font-medium" : "text-muted-foreground"
                                 )}>
                                   {conv.subject}
                                 </p>
                               )}
 
-                              <p className="text-xs text-muted-foreground line-clamp-2">
+                              <p className="text-[11px] text-muted-foreground line-clamp-1">
                                 {stripHtml(conv.preview || '')}
                               </p>
 
-                              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              <div className="flex items-center gap-1 flex-wrap pt-0.5">
                                 <Badge 
                                   variant="secondary" 
-                                  className={cn("text-xs px-1.5 py-0", getStatusColor(conv.status))}
+                                  className={cn("text-[9px] px-1 py-0 h-4", getStatusColor(conv.status))}
                                 >
                                   {getStatusLabel(conv.status)}
                                 </Badge>
                                 {conv.assigned_to && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
                                     {getSdrDisplayName(conv.assigned_to)}
                                   </Badge>
-                                )}
-                                {conv.received_account && (
-                                  <ReceivedAccountBadge
-                                    accountName={conv.received_account.account_name}
-                                    accountEmail={conv.received_account.account_email || ''}
-                                    accountType={conv.received_account.account_type}
-                                  />
                                 )}
                               </div>
                             </div>
@@ -322,37 +316,37 @@ export default function ConversationsInbox() {
                   </ScrollArea>
                 </div>
 
-                {/* Middle Panel - Conversation Messages */}
-                <div className="lg:col-span-5 flex flex-col bg-background rounded-lg border overflow-hidden">
+                {/* Middle Panel - Conversation Messages (Expanded Width) */}
+                <div className="lg:col-span-6 flex flex-col bg-background rounded-lg border overflow-hidden">
                   {selectedConv ? (
                     <>
                       {/* Header */}
-                      <div className="p-4 border-b space-y-3">
+                      <div className="p-3 border-b space-y-2">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1 min-w-0">
-                            <Avatar className="h-10 w-10 flex-shrink-0">
-                              <AvatarFallback className="bg-primary/10 text-primary">
+                          <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                            <Avatar className="h-9 w-9 flex-shrink-0">
+                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
                                 {selectedConv.sender_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'UN'}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
-                              <h2 className="text-lg font-semibold truncate">{selectedConv.sender_name}</h2>
+                              <h2 className="text-base font-semibold truncate">{selectedConv.sender_name}</h2>
                               {selectedConv.subject && (
                                 <p className="text-sm text-muted-foreground truncate">{selectedConv.subject}</p>
                               )}
-                              <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-1.5 mt-0.5">
                                 {selectedConv.conversation_type === "email" ? (
-                                  <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <Mail className="h-3 w-3 text-muted-foreground" />
                                 ) : (
-                                  <Linkedin className="h-3.5 w-3.5 text-blue-600" />
+                                  <Linkedin className="h-3 w-3 text-blue-600" />
                                 )}
-                                <span className="text-xs text-muted-foreground">
+                                <span className="text-xs text-muted-foreground truncate">
                                   {selectedConv.sender_email || selectedConv.sender_linkedin_url || "LinkedIn Profile"}
                                 </span>
                               </div>
                             </div>
                           </div>
-                          <div className="flex flex-col gap-2 items-end flex-shrink-0">
+                          <div className="flex flex-col gap-1.5 items-end flex-shrink-0">
                             <AssignmentDropdown
                               conversationId={selectedConv.id}
                               currentAssignment={selectedConv.assigned_to}
@@ -361,7 +355,7 @@ export default function ConversationsInbox() {
                               value={selectedConv.status} 
                               onValueChange={handleStatusChange}
                             >
-                              <SelectTrigger className="w-36 h-8 text-xs">
+                              <SelectTrigger className="w-32 h-7 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -376,7 +370,7 @@ export default function ConversationsInbox() {
                         </div>
                         
                         {selectedConv.received_account && (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <span>Received on:</span>
                             <ReceivedAccountBadge
                               accountName={selectedConv.received_account.account_name}
@@ -408,7 +402,7 @@ export default function ConversationsInbox() {
                                 )}
                               >
                                 <div className={cn(
-                                  "max-w-[75%] rounded-lg p-3 space-y-1",
+                                  "max-w-[85%] rounded-lg p-3 space-y-1",
                                   message.is_from_lead
                                     ? "bg-muted"
                                     : "bg-primary text-primary-foreground"
@@ -424,9 +418,17 @@ export default function ConversationsInbox() {
                                       {formatMessageTimestamp(message.created_at)}
                                     </span>
                                   </div>
-                                  <p className="text-sm whitespace-pre-wrap break-words">
-                                    {message.content}
-                                  </p>
+                                  {/* Render HTML content for emails */}
+                                  {selectedConv.conversation_type === 'email' ? (
+                                    <div 
+                                      className="email-body-content text-sm"
+                                      dangerouslySetInnerHTML={{ __html: message.content }}
+                                    />
+                                  ) : (
+                                    <p className="text-sm whitespace-pre-wrap break-words">
+                                      {message.content}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -435,12 +437,12 @@ export default function ConversationsInbox() {
                       </ScrollArea>
 
                       {/* Reply Box */}
-                      <div className="p-4 border-t bg-muted/30 space-y-2">
+                      <div className="p-3 border-t bg-muted/30 space-y-2">
                         <Textarea
                           placeholder="Type your reply..."
                           value={replyContent}
                           onChange={(e) => setReplyContent(e.target.value)}
-                          className="min-h-[80px] resize-none text-sm"
+                          className="min-h-[70px] resize-none text-sm"
                           rows={3}
                         />
                         <div className="flex justify-end gap-2">
@@ -449,6 +451,7 @@ export default function ConversationsInbox() {
                             size="sm"
                             onClick={() => setReplyContent('')}
                             disabled={!replyContent.trim() || sendMessage.isPending}
+                            className="h-8"
                           >
                             Clear
                           </Button>
@@ -456,8 +459,9 @@ export default function ConversationsInbox() {
                             size="sm"
                             onClick={handleSendReply}
                             disabled={!replyContent.trim() || sendMessage.isPending}
+                            className="h-8"
                           >
-                            <Send className="h-4 w-4 mr-2" />
+                            <Send className="h-3.5 w-3.5 mr-1.5" />
                             {sendMessage.isPending ? 'Sending...' : 'Send'}
                           </Button>
                         </div>
@@ -476,44 +480,44 @@ export default function ConversationsInbox() {
                 <div className="lg:col-span-3 flex flex-col bg-background rounded-lg border overflow-hidden">
                   {selectedConv ? (
                     <ScrollArea className="flex-1">
-                      <div className="p-4 space-y-6">
+                      <div className="p-4 space-y-4">
                         {/* Lead Info */}
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        <div className="space-y-2.5">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Lead Information
                           </h3>
-                          <div className="space-y-3">
-                            <div className="flex items-start gap-3">
-                              <User className="h-4 w-4 text-muted-foreground mt-0.5" />
+                          <div className="space-y-2.5">
+                            <div className="flex items-start gap-2.5">
+                              <User className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs text-muted-foreground">Name</p>
-                                <p className="text-sm font-medium">{selectedConv.sender_name || 'Unknown'}</p>
+                                <p className="text-[10px] text-muted-foreground uppercase">Name</p>
+                                <p className="text-sm font-medium truncate">{selectedConv.sender_name || 'Unknown'}</p>
                               </div>
                             </div>
                             {selectedConv.sender_email && (
-                              <div className="flex items-start gap-3">
-                                <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <div className="flex items-start gap-2.5">
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs text-muted-foreground">Email</p>
-                                  <p className="text-sm font-medium truncate">{selectedConv.sender_email}</p>
+                                  <p className="text-[10px] text-muted-foreground uppercase">Email</p>
+                                  <p className="text-xs font-medium truncate">{selectedConv.sender_email}</p>
                                 </div>
                               </div>
                             )}
                             {selectedConv.company_name && (
-                              <div className="flex items-start gap-3">
-                                <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <div className="flex items-start gap-2.5">
+                                <Building2 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs text-muted-foreground">Company</p>
-                                  <p className="text-sm font-medium">{selectedConv.company_name}</p>
+                                  <p className="text-[10px] text-muted-foreground uppercase">Company</p>
+                                  <p className="text-sm font-medium truncate">{selectedConv.company_name}</p>
                                 </div>
                               </div>
                             )}
                             {selectedConv.location && (
-                              <div className="flex items-start gap-3">
-                                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                              <div className="flex items-start gap-2.5">
+                                <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs text-muted-foreground">Location</p>
-                                  <p className="text-sm font-medium">{selectedConv.location}</p>
+                                  <p className="text-[10px] text-muted-foreground uppercase">Location</p>
+                                  <p className="text-sm font-medium truncate">{selectedConv.location}</p>
                                 </div>
                               </div>
                             )}
@@ -523,42 +527,42 @@ export default function ConversationsInbox() {
                         <Separator />
 
                         {/* Conversation Stats */}
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                            Conversation Stats
+                        <div className="space-y-2.5">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Stats
                           </h3>
-                          <div className="space-y-3">
+                          <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm">Status</span>
+                                <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs">Status</span>
                               </div>
-                              <Badge className={cn("text-xs", getStatusColor(selectedConv.status))}>
+                              <Badge className={cn("text-[10px] h-5 px-1.5", getStatusColor(selectedConv.status))}>
                                 {getStatusLabel(selectedConv.status)}
                               </Badge>
                             </div>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm">Messages</span>
+                                <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs">Messages</span>
                               </div>
-                              <span className="text-sm font-medium">{messages.length}</span>
+                              <span className="text-xs font-medium">{messages.length}</span>
                             </div>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <Clock className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm">Last Activity</span>
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs">Last Activity</span>
                               </div>
-                              <span className="text-sm font-medium">
+                              <span className="text-xs font-medium">
                                 {formatTimestamp(selectedConv.last_message_at)}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm">Assigned To</span>
+                                <User className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-xs">Assigned To</span>
                               </div>
-                              <span className="text-sm font-medium">
+                              <span className="text-xs font-medium">
                                 {getSdrDisplayName(selectedConv.assigned_to)}
                               </span>
                             </div>
@@ -568,26 +572,26 @@ export default function ConversationsInbox() {
                         <Separator />
 
                         {/* Source */}
-                        <div className="space-y-3">
-                          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        <div className="space-y-2.5">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Source
                           </h3>
                           <div className="flex items-center gap-2">
                             {selectedConv.conversation_type === "email" ? (
                               <>
-                                <Mail className="h-4 w-4 text-muted-foreground" />
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                                 <span className="text-sm">Email</span>
                               </>
                             ) : (
                               <>
-                                <Linkedin className="h-4 w-4 text-blue-600" />
+                                <Linkedin className="h-3.5 w-3.5 text-blue-600" />
                                 <span className="text-sm">LinkedIn Outreach</span>
                               </>
                             )}
                           </div>
                           {selectedConv.received_account && (
                             <div className="text-xs text-muted-foreground">
-                              <p>Received on: {selectedConv.received_account.account_name}</p>
+                              <p className="truncate">Received on: {selectedConv.received_account.account_name}</p>
                             </div>
                           )}
                         </div>
