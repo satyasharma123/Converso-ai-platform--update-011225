@@ -5,7 +5,7 @@ import { EmailSidebar } from "@/components/Inbox/EmailSidebar";
 import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft } from "lucide-react";
+import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,6 +35,7 @@ export default function EmailInbox() {
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
@@ -79,6 +80,108 @@ export default function EmailInbox() {
     setFilterPopoverOpen(false);
   };
 
+  // Function to trigger sync for all email accounts
+  const triggerEmailSync = (isManual: boolean = false) => {
+    if (!user || !workspace) return;
+    
+    const emailAccounts = connectedAccounts.filter(acc => acc.account_type === 'email');
+    
+    if (emailAccounts.length === 0) {
+      if (isManual) {
+        toast.info('No email accounts connected');
+      }
+      return;
+    }
+    
+    setIsSyncing(true);
+    const accountsToSync: any[] = [];
+    
+    // First, identify which accounts need syncing
+    emailAccounts.forEach(account => {
+      const syncStatus = syncStatuses.find((s: any) => s.accountId === account.id);
+      
+      // For manual sync, always sync regardless of status
+      // For auto sync, only sync if needed
+      const shouldSync = isManual || 
+                        !syncStatus || 
+                        syncStatus.status === 'error' || 
+                        syncStatus.status === 'pending';
+      
+      const isInProgress = syncStatuses.some((s: any) => 
+        s.accountId === account.id && s.status === 'in_progress'
+      );
+      
+      if (shouldSync && !isInProgress) {
+        accountsToSync.push(account);
+      }
+    });
+    
+    if (accountsToSync.length === 0) {
+      setIsSyncing(false);
+      if (isManual) {
+        toast.info('All accounts are already synced');
+      }
+      return;
+    }
+    
+    // Track completed syncs
+    let completedCount = 0;
+    const totalToSync = accountsToSync.length;
+    
+    // Show initial toast for manual sync
+    if (isManual) {
+      const accountNames = accountsToSync.map(a => a.account_name || a.account_email).join(', ');
+      toast.info(`Syncing ${totalToSync} account${totalToSync > 1 ? 's' : ''}: ${accountNames}`, {
+        duration: 4000,
+      });
+    }
+    
+    // Trigger sync for each account with a timeout safety net
+    const syncTimeout = setTimeout(() => {
+      // Safety: If sync takes longer than 2 minutes, reset the state
+      if (completedCount < totalToSync) {
+        console.warn('⚠️ Sync timeout - resetting sync state');
+        setIsSyncing(false);
+      }
+    }, 2 * 60 * 1000); // 2 minutes timeout
+    
+    // Trigger sync for each account
+    accountsToSync.forEach((account, index) => {
+      console.log(`${isManual ? '🔄 Manual' : '🚀 Auto'} syncing account: ${account.account_name || account.account_email} (${account.id})`);
+      
+      initSync.mutate(account.id, {
+        onSuccess: () => {
+          console.log(`✅ Sync initiated for ${account.account_name || account.account_email}`);
+        },
+        onError: (error: any) => {
+          console.error(`❌ Failed to initiate sync for ${account.id}:`, error);
+          const errorMessage = error?.message || 'Unknown error';
+          if (isManual) {
+            toast.error(`Failed to sync ${account.account_name || account.account_email}: ${errorMessage}`, {
+              duration: 5000,
+            });
+          }
+        },
+        onSettled: () => {
+          completedCount++;
+          console.log(`📊 Sync progress: ${completedCount}/${totalToSync} accounts processed`);
+          
+          // Only set isSyncing to false when ALL accounts are done
+          if (completedCount >= totalToSync) {
+            clearTimeout(syncTimeout);
+            setIsSyncing(false);
+            console.log('✅ All syncs completed');
+            if (isManual) {
+              toast.success(`Sync completed for ${totalToSync} account${totalToSync > 1 ? 's' : ''}`, {
+                duration: 3000,
+              });
+            }
+          }
+        }
+      });
+    });
+  };
+
   // Auto-trigger sync for all connected email accounts on mount (only if not already synced)
   useEffect(() => {
     if (!user || !connectedAccounts.length || !workspace) return;
@@ -89,51 +192,26 @@ export default function EmailInbox() {
     
     // Wait for sync statuses to load, then check and trigger sync only if needed
     const timeoutId = setTimeout(() => {
-      emailAccounts.forEach(account => {
-        const syncStatus = syncStatuses.find((s: any) => s.accountId === account.id);
-        
-        // Only sync if:
-        // 1. No sync status exists (never synced)
-        // 2. Status is 'error' (failed sync - retry)
-        // 3. Status is 'pending' (sync was queued but never completed)
-        // DO NOT sync if status is 'completed' (already synced successfully)
-        const shouldSync = !syncStatus || 
-                          syncStatus.status === 'error' || 
-                          syncStatus.status === 'pending';
-        
-        const isInProgress = syncStatuses.some((s: any) => 
-          s.accountId === account.id && s.status === 'in_progress'
-        );
-        
-        // Don't sync if already completed successfully
-        const isCompleted = syncStatus?.status === 'completed';
-        
-        if (shouldSync && !isInProgress && !isCompleted) {
-          console.log(`🚀 Auto-syncing account: ${account.account_name} (${account.id})`);
-          initSync.mutate(account.id, {
-            onSuccess: () => {
-              console.log(`✅ Sync initiated for ${account.account_name}`);
-              toast.success(`🔄 Syncing emails from ${account.account_name}...`, {
-                duration: 3000,
-              });
-            },
-            onError: (error: any) => {
-              console.error(`❌ Failed to initiate sync for ${account.id}:`, error);
-              const errorMessage = error?.message || 'Unknown error';
-              toast.error(`Failed to sync ${account.account_name}: ${errorMessage}`, {
-                duration: 5000,
-              });
-            }
-          });
-        } else if (isCompleted) {
-          console.log(`✅ Account ${account.account_name} already synced - skipping`);
-        }
-      });
+      triggerEmailSync(false); // Auto sync on mount
     }, 2000);
     
     return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, connectedAccounts.length, syncStatuses.length, workspace?.id]);
+
+  // Auto-sync every 15 minutes
+  useEffect(() => {
+    if (!user || !workspace) return;
+    
+    // Set up interval for auto-sync every 15 minutes (900000 ms)
+    const syncInterval = setInterval(() => {
+      console.log('⏰ Auto-sync triggered (15-minute interval)');
+      triggerEmailSync(false);
+    }, 15 * 60 * 1000); // 15 minutes
+    
+    return () => clearInterval(syncInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, workspace?.id, connectedAccounts.length]);
 
   // Debug: Log all conversations with their stage IDs when filter is active
   useEffect(() => {
@@ -526,6 +604,19 @@ export default function EmailInbox() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
+                  
+                  {/* Manual Sync Button */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => triggerEmailSync(true)}
+                    disabled={isSyncing || isAnySyncInProgress}
+                    className="h-8 w-8 flex-shrink-0"
+                    title="Sync emails"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", (isSyncing || isAnySyncInProgress) && "animate-spin")} />
+                  </Button>
+                  
                   <Popover open={filterPopoverOpen} onOpenChange={setFilterPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0 relative">

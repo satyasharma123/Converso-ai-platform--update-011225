@@ -167,6 +167,38 @@ useEffect(() => {
       .slice(0, 2);
   };
 
+  // Format timestamp to "M/D/YYYY h:mm AM/PM" format
+  const formatEmailTimestamp = (timestamp: string) => {
+    if (!timestamp) return '';
+    
+    try {
+      const date = new Date(timestamp);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) return timestamp;
+      
+      const month = date.getMonth() + 1; // 0-indexed
+      const day = date.getDate();
+      const year = date.getFullYear();
+      
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      // Convert to 12-hour format
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 should be 12
+      
+      // Pad minutes with leading zero if needed
+      const minutesStr = minutes < 10 ? `0${minutes}` : minutes;
+      
+      return `${month}/${day}/${year} ${hours}:${minutesStr} ${ampm}`;
+    } catch (error) {
+      console.error('Error formatting timestamp:', error);
+      return timestamp;
+    }
+  };
+
   const getActiveEditor = () =>
     (expandedCompose ? dialogQuillRef.current : inlineQuillRef.current)?.getEditor();
 
@@ -871,7 +903,7 @@ useEffect(() => {
                               <span className="font-medium">To:</span> {conversation.senderEmail}
                             </p>
                           </div>
-                          <span className="text-sm text-muted-foreground whitespace-nowrap ml-4">{message.timestamp}</span>
+                          <span className="text-sm text-muted-foreground whitespace-nowrap ml-4">{formatEmailTimestamp(message.timestamp)}</span>
                         </div>
                       </div>
                     </div>
@@ -894,7 +926,7 @@ useEffect(() => {
                 {index > 0 && (
                   <div className="mt-4">
                     <p className="text-sm text-foreground mb-3">
-                      On {message.timestamp}, {message.senderName} &lt;
+                      On {formatEmailTimestamp(message.timestamp)}, {message.senderName} &lt;
                       <a href={`mailto:${message.senderEmail || conversation.senderEmail}`} className="text-primary">
                         {message.senderEmail || conversation.senderEmail}
                       </a>

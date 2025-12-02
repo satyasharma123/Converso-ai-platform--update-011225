@@ -60,6 +60,33 @@ export function ConversationList({
     }
   };
 
+  // Helper function to strip HTML tags from text
+  const stripHtml = (html: string): string => {
+    if (!html) return '';
+    // Create a temporary div to parse HTML
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    // Get text content and clean up extra whitespace
+    return tmp.textContent || tmp.innerText || '';
+  };
+
+  // Helper function to get SDR first name, truncated if needed
+  const getSdrDisplayName = (assignedToId?: string): string | null => {
+    if (!assignedToId) return null;
+    const member = teamMembers.find(m => m.id === assignedToId);
+    if (!member) return assignedToId; // Fallback to ID if member not found
+    
+    // Extract first name (before first space)
+    const firstName = member.full_name.split(' ')[0];
+    
+    // Truncate if longer than 10 characters
+    if (firstName.length > 10) {
+      return firstName.substring(0, 9) + '…';
+    }
+    
+    return firstName;
+  };
+
   const handleToggleRead = (conversation: Conversation) => {
     const currentReadStatus = conversation.isRead ?? (conversation as any).is_read ?? false;
     toggleRead.mutate({ 
@@ -138,7 +165,7 @@ export function ConversationList({
 
             {/* Line 3: Email Preview (2 lines max) */}
             <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
-              {conversation.preview}
+              {stripHtml(conversation.preview)}
             </p>
 
             {/* Line 4: Account Badge (left) + SDR Badge (right) */}
@@ -155,7 +182,7 @@ export function ConversationList({
               <div className="flex-shrink-0">
                 {conversation.assignedTo ? (
                   <Badge variant="secondary" className="text-[9px] h-3.5 px-1">
-                    {conversation.assignedTo}
+                    {getSdrDisplayName(conversation.assignedTo)}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-orange-500 text-orange-500">

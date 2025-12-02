@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useWorkspace } from './useWorkspace';
 import { useConnectedAccounts } from './useConnectedAccounts';
@@ -42,10 +42,24 @@ export function useEmailSyncStatus() {
             const status = await apiClient.get<SyncStatus>(
               `/api/emails/sync-status?workspace_id=${workspace.id}&account_id=${account.id}`
             );
+            
+            // Check if sync has been stuck in 'in_progress' for too long (over 10 minutes)
+            let finalStatus = status?.status || 'pending';
+            if (finalStatus === 'in_progress' && status?.updated_at) {
+              const updatedAt = new Date(status.updated_at).getTime();
+              const now = Date.now();
+              const tenMinutes = 10 * 60 * 1000;
+              
+              if (now - updatedAt > tenMinutes) {
+                console.warn(`⚠️ Sync for ${account.account_name} stuck in progress - treating as error`);
+                finalStatus = 'error';
+              }
+            }
+            
             return {
               accountId: account.id,
               accountName: account.account_name,
-              status: status?.status || 'pending',
+              status: finalStatus,
               lastSyncedAt: status?.last_synced_at || null,
               progress: status?.progress || null,
             };
@@ -88,9 +102,22 @@ export function useIsEmailSyncInProgress() {
  * Hook to manually trigger email sync
  */
 export function useInitEmailSync() {
+  const queryClient = useQueryClient();
+  const { data: workspace } = useWorkspace();
+  
   return useMutation({
     mutationFn: async (accountId: string) => {
       return apiClient.post('/api/emails/init-sync', { account_id: accountId });
+    },
+    onSuccess: () => {
+      // Invalidate sync status to refetch
+      queryClient.invalidateQueries({ queryKey: ['email-sync-status'] });
+    },
+    onSettled: () => {
+      // Refetch conversations after sync completes (success or error)
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['email-sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ['email-folder-counts'] });
     },
   });
 }
