@@ -2,19 +2,33 @@ import { AppLayout } from "@/components/Layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { KanbanBoard } from "@/components/Pipeline/KanbanBoard";
 import { PipelineFilters } from "@/components/Pipeline/PipelineFilters";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function SalesPipeline() {
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: pipelineStages = [] } = usePipelineStages();
+  
   const [filters, setFilters] = useState({
     assignedTo: "all",
     channelType: "all",
     search: "",
+    selectedStages: [] as string[],
   });
+
+  // Initialize selectedStages with all stages once they're loaded
+  useEffect(() => {
+    if (pipelineStages.length > 0 && filters.selectedStages.length === 0) {
+      setFilters(prev => ({
+        ...prev,
+        selectedStages: pipelineStages.map(s => s.id)
+      }));
+    }
+  }, [pipelineStages]);
 
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";

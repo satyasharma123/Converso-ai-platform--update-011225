@@ -15,6 +15,7 @@ interface KanbanBoardProps {
     assignedTo: string;
     channelType: string;
     search: string;
+    selectedStages: string[];
   };
 }
 
@@ -168,18 +169,23 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
       ) : (
         <div className="h-full w-full overflow-x-auto overflow-y-hidden">
           <div className="flex gap-4 pb-4 h-full min-w-max">
-            {pipelineStages.map((stage) => (
-              <KanbanColumn
-                key={stage.id}
-                stage={{ id: stage.id, label: stage.name }}
-                conversations={getConversationsByStage(stage.id)}
-                onDragStart={handleDragStart}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                canDrag={true} // Allow all users to drag and drop
-                onLeadClick={handleLeadClick}
-              />
-            ))}
+            {pipelineStages
+              .filter(stage => 
+                // Show stage if no stages selected (show all) or if stage is selected
+                filters.selectedStages.length === 0 || filters.selectedStages.includes(stage.id)
+              )
+              .map((stage) => (
+                <KanbanColumn
+                  key={stage.id}
+                  stage={{ id: stage.id, label: stage.name }}
+                  conversations={getConversationsByStage(stage.id)}
+                  onDragStart={handleDragStart}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  canDrag={true} // Allow all users to drag and drop
+                  onLeadClick={handleLeadClick}
+                />
+              ))}
           </div>
         </div>
       )}
