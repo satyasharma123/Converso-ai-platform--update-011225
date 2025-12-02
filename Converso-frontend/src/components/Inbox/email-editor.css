@@ -86,9 +86,28 @@
   font-size: 14px;
   line-height: 1.6;
   color: inherit;
-  white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  max-width: 100%;
+  white-space: pre-wrap; /* Preserve line breaks for plain text */
+}
+
+/* Reset for email HTML - override pre-wrap for HTML emails */
+.email-body-content * {
+  max-width: 100%;
+  white-space: normal; /* HTML elements should use normal spacing */
+}
+
+/* Preserve line breaks in plain text parts */
+.email-body-content br {
+  white-space: normal;
+}
+
+/* Center content by default for marketing emails */
+.email-body-content > div,
+.email-body-content > table {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .email-body-content p {
@@ -168,20 +187,44 @@
 
 .email-body-content table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 1em 0;
+  margin: 0 auto;
+  max-width: 100% !important;
+}
+
+/* Preserve table layouts from HTML emails */
+.email-body-content table[cellpadding],
+.email-body-content table[cellspacing],
+.email-body-content table[border="0"] {
+  border: none;
 }
 
 .email-body-content table td,
 .email-body-content table th {
-  border: 1px solid #ddd;
   padding: 8px;
-  text-align: left;
+  vertical-align: top;
+}
+
+/* Only add borders to data tables, not layout tables */
+.email-body-content table:not([cellpadding]):not([cellspacing]) td,
+.email-body-content table:not([cellpadding]):not([cellspacing]) th {
+  border: 1px solid #ddd;
 }
 
 .email-body-content table th {
   background-color: #f5f5f5;
   font-weight: 600;
+}
+
+/* Preserve inline styles for background colors and spacing */
+.email-body-content table[bgcolor],
+.email-body-content td[bgcolor],
+.email-body-content th[bgcolor] {
+  background-color: attr(bgcolor) !important;
+}
+
+/* Handle nested tables (common in email layouts) */
+.email-body-content table table {
+  width: 100%;
 }
 
 /* Handle Gmail/Outlook quoted text */
@@ -202,4 +245,88 @@
 /* Handle empty paragraphs and line breaks properly */
 .email-body-content p:empty {
   min-height: 1em;
+}
+
+/* Email-specific styling for marketing/transactional emails */
+.email-body-content center,
+.email-body-content [align="center"] {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.email-body-content [align="left"] {
+  text-align: left;
+}
+
+.email-body-content [align="right"] {
+  text-align: right;
+}
+
+/* Preserve width attributes from email HTML */
+.email-body-content [width] {
+  width: auto !important;
+  max-width: 100% !important;
+}
+
+/* Handle email containers */
+.email-body-content > table,
+.email-body-content > div > table,
+.email-body-content > center > table {
+  max-width: 100% !important;
+  width: auto !important;
+}
+
+/* Preserve spacing from email HTML */
+.email-body-content [cellpadding] td,
+.email-body-content [cellspacing] td {
+  padding: inherit;
+}
+
+/* Handle font tags (legacy email HTML) */
+.email-body-content font {
+  font-family: inherit;
+}
+
+/* Responsive images in emails */
+.email-body-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+.email-body-content img[align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Handle spacer images */
+.email-body-content img[width="1"],
+.email-body-content img[height="1"] {
+  display: inline !important;
+}
+
+/* Email buttons */
+.email-body-content a[style*="background-color"],
+.email-body-content td[style*="background-color"] a {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* Preserve email styling for colored backgrounds */
+.email-body-content [style*="background-color"] {
+  background-color: inherit !important;
+}
+
+/* Handle Outlook conditional comments gracefully */
+.email-body-content mso,
+.email-body-content o\\:p {
+  display: none;
+}
+
+/* Reset margins for email content */
+.email-body-content body,
+.email-body-content html {
+  margin: 0;
+  padding: 0;
 }

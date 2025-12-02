@@ -910,8 +910,7 @@ useEffect(() => {
                     
                     {message.email_body ? (
                       <div 
-                        className="text-sm text-foreground email-body-content max-w-full"
-                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                        className="email-body-content"
                         dangerouslySetInnerHTML={{ __html: message.email_body }}
                       />
                     ) : (
@@ -935,8 +934,7 @@ useEffect(() => {
                     
                     {message.email_body ? (
                       <div 
-                        className="text-sm text-foreground email-body-content max-w-full opacity-80"
-                        style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                        className="email-body-content opacity-80"
                         dangerouslySetInnerHTML={{ __html: message.email_body }}
                       />
                     ) : (
