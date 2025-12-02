@@ -460,7 +460,7 @@ export async function resendInvitation(
     throw new Error('Team member not found');
   }
 
-  if (member.status === 'active') {
+  if (!member.status || member.status === 'active') {
     return {
       success: false,
       message: 'User has already signed up and is active',
@@ -573,7 +573,7 @@ export async function getInvitationLink(userId: string): Promise<{ success: bool
     throw new Error('Team member not found');
   }
 
-  if (member.status === 'active') {
+  if (!member.status || member.status === 'active') {
     return {
       success: false,
       message: 'User has already signed up and is active',
