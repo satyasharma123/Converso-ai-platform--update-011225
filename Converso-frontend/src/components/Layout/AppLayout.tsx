@@ -13,9 +13,9 @@ export function AppLayout({ children, role = "admin", userName }: AppLayoutProps
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar role={role} />
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
           <Navbar userName={userName} role={role} />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 overflow-hidden p-6">{children}</main>
         </div>
       </div>
     </SidebarProvider>

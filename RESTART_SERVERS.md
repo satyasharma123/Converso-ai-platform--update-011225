@@ -81,3 +81,4 @@ lsof -i:3001  # Backend
 lsof -i:8082  # Frontend
 ```
 
+

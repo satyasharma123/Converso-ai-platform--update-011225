@@ -48,3 +48,4 @@ WHERE NOT EXISTS (
 -- Notify PostgREST to reload schema
 SELECT pg_notify('pgrst', 'reload schema');
 
+

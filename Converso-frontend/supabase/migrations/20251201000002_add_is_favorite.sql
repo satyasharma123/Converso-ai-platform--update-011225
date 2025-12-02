@@ -8,3 +8,4 @@ CREATE INDEX IF NOT EXISTS idx_conversations_is_favorite
   WHERE conversation_type = 'email';
 
 
+

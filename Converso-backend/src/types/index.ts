@@ -16,6 +16,8 @@ export interface Conversation {
   custom_stage_id?: string;
   received_on_account_id?: string;
   email_folder?: string | null;
+  company_name?: string | null;
+  location?: string | null;
   received_account?: {
     account_name: string;
     account_email?: string;

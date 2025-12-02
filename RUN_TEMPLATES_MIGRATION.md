@@ -155,3 +155,4 @@ npm run dev
 
 Refresh your browser (F5) and open the Templates modal again. The 5 default templates should now appear!
 
+

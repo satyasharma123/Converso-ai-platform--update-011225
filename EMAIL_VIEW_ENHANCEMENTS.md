@@ -139,3 +139,4 @@ Enhanced the EmailView component with a fully functional rich text editor and im
 - Keyboard shortcuts
 - Spell checker integration
 
+

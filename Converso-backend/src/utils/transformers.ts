@@ -9,8 +9,11 @@ export function transformConversation(conv: Conversation): any {
   return {
     id: conv.id,
     senderName: conv.sender_name,
+    sender_name: conv.sender_name, // Keep both for compatibility
     senderEmail: conv.sender_email,
+    sender_email: conv.sender_email, // Keep both
     senderLinkedinUrl: conv.sender_linkedin_url,
+    sender_linkedin_url: conv.sender_linkedin_url, // Keep both
     subject: conv.subject,
     preview: conv.preview,
     timestamp: new Date(conv.last_message_at).toLocaleString(),
@@ -32,6 +35,9 @@ export function transformConversation(conv: Conversation): any {
     received_on_account_id: conv.received_on_account_id,
     emailFolder: conv.email_folder || 'inbox',
     email_folder: conv.email_folder || 'inbox',
+    companyName: conv.company_name,
+    company_name: conv.company_name, // Keep both
+    location: conv.location,
   };
 }
 

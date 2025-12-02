@@ -147,5 +147,34 @@ router.delete(
   })
 );
 
+/**
+ * PATCH /api/conversations/:id/profile
+ * Update lead profile information (name, company, location)
+ */
+router.patch(
+  '/:id/profile',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { sender_name, company_name, location } = req.body;
+
+    const updates: {
+      sender_name?: string;
+      company_name?: string;
+      location?: string;
+    } = {};
+
+    if (sender_name !== undefined) updates.sender_name = sender_name;
+    if (company_name !== undefined) updates.company_name = company_name;
+    if (location !== undefined) updates.location = location;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'At least one field must be provided' });
+    }
+
+    await conversationsService.updateLeadProfile(id, updates);
+    res.json({ message: 'Lead profile updated successfully' });
+  })
+);
+
 export default router;
 

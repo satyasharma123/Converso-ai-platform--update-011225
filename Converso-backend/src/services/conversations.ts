@@ -105,5 +105,23 @@ export const conversationsService = {
 
     return conversationsApi.getConversationById(conversationId);
   },
+
+  /**
+   * Update lead profile information
+   */
+  async updateLeadProfile(
+    conversationId: string,
+    updates: {
+      sender_name?: string;
+      company_name?: string;
+      location?: string;
+    }
+  ): Promise<void> {
+    if (!conversationId) {
+      throw new Error('Conversation ID is required');
+    }
+
+    return conversationsApi.updateLeadProfile(conversationId, updates);
+  },
 };
 

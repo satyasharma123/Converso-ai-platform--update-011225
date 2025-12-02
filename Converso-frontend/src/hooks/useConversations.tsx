@@ -151,3 +151,31 @@ export function useDeleteConversation() {
     },
   });
 }
+
+export function useUpdateLeadProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      conversationId,
+      updates,
+    }: {
+      conversationId: string;
+      updates: {
+        sender_name?: string;
+        company_name?: string;
+        location?: string;
+      };
+    }) => {
+      return conversationsApi.updateProfile(conversationId, updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Lead profile updated successfully');
+    },
+    onError: (error) => {
+      console.error('Error updating lead profile:', error);
+      toast.error('Failed to update lead profile');
+    },
+  });
+}

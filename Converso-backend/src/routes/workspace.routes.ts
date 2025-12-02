@@ -14,7 +14,11 @@ router.get(
   optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const client = req.supabaseClient || undefined;
-    const workspace = await workspaceService.getWorkspace(client);
+    let workspace = await workspaceService.getWorkspace(client);
+    // Auto-create workspace if it doesn't exist
+    if (!workspace) {
+      workspace = await workspaceService.createWorkspace('Default Workspace', client);
+    }
     res.json({ data: workspace });
   })
 );

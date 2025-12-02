@@ -15,3 +15,4 @@ SELECT
 FROM public.connected_accounts 
 WHERE id = '3a81a305-a899-439a-af95-e41cb9dc8606';
 
+

@@ -74,27 +74,37 @@ export default function EmailInbox() {
     setFilterPopoverOpen(false);
   };
 
-  // Auto-trigger sync for all connected email accounts on mount
+  // Auto-trigger sync for all connected email accounts on mount (only if not already synced)
   useEffect(() => {
-    if (!user || !connectedAccounts.length) return;
+    if (!user || !connectedAccounts.length || !workspace) return;
     
     const emailAccounts = connectedAccounts.filter(acc => acc.account_type === 'email');
     
     if (emailAccounts.length === 0) return;
     
-    // Wait a bit for sync statuses to load, then check and trigger sync
+    // Wait for sync statuses to load, then check and trigger sync only if needed
     const timeoutId = setTimeout(() => {
       emailAccounts.forEach(account => {
         const syncStatus = syncStatuses.find((s: any) => s.accountId === account.id);
         
-        const shouldSync = !syncStatus || syncStatus.status === 'error' || syncStatus.status === 'pending';
+        // Only sync if:
+        // 1. No sync status exists (never synced)
+        // 2. Status is 'error' (failed sync - retry)
+        // 3. Status is 'pending' (sync was queued but never completed)
+        // DO NOT sync if status is 'completed' (already synced successfully)
+        const shouldSync = !syncStatus || 
+                          syncStatus.status === 'error' || 
+                          syncStatus.status === 'pending';
         
         const isInProgress = syncStatuses.some((s: any) => 
           s.accountId === account.id && s.status === 'in_progress'
         );
         
-        if (shouldSync && !isInProgress) {
-          console.log(`🚀 Triggering sync for account: ${account.account_name} (${account.id})`);
+        // Don't sync if already completed successfully
+        const isCompleted = syncStatus?.status === 'completed';
+        
+        if (shouldSync && !isInProgress && !isCompleted) {
+          console.log(`🚀 Auto-syncing account: ${account.account_name} (${account.id})`);
           initSync.mutate(account.id, {
             onSuccess: () => {
               console.log(`✅ Sync initiated for ${account.account_name}`);
@@ -110,13 +120,15 @@ export default function EmailInbox() {
               });
             }
           });
+        } else if (isCompleted) {
+          console.log(`✅ Account ${account.account_name} already synced - skipping`);
         }
       });
     }, 2000);
     
     return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, connectedAccounts.length, syncStatuses.length]);
+  }, [user?.id, connectedAccounts.length, syncStatuses.length, workspace?.id]);
 
   // Debug: Log all conversations with their stage IDs when filter is active
   useEffect(() => {
@@ -308,22 +320,129 @@ export default function EmailInbox() {
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
-  const mockLead = selectedConv ? {
-    name: selectedConv.sender_name || '',
-    email: selectedConv.sender_email || '',
-    company: "Acme Corp",
+  // Calculate engagement score based on message count, response time, and activity
+  const calculateEngagementScore = (messageCount: number, lastMessageAt: string | null): number => {
+    let score = 0;
+    // Base score from message count (up to 50 points)
+    score += Math.min(messageCount * 10, 50);
+    
+    // Response time score (up to 30 points) - faster responses = higher score
+    if (lastMessageAt) {
+      const hoursSinceLastMessage = (Date.now() - new Date(lastMessageAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLastMessage < 1) score += 30;
+      else if (hoursSinceLastMessage < 4) score += 20;
+      else if (hoursSinceLastMessage < 24) score += 10;
+      else score += 5;
+    }
+    
+    // Activity bonus (up to 20 points) - more messages = more engaged
+    if (messageCount > 5) score += 20;
+    else if (messageCount > 2) score += 10;
+    
+    return Math.min(score, 100);
+  };
+
+  // Format time ago helper
+  const formatTimeAgo = (timestamp: string | null | undefined): string => {
+    if (!timestamp) return "Never";
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffMs = now.getTime() - past.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return "just now";
+    if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? 's' : ''} ago`;
+  };
+
+  // Get account display name
+  const getAccountDisplay = (conv: typeof selectedConv): string => {
+    if (conv?.received_account?.account_email) {
+      return conv.received_account.account_email;
+    }
+    if (conv?.received_account?.account_name) {
+      return conv.received_account.account_name;
+    }
+    return conv?.sender_email || "N/A";
+  };
+
+  const leadData = selectedConv ? {
+    name: selectedConv.sender_name || selectedConv.senderName || '',
+    email: selectedConv.sender_email || selectedConv.senderEmail || '',
+    company: (selectedConv as any).company_name || (selectedConv as any).companyName || '',
+    location: (selectedConv as any).location || '',
     stage: selectedConv.status,
-    engagementScore: 65,
-    lastResponseTime: "1 hour ago",
+    stageId: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
+    engagementScore: calculateEngagementScore(
+      messagesForSelected.length, 
+      selectedConv.last_message_at || (selectedConv as any).lastMessageAt
+    ),
+    lastResponseTime: formatTimeAgo(
+      selectedConv.last_message_at || (selectedConv as any).lastMessageAt
+    ),
     messageCount: messagesForSelected.length,
-    source: "Sales Account",
-    assignedTo: "Jane SDR",
+    source: selectedConv.conversation_type || selectedConv.type || 'email',
+    account: getAccountDisplay(selectedConv),
+    assignedTo: teamMembers?.find(m => m.id === selectedConv.assigned_to || selectedConv.assignedTo)?.full_name || "Unassigned",
+    assignedToId: selectedConv.assigned_to || selectedConv.assignedTo || '',
   } : null;
 
-  const mockTimeline = selectedConv ? [
-    { id: "1", type: "message" as const, description: "Email received", timestamp: "1 hour ago", actor: "System" },
-    { id: "2", type: "assignment" as const, description: "Auto-assigned to Jane SDR", timestamp: "1 hour ago", actor: "Routing Rule" },
-  ] : [];
+  // Generate timeline from actual messages
+  const generateTimeline = (conv: typeof selectedConv, messages: typeof messagesForSelected) => {
+    const timeline = [];
+    if (conv) {
+      // Add conversation creation
+      timeline.push({
+        id: "conv-created",
+        type: "message" as const,
+        description: `${conv.conversation_type || conv.type === 'email' ? 'Email' : 'LinkedIn message'} received`,
+        timestamp: formatTimeAgo(conv.created_at || (conv as any).createdAt),
+        actor: "System"
+      });
+
+      // Add message events (first and last)
+      if (messages.length > 0) {
+        const firstMessage = messages[messages.length - 1]; // Oldest first
+        const lastMessage = messages[0]; // Newest first
+        if (messages.length === 1) {
+          timeline.push({
+            id: `msg-${firstMessage.id}`,
+            type: "message" as const,
+            description: "First message received",
+            timestamp: formatTimeAgo(firstMessage.created_at || (firstMessage as any).createdAt),
+            actor: firstMessage.sender_name || firstMessage.senderName || "Lead"
+          });
+        } else {
+          timeline.push({
+            id: `msg-last-${lastMessage.id}`,
+            type: "message" as const,
+            description: "Latest message received",
+            timestamp: formatTimeAgo(lastMessage.created_at || (lastMessage as any).createdAt),
+            actor: lastMessage.sender_name || lastMessage.senderName || "Lead"
+          });
+        }
+      }
+
+      // Add assignment if assigned
+      const assignedMember = teamMembers?.find(m => m.id === (conv.assigned_to || conv.assignedTo));
+      if (assignedMember) {
+        timeline.push({
+          id: "assignment",
+          type: "assignment" as const,
+          description: `Assigned to ${assignedMember.full_name}`,
+          timestamp: formatTimeAgo(conv.last_message_at || (conv as any).lastMessageAt),
+          actor: "System"
+        });
+      }
+    }
+    return timeline;
+  };
+
+  const timeline = selectedConv ? generateTimeline(selectedConv, messagesForSelected) : [];
 
   const isAnySyncInProgress = syncStatuses.some((s: any) => s.status === 'in_progress');
 
@@ -495,14 +614,6 @@ export default function EmailInbox() {
                       <p className="text-sm text-muted-foreground">Loading...</p>
                     </div>
                   </div>
-                ) : !workspace ? (
-                  <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-                    <AlertCircle className="h-10 w-10 text-yellow-500 mb-3" />
-                    <h3 className="text-sm font-semibold mb-1">Setup Required</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Run SETUP_DATABASE_FOR_EMAIL_SYNC.sql in Supabase
-                    </p>
-                  </div>
                 ) : connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-blue-500 mb-3" />
@@ -540,7 +651,12 @@ export default function EmailInbox() {
           </div>
 
           {/* Email View - Takes remaining space */}
-          <div className="flex-1 min-w-0 h-full overflow-hidden bg-background relative">
+          <div 
+            className={cn(
+              "flex-1 min-w-0 h-full overflow-hidden bg-background relative transition-all duration-300",
+              isProfileOpen && "pr-[360px]"
+            )}
+          >
             {selectedConv ? (
               <div className="h-full flex flex-col">
                 <EmailView 
@@ -569,7 +685,7 @@ export default function EmailInbox() {
           <div 
             className={cn(
               "fixed top-[72px] right-0 h-[calc(100vh-72px)] bg-card border-l shadow-2xl transition-all duration-300 ease-in-out z-40",
-              isProfileOpen ? "translate-x-0 w-[380px]" : "translate-x-[calc(100%-20px)] w-[380px]"
+              isProfileOpen ? "translate-x-0 w-[340px]" : "translate-x-[calc(100%-20px)] w-[340px]"
             )}
           >
             <button
@@ -589,40 +705,52 @@ export default function EmailInbox() {
               />
             </button>
             {/* Drawer Content */}
-            <div className="h-full flex flex-col">
-              {/* Toggle Tab - Always visible on the left edge */}
-              {/* Drawer Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 flex-shrink-0">
-                <h3 className="font-semibold text-base text-foreground">Lead Profile</h3>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 hover:bg-muted/50"
-                  onClick={() => setIsProfileOpen(!isProfileOpen)}
-                >
-                  {isProfileOpen ? (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-              
-              {/* Drawer Body */}
-              <div className="flex-1 overflow-y-auto overscroll-contain">
-                {selectedConv && mockLead ? (
-                  <LeadProfilePanel 
-                    lead={mockLead} 
-                    timeline={mockTimeline}
-                    conversationId={selectedConv.id}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                    <User className="h-16 w-16 text-muted-foreground/30 mb-4" />
-                    <p className="text-sm font-medium text-muted-foreground">No lead selected</p>
-                    <p className="text-xs text-muted-foreground mt-1.5">Select an email to view lead details</p>
-                  </div>
+            <div className="h-full relative flex flex-col overflow-hidden">
+              <div
+                className={cn(
+                  "absolute inset-0 bg-card transition-opacity duration-200 pointer-events-none",
+                  isProfileOpen ? "opacity-0" : "opacity-100"
                 )}
+              />
+              <div
+                className={cn(
+                  "h-full flex flex-col transition-opacity duration-200",
+                  !isProfileOpen && "opacity-0 pointer-events-none"
+                )}
+              >
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 flex-shrink-0">
+                  <h3 className="font-semibold text-base text-foreground">Lead Profile</h3>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 hover:bg-muted/50"
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  >
+                    {isProfileOpen ? (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                
+                {/* Drawer Body */}
+                <div className="flex-1 overflow-y-auto overscroll-contain">
+                  {selectedConv && leadData ? (
+                    <LeadProfilePanel 
+                      lead={leadData} 
+                      timeline={timeline}
+                      conversationId={selectedConv.id}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                      <User className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                      <p className="text-sm font-medium text-muted-foreground">No lead selected</p>
+                      <p className="text-xs text-muted-foreground mt-1.5">Select an email to view lead details</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -75,6 +75,20 @@ export const conversationsApi = {
   async delete(conversationId: string): Promise<void> {
     await apiClient.delete(`/api/conversations/${conversationId}`);
   },
+
+  /**
+   * Update lead profile information
+   */
+  async updateProfile(
+    conversationId: string,
+    updates: {
+      sender_name?: string;
+      company_name?: string;
+      location?: string;
+    }
+  ): Promise<void> {
+    await apiClient.patch(`/api/conversations/${conversationId}/profile`, updates);
+  },
 };
 
 // ==================== Messages API ====================

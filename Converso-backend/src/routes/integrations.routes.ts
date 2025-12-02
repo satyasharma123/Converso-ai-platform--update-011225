@@ -17,7 +17,7 @@ const outlookOAuth = require('../utils/outlookOAuth');
 const router = Router();
 
 // Get frontend URL from environment or use default
-const FRONTEND_URL = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'http://localhost:8080';
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'http://localhost:8082';
 
 /**
  * GET /api/integrations/gmail/connect

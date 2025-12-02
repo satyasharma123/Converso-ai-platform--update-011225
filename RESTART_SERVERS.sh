@@ -37,3 +37,4 @@ echo ""
 echo "💡 To stop servers, run: kill $BACKEND_PID $FRONTEND_PID"
 echo "   Or use: pkill -f 'tsx watch' && pkill -f 'vite'"
 
+

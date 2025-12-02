@@ -3,11 +3,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send } from "lucide-react";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Send, Pencil, Check, X } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
-import { useUpdateConversationStage } from "@/hooks/useConversations";
+import { useUpdateConversationStage, useUpdateLeadProfile, useAssignConversation } from "@/hooks/useConversations";
 import { useAuth } from "@/hooks/useAuth";
 
 interface LeadProfilePanelProps {
@@ -15,12 +17,16 @@ interface LeadProfilePanelProps {
     name: string;
     email?: string;
     company?: string;
+    location?: string;
     stage?: string;
+    stageId?: string | null;
     engagementScore: number;
     lastResponseTime: string;
     messageCount: number;
     source?: string;
+    account?: string;
     assignedTo?: string;
+    assignedToId?: string;
   };
   timeline: Array<{
     id: string;
@@ -46,12 +52,36 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
   const { data: teamMembers } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
   const updateStageMutation = useUpdateConversationStage();
+  const updateProfileMutation = useUpdateLeadProfile();
+  const assignMutation = useAssignConversation();
   
-  // Find the current stage ID from the lead's stage name or use first stage as default
-  const currentStageId = pipelineStages.find(s => s.name === lead.stage)?.id || pipelineStages[0]?.id || null;
-  const [selectedStage, setSelectedStage] = useState<string | null>(currentStageId);
-  const [selectedSDR, setSelectedSDR] = useState(lead.assignedTo || "");
+  // Editable fields state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [editedName, setEditedName] = useState(lead.name);
+  const [editedCompany, setEditedCompany] = useState(lead.company || "");
+  const [editedLocation, setEditedLocation] = useState(lead.location || "");
   
+  // Get the current stage ID from the conversation's custom_stage_id
+  const [selectedStage, setSelectedStage] = useState<string | null>(lead.stageId || null);
+  const [selectedSDR, setSelectedSDR] = useState<string>(lead.assignedToId || "");
+  
+  // Sync state with props changes
+  useEffect(() => {
+    setEditedName(lead.name);
+    setEditedCompany(lead.company || "");
+    setEditedLocation(lead.location || "");
+  }, [lead.name, lead.company, lead.location]);
+
+  useEffect(() => {
+    setSelectedSDR(lead.assignedToId || "");
+  }, [lead.assignedToId]);
+
+  useEffect(() => {
+    setSelectedStage(lead.stageId || null);
+  }, [lead.stageId]);
+
   const handleStageChange = (stageId: string) => {
     setSelectedStage(stageId);
     if (conversationId) {
@@ -59,6 +89,59 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
         conversationId,
         stageId: stageId === 'none' ? null : stageId
       });
+    }
+  };
+
+  const handleSDRChange = (sdrId: string) => {
+    setSelectedSDR(sdrId);
+    if (conversationId) {
+      assignMutation.mutate({
+        conversationId,
+        sdrId: sdrId === 'unassigned' ? null : sdrId
+      });
+    }
+  };
+
+  const handleSaveName = () => {
+    if (conversationId && editedName.trim() && editedName !== lead.name) {
+      updateProfileMutation.mutate({
+        conversationId,
+        updates: { sender_name: editedName.trim() }
+      });
+    }
+    setIsEditingName(false);
+  };
+
+  const handleSaveCompany = () => {
+    if (conversationId && editedCompany.trim() !== (lead.company || "")) {
+      updateProfileMutation.mutate({
+        conversationId,
+        updates: { company_name: editedCompany.trim() || null }
+      });
+    }
+    setIsEditingCompany(false);
+  };
+
+  const handleSaveLocation = () => {
+    if (conversationId && editedLocation.trim() !== (lead.location || "")) {
+      updateProfileMutation.mutate({
+        conversationId,
+        updates: { location: editedLocation.trim() || null }
+      });
+    }
+    setIsEditingLocation(false);
+  };
+
+  const handleCancelEdit = (field: 'name' | 'company' | 'location') => {
+    if (field === 'name') {
+      setEditedName(lead.name);
+      setIsEditingName(false);
+    } else if (field === 'company') {
+      setEditedCompany(lead.company || "");
+      setIsEditingCompany(false);
+    } else if (field === 'location') {
+      setEditedLocation(lead.location || "");
+      setIsEditingLocation(false);
     }
   };
   
@@ -81,66 +164,197 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
     setCommentText("");
   };
 
+  // Get assigned SDR name
+  const assignedSDRName = teamMembers?.find(m => m.id === selectedSDR)?.full_name || "Unassigned";
+
   return (
-    <div className="h-fit px-5 py-4 pb-6 space-y-0">
-      {/* Profile Section */}
-      <div className="pb-5">
-        <h2 className="text-base font-semibold text-foreground mb-1.5 truncate pr-2">{lead.name}</h2>
-        {lead.company && (
-          <p className="text-sm text-muted-foreground mb-4 truncate pr-2">{lead.company}</p>
-        )}
-        
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="text-muted-foreground truncate min-w-0">{lead.source || "Sales Account"}</span>
-          
-          {userRole === 'admin' && (
-            <>
-              {selectedSDR ? (
-                <Select value={selectedSDR} onValueChange={setSelectedSDR}>
-                  <SelectTrigger className="w-auto h-7 text-xs border-none bg-transparent hover:bg-muted/50 flex-shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teamMembers?.map((member) => (
-                      <SelectItem key={member.id} value={member.full_name}>
-                        {member.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Select value={selectedSDR} onValueChange={setSelectedSDR}>
-                  <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-muted px-3 flex-shrink-0">
-                    <SelectValue placeholder="Assign SDR" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teamMembers?.map((member) => (
-                      <SelectItem key={member.id} value={member.full_name}>
-                        {member.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </>
-          )}
+    <div className="h-fit px-5 py-4 space-y-6 text-sm">
+      {/* Identity */}
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-3 space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 space-y-2">
+            <div className="space-y-1.5">
+            {isEditingName ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  className="h-8 text-base font-semibold px-2"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName();
+                    if (e.key === 'Escape') handleCancelEdit('name');
+                  }}
+                  autoFocus
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={handleSaveName}
+                >
+                  <Check className="h-3 w-3 text-green-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => handleCancelEdit('name')}
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                className="text-left text-base font-semibold leading-tight hover:text-primary"
+                onClick={() => setIsEditingName(true)}
+              >
+                {editedName || lead.name}
+              </button>
+            )}
+
+            {isEditingCompany ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={editedCompany}
+                  onChange={(e) => setEditedCompany(e.target.value)}
+                  className="h-7 text-xs text-muted-foreground px-2"
+                  placeholder="Company name"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveCompany();
+                    if (e.key === 'Escape') handleCancelEdit('company');
+                  }}
+                  autoFocus
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={handleSaveCompany}
+                >
+                  <Check className="h-3 w-3 text-green-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => handleCancelEdit('company')}
+                >
+                  <X className="h-3 w-3 text-red-600" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                className="block w-full text-left text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setIsEditingCompany(true)}
+              >
+                {editedCompany || lead.company || "Add company"}
+              </button>
+            )}
+            </div>
+
+            {lead.email && (
+              <p className="text-xs text-muted-foreground break-all mt-2">{lead.email}</p>
+            )}
+          </div>
+
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setIsEditingName(true)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/40 mb-5" />
-
-      {/* Lead Status Section */}
-      <div className="pb-5 space-y-3.5">
+      {/* Location / Source / Account */}
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Engagement</span>
-          <span className="text-sm font-medium text-foreground">{lead.engagementScore}/100</span>
+          <span className="text-xs text-muted-foreground">Location</span>
+          {isEditingLocation ? (
+            <div className="flex items-center gap-1">
+              <Input
+                value={editedLocation}
+                onChange={(e) => setEditedLocation(e.target.value)}
+                className="h-6 w-[140px] text-xs px-2"
+                placeholder="City, Country"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveLocation();
+                  if (e.key === 'Escape') handleCancelEdit('location');
+                }}
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
+                onClick={handleSaveLocation}
+              >
+                <Check className="h-3 w-3 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
+                onClick={() => handleCancelEdit('location')}
+              >
+                <X className="h-3 w-3 text-red-600" />
+              </Button>
+            </div>
+          ) : (
+            <span 
+              className="text-xs text-foreground cursor-pointer hover:bg-muted/30 px-2 py-0.5 rounded"
+              onClick={() => setIsEditingLocation(true)}
+            >
+              {editedLocation || lead.location || "Not set"}
+            </span>
+          )}
         </div>
 
+        {/* Source - Auto fetch */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Stage</span>
+          <span className="text-xs text-muted-foreground">Source</span>
+          <span className="text-xs text-foreground capitalize">{lead.source || (lead.email ? 'Email' : 'LinkedIn')}</span>
+        </div>
+
+        {/* Account - Auto fetch */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Account</span>
+          <span className="text-xs text-foreground truncate max-w-[140px]" title={lead.account || lead.email || ''}>
+            {lead.account || lead.email || "N/A"}
+          </span>
+        </div>
+      </div>
+
+      {/* SDR / Stage / Stats */}
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">SDR</span>
+          {userRole === 'admin' ? (
+            <Select value={selectedSDR || 'unassigned'} onValueChange={handleSDRChange}>
+              <SelectTrigger className="w-auto h-6 text-xs rounded-full bg-muted px-2.5 flex-shrink-0 border-none">
+                <SelectValue placeholder="Assign SDR" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {teamMembers?.filter(m => m.role === 'sdr').map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-xs text-foreground">{assignedSDRName}</span>
+          )}
+        </div>
+
+        {/* Stage - Changeable */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Stage</span>
           <Select value={selectedStage || 'none'} onValueChange={handleStageChange}>
-            <SelectTrigger className="w-auto h-7 text-xs rounded-full bg-[#3C3C3C] text-white border-none px-3 flex-shrink-0">
+            <SelectTrigger className="w-auto h-6 text-xs rounded-full bg-[#3C3C3C] text-white border-none px-2.5 flex-shrink-0">
               <SelectValue placeholder="Select stage" />
             </SelectTrigger>
             <SelectContent>
@@ -157,41 +371,43 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
           </Select>
         </div>
 
+        {/* Engagement - Auto calculated */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Messages</span>
-          <span className="text-sm font-medium text-foreground">{lead.messageCount}</span>
+          <span className="text-xs text-muted-foreground">Engagement</span>
+          <span className="text-xs font-medium text-foreground">{lead.engagementScore}/100</span>
         </div>
 
+        {/* Messages - Auto calculated */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Last Response</span>
-          <span className="text-sm font-medium text-foreground">{lead.lastResponseTime}</span>
+          <span className="text-xs text-muted-foreground">Messages</span>
+          <span className="text-xs font-medium text-foreground">{lead.messageCount}</span>
+        </div>
+
+        {/* Last Response */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Last Response</span>
+          <span className="text-xs text-foreground">{lead.lastResponseTime}</span>
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/40 mb-5" />
-
       {/* Activity Section */}
-      <div className="pb-5">
-        <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3.5">Activity</h4>
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-4">
+        <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Activity</h4>
         <div className="space-y-3">
           {timeline.slice(0, 3).map((event) => (
             <div key={event.id} className="flex items-start justify-between gap-3">
-              <span className="text-sm text-foreground flex-1 min-w-0 break-words">{event.description}</span>
-              <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">{event.timestamp}</span>
+              <span className="text-xs text-foreground flex-1 min-w-0 break-words">{event.description}</span>
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">{event.timestamp}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/40 mb-5" />
-
       {/* Comments Section */}
-      <div>
-        <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3.5">Comments (Internal)</h4>
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-4">
+        <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Comments (Internal)</h4>
         
-        <div className="relative mb-4 bg-muted/30 border border-border/50 rounded-lg">
+        <div className="relative mb-3 bg-muted/30 border border-border/50 rounded-lg">
           <Textarea
             placeholder="Add a comment for internal team…"
             value={commentText}
@@ -201,7 +417,7 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
                 handleSubmitComment();
               }
             }}
-            className="min-h-[52px] text-sm resize-none border-0 bg-transparent p-3 pr-12 focus-visible:ring-0 placeholder:text-muted-foreground"
+            className="min-h-[48px] text-xs resize-none border-0 bg-transparent p-2 pr-9 focus-visible:ring-0 placeholder:text-muted-foreground"
           />
           <TooltipProvider>
             <Tooltip>
@@ -209,10 +425,10 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
                 <button
                   onClick={handleSubmitComment}
                   disabled={!commentText.trim()}
-                  className="absolute right-2.5 bottom-2.5 h-5 w-5 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                  className="absolute right-2 bottom-2 h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                   aria-label="Submit comment"
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-3 w-3" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -222,20 +438,20 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
           </TooltipProvider>
         </div>
 
-        <ScrollArea className="max-h-[200px]">
-          <div className="space-y-4 pr-2">
+        <ScrollArea className="max-h-[180px]">
+          <div className="space-y-3 pr-2">
             {comments.map((comment, index) => (
               <div key={comment.id}>
-                <div className="text-sm space-y-1.5">
+                <div className="text-xs space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-sm text-foreground">{comment.username}</span>
+                    <span className="font-semibold text-xs text-foreground">{comment.username}</span>
                     <span className="text-muted-foreground">·</span>
-                    <span className="text-xs text-muted-foreground">{comment.timestamp}</span>
+                    <span className="text-[10px] text-muted-foreground">{comment.timestamp}</span>
                   </div>
-                  <p className="text-sm text-foreground leading-relaxed break-words">{comment.text}</p>
+                  <p className="text-xs text-foreground leading-relaxed break-words">{comment.text}</p>
                 </div>
                 {index < comments.length - 1 && (
-                  <div className="border-t border-border/30 mt-4"></div>
+                  <div className="border-t border-border/30 mt-3"></div>
                 )}
               </div>
             ))}
