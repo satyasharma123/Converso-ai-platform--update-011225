@@ -7,14 +7,21 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  */
 
 export async function getProfile(userId: string, client?: SupabaseClient): Promise<Profile | null> {
-  const dbClient = client || supabase;
+  // Use provided client (with user's JWT), otherwise use admin client to bypass RLS
+  const dbClient = client || supabaseAdmin;
   const { data, error } = await dbClient
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // If profile not found, return null instead of throwing
+    if (error.code === 'PGRST116') {
+      return null;
+    }
+    throw error;
+  }
   return data as Profile | null;
 }
 

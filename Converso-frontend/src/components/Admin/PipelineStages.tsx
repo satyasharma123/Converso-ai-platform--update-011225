@@ -7,164 +7,87 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Info, Edit, Trash2, Plus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-
-type CustomStage = {
-  id: string;
-  name: string;
-  description: string | null;
-  display_order: number;
-};
+import { Info, Edit, Trash2, Plus, Loader2 } from "lucide-react";
+import { 
+  usePipelineStages, 
+  useCreatePipelineStage, 
+  useUpdatePipelineStage, 
+  useDeletePipelineStage 
+} from "@/hooks/usePipelineStages";
+import type { PipelineStage } from "@backend/src/types";
 
 export function PipelineStages() {
-  const [customStages, setCustomStages] = React.useState<CustomStage[]>([]);
+  // Component for managing pipeline stages via backend API
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
-  const [editingStage, setEditingStage] = React.useState<CustomStage | null>(null);
-  const [deletingStage, setDeletingStage] = React.useState<CustomStage | null>(null);
+  const [editingStage, setEditingStage] = React.useState<PipelineStage | null>(null);
+  const [deletingStage, setDeletingStage] = React.useState<PipelineStage | null>(null);
   const [stageName, setStageName] = React.useState("");
   const [stageDescription, setStageDescription] = React.useState("");
-  const [hasLeads, setHasLeads] = React.useState(false);
-  const { toast } = useToast();
 
-  React.useEffect(() => {
-    fetchCustomStages();
-  }, []);
-
-  const fetchCustomStages = async () => {
-    const { data, error } = await supabase
-      .from('pipeline_stages')
-      .select('*')
-      .order('display_order', { ascending: true });
-    
-    if (error) {
-      toast({ title: "Error fetching stages", description: error.message, variant: "destructive" });
-      return;
-    }
-    
-    setCustomStages(data || []);
-  };
+  // Use React Query hooks
+  const { data: customStages = [], isLoading } = usePipelineStages();
+  const createMutation = useCreatePipelineStage();
+  const updateMutation = useUpdatePipelineStage();
+  const deleteMutation = useDeletePipelineStage();
 
   const handleAddStage = async () => {
     if (!stageName.trim()) {
-      toast({ title: "Stage name is required", variant: "destructive" });
       return;
     }
 
     // Get the highest display_order and add 1
     const maxOrder = customStages.length > 0 
-      ? Math.max(...customStages.map(s => s.display_order))
+      ? Math.max(...customStages.map(s => s.display_order || 0))
       : 0;
 
-    const { error } = await supabase
-      .from('pipeline_stages')
-      .insert({
-        name: stageName,
-        description: stageDescription || null,
-        display_order: maxOrder + 1
-      });
+    await createMutation.mutateAsync({
+      name: stageName,
+      description: stageDescription || null,
+      display_order: maxOrder + 1
+    });
 
-    if (error) {
-      toast({ title: "Error adding stage", description: error.message, variant: "destructive" });
-      return;
-    }
-
-    toast({ title: "Stage added successfully" });
     setStageName("");
     setStageDescription("");
     setIsAddModalOpen(false);
-    fetchCustomStages();
   };
 
   const handleEditStage = async () => {
     if (!editingStage || !stageName.trim()) {
-      toast({ title: "Stage name is required", variant: "destructive" });
       return;
     }
 
-    const { error } = await supabase
-      .from('pipeline_stages')
-      .update({
+    await updateMutation.mutateAsync({
+      id: editingStage.id,
+      updates: {
         name: stageName,
         description: stageDescription || null
-      })
-      .eq('id', editingStage.id);
+      }
+    });
 
-    if (error) {
-      toast({ title: "Error updating stage", description: error.message, variant: "destructive" });
-      return;
-    }
-
-    toast({ title: "Stage updated successfully" });
     setEditingStage(null);
     setStageName("");
     setStageDescription("");
     setIsEditModalOpen(false);
-    fetchCustomStages();
   };
 
-  const checkStageHasLeads = async (stageId: string) => {
-    const { count, error } = await supabase
-      .from('conversations')
-      .select('*', { count: 'exact', head: true })
-      .eq('custom_stage_id', stageId);
-
-    if (error) {
-      console.error("Error checking leads:", error);
-      return false;
-    }
-
-    return (count || 0) > 0;
-  };
-
-  const handleDeleteClick = async (stage: CustomStage) => {
+  const handleDeleteClick = async (stage: PipelineStage) => {
     setDeletingStage(stage);
-    const hasLeadsInStage = await checkStageHasLeads(stage.id);
-    setHasLeads(hasLeadsInStage);
     setIsDeleteDialogOpen(true);
   };
 
   const handleDeleteStage = async () => {
     if (!deletingStage) return;
 
-    // If stage has leads, reassign them to the first available stage (or null)
-    if (hasLeads) {
-      // Find the first stage that's not being deleted
-      const firstAvailableStage = customStages
-        .filter(s => s.id !== deletingStage.id)
-        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))[0];
+    // Backend will handle lead reassignment automatically
+    await deleteMutation.mutateAsync(deletingStage.id);
 
-      const { error: updateError } = await supabase
-        .from('conversations')
-        .update({ custom_stage_id: firstAvailableStage?.id || null })
-        .eq('custom_stage_id', deletingStage.id);
-
-      if (updateError) {
-        toast({ title: "Error reassigning leads", description: updateError.message, variant: "destructive" });
-        return;
-      }
-    }
-
-    const { error } = await supabase
-      .from('pipeline_stages')
-      .delete()
-      .eq('id', deletingStage.id);
-
-    if (error) {
-      toast({ title: "Error deleting stage", description: error.message, variant: "destructive" });
-      return;
-    }
-
-    toast({ title: "Stage deleted successfully" });
     setDeletingStage(null);
     setIsDeleteDialogOpen(false);
-    fetchCustomStages();
   };
 
-  const openEditModal = (stage: CustomStage) => {
+  const openEditModal = (stage: PipelineStage) => {
     setEditingStage(stage);
     setStageName(stage.name);
     setStageDescription(stage.description || "");
@@ -192,7 +115,7 @@ export function PipelineStages() {
             <div>
               <CardTitle>Pipeline Stages</CardTitle>
               <CardDescription>
-                Manage the stages leads move through in your sales pipeline. All stages are editable to match your business needs.
+                Define and customize the stages for your sales pipeline
               </CardDescription>
             </div>
             <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
@@ -227,8 +150,19 @@ export function PipelineStages() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={closeAddModal}>Cancel</Button>
-                  <Button onClick={handleAddStage}>Save</Button>
+                  <Button variant="outline" onClick={closeAddModal} disabled={createMutation.isPending}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddStage} disabled={createMutation.isPending}>
+                    {createMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save"
+                    )}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -237,7 +171,12 @@ export function PipelineStages() {
         <CardContent>
           <div className="space-y-3">
             {/* All Stages (Editable) */}
-            {customStages.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading stages...</p>
+              </div>
+            ) : customStages.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p className="text-sm">No stages found. Click "Add Stage" to create one.</p>
                 <p className="text-xs mt-2">Note: Default stages should be automatically created. Please run the migration script.</p>
@@ -250,7 +189,7 @@ export function PipelineStages() {
                 >
                   <div className="flex items-center gap-4">
                     <Badge variant="outline" className="text-xs font-mono">
-                      {stage.display_order || index + 1}
+                      {index + 1}
                     </Badge>
                     <div>
                       <h4 className="font-medium">{stage.name}</h4>
@@ -311,8 +250,19 @@ export function PipelineStages() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeEditModal}>Cancel</Button>
-            <Button onClick={handleEditStage}>Save</Button>
+            <Button variant="outline" onClick={closeEditModal} disabled={updateMutation.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditStage} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -323,14 +273,21 @@ export function PipelineStages() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Stage?</AlertDialogTitle>
             <AlertDialogDescription>
-              {hasLeads
-                ? 'Leads currently assigned to this stage will automatically move to another stage. Are you sure you want to continue?'
-                : 'Are you sure you want to delete this stage? This action cannot be undone.'}
+              Are you sure you want to delete this stage? Any leads currently assigned to this stage will automatically move to the previous stage. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteStage}>Delete</AlertDialogAction>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteStage} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

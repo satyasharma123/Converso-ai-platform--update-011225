@@ -27,7 +27,7 @@ export async function getPipelineStages(): Promise<PipelineStage[]> {
 export async function createPipelineStage(
   stage: Omit<PipelineStage, 'id' | 'created_at' | 'updated_at'>
 ): Promise<PipelineStage> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('pipeline_stages')
     .insert(stage)
     .select()
@@ -41,7 +41,7 @@ export async function updatePipelineStage(
   stageId: string,
   updates: Partial<Omit<PipelineStage, 'id' | 'created_at'>>
 ): Promise<PipelineStage> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('pipeline_stages')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', stageId)
@@ -53,7 +53,39 @@ export async function updatePipelineStage(
 }
 
 export async function deletePipelineStage(stageId: string): Promise<void> {
-  const { error } = await supabase
+  // First, get all pipeline stages to find the previous stage
+  const { data: stages } = await supabaseAdmin
+    .from('pipeline_stages')
+    .select('id, display_order')
+    .order('display_order', { ascending: true });
+
+  if (stages) {
+    // Find the stage being deleted
+    const deletingStageIndex = stages.findIndex(s => s.id === stageId);
+    
+    if (deletingStageIndex > -1) {
+      // Find the previous stage (one before the deleting stage)
+      const previousStage = deletingStageIndex > 0 ? stages[deletingStageIndex - 1] : null;
+      const targetStageId = previousStage?.id || null;
+
+      // If no previous stage, use the next stage if available
+      const fallbackStageId = targetStageId || (stages[deletingStageIndex + 1]?.id || null);
+
+      // Reassign all leads from the deleting stage to the target stage
+      const { error: updateError } = await supabaseAdmin
+        .from('conversations')
+        .update({ custom_stage_id: fallbackStageId })
+        .eq('custom_stage_id', stageId);
+
+      if (updateError) {
+        console.error('[deletePipelineStage] Error reassigning leads:', updateError);
+        throw updateError;
+      }
+    }
+  }
+
+  // Now delete the stage
+  const { error } = await supabaseAdmin
     .from('pipeline_stages')
     .delete()
     .eq('id', stageId);

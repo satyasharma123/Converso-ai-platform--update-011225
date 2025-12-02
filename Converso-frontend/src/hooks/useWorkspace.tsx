@@ -37,7 +37,7 @@ export function useUpdateWorkspace() {
 
   return useMutation({
     mutationFn: async (name: string) => {
-      return apiClient.patch<Workspace>('/api/workspace', { name });
+      return apiClient.put<Workspace>('/api/workspace', { name });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace'] });
