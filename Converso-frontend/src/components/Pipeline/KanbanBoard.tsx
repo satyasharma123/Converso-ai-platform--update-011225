@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Conversation } from "@/hooks/useConversations";
+import { Conversation, useUpdateConversationStage } from "@/hooks/useConversations";
 import { useConversations } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
 import { KanbanColumn } from "./KanbanColumn";
 import { LeadDetailsDialog } from "./LeadDetailsDialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 interface KanbanBoardProps {
   filters: {
@@ -21,6 +22,7 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   const { userRole, user } = useAuth();
   const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const updateStage = useUpdateConversationStage();
 
   const handleLeadClick = (conversation: Conversation) => {
     setSelectedLead(conversation);
@@ -41,16 +43,41 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
 
   const handleDragStart = (e: React.DragEvent, conversationId: string) => {
     e.dataTransfer.setData('conversationId', conversationId);
+    e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, stageId: string) => {
+  const handleDrop = async (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
-    // TODO: Implement drag and drop stage update
-    console.log('Drag and drop to stage:', stageId);
+    const conversationId = e.dataTransfer.getData('conversationId');
+    
+    if (!conversationId || !stageId) return;
+
+    // Find the conversation being moved
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation) return;
+
+    // Don't update if it's already in this stage
+    if (conversation.custom_stage_id === stageId) return;
+
+    // Update the stage
+    updateStage.mutate(
+      { conversationId, stageId },
+      {
+        onSuccess: () => {
+          const stageName = pipelineStages.find(s => s.id === stageId)?.name || 'stage';
+          toast.success(`Lead moved to ${stageName}`);
+        },
+        onError: (error) => {
+          console.error('Error updating stage:', error);
+          toast.error('Failed to update lead stage');
+        }
+      }
+    );
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   };
 
   const getConversationsByStage = (stageId: string) => {
@@ -90,8 +117,13 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   return (
     <>
       {pipelineStages.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">No pipeline stages found. Please configure stages in Settings.</p>
+        <div className="flex flex-col items-center justify-center h-full text-center p-8">
+          <p className="text-sm text-muted-foreground mb-4">
+            No pipeline stages found.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Default stages should be created automatically. Please check Settings → Pipeline Stages or contact support.
+          </p>
         </div>
       ) : (
         <div className="h-full w-full overflow-x-auto overflow-y-hidden">
@@ -104,7 +136,7 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
                 onDragStart={handleDragStart}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                canDrag={userRole === 'admin'}
+                canDrag={true} // Allow all users to drag and drop
                 onLeadClick={handleLeadClick}
               />
             ))}
