@@ -7,6 +7,8 @@ import { KanbanColumn } from "./KanbanColumn";
 import { LeadDetailsDialog } from "./LeadDetailsDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface KanbanBoardProps {
   filters: {
@@ -17,8 +19,8 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ filters }: KanbanBoardProps) {
-  const { data: conversations = [], isLoading } = useConversations();
-  const { data: pipelineStages = [], isLoading: isLoadingStages } = usePipelineStages();
+  const { data: conversations = [], isLoading, error: conversationsError } = useConversations();
+  const { data: pipelineStages = [], isLoading: isLoadingStages, error: stagesError } = usePipelineStages();
   const { userRole, user } = useAuth();
   const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -29,6 +31,7 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
     setDialogOpen(true);
   };
 
+  // Show loading state
   if (isLoading || isLoadingStages) {
     return (
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -37,6 +40,38 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
             <Skeleton className="h-[600px]" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  // Show error state for stages
+  if (stagesError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Failed to Load Pipeline Stages</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          {stagesError instanceof Error ? stagesError.message : 'An error occurred while loading pipeline stages'}
+        </p>
+        <Button onClick={() => window.location.reload()}>
+          Reload Page
+        </Button>
+      </div>
+    );
+  }
+
+  // Show error state for conversations
+  if (conversationsError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Failed to Load Conversations</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          {conversationsError instanceof Error ? conversationsError.message : 'An error occurred while loading conversations'}
+        </p>
+        <Button onClick={() => window.location.reload()}>
+          Reload Page
+        </Button>
       </div>
     );
   }
@@ -118,12 +153,17 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
     <>
       {pipelineStages.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-center p-8">
-          <p className="text-sm text-muted-foreground mb-4">
-            No pipeline stages found.
+          <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Pipeline Stages Found</h3>
+          <p className="text-sm text-muted-foreground mb-2">
+            Default stages should be created automatically.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Default stages should be created automatically. Please check Settings → Pipeline Stages or contact support.
+          <p className="text-xs text-muted-foreground mb-4">
+            Please check Settings → Pipeline Stages or contact support.
           </p>
+          <Button onClick={() => window.location.reload()}>
+            Reload Page
+          </Button>
         </div>
       ) : (
         <div className="h-full w-full overflow-x-auto overflow-y-hidden">
