@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Users, AlertCircle, Mail, UserCheck } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, AlertCircle, Mail, UserCheck, MoreVertical, Copy, Send } from "lucide-react";
 import { 
   useTeamMembers, 
   useCreateTeamMember, 
@@ -43,7 +43,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { teamMembersApi } from "@/lib/backend-api";
+import { toast } from "sonner";
 
 export default function Team() {
   const { user } = useAuth();
@@ -92,16 +101,27 @@ export default function Team() {
       return;
     }
 
+    if (createMember.isPending) {
+      return; // Prevent double submission
+    }
+
     try {
-      await createMember.mutateAsync({
+      const result = await createMember.mutateAsync({
         email: formData.email,
         full_name: formData.full_name,
         role: formData.role,
       });
-      setAddDialogOpen(false);
-      setFormData({ full_name: "", email: "", role: "sdr" });
-    } catch (error) {
-      // Error is handled by the hook
+      
+      // Only close dialog and reset form on successful creation
+      if (result) {
+        setAddDialogOpen(false);
+        setFormData({ full_name: "", email: "", role: "sdr" });
+      }
+    } catch (error: any) {
+      // Error is handled by the hook (toast notification)
+      // Don't close dialog on error so user can fix and retry
+      console.error('Error in handleAddMember:', error);
+      // Dialog will remain open so user can fix the issue
     }
   };
 
@@ -133,6 +153,35 @@ export default function Team() {
       setFormData({ full_name: "", email: "", role: "sdr" });
     } catch (error) {
       // Error is handled by the hook
+    }
+  };
+
+  const handleResendInvitation = async (userId: string) => {
+    try {
+      const result = await teamMembersApi.resendInvitation(userId);
+      if (result.success) {
+        toast.success(result.message || 'Invitation email sent successfully');
+      } else {
+        toast.error(result.message || 'Failed to resend invitation');
+      }
+    } catch (error: any) {
+      console.error('Error resending invitation:', error);
+      toast.error(error?.message || 'Failed to resend invitation');
+    }
+  };
+
+  const handleCopyInvitationLink = async (userId: string) => {
+    try {
+      const result = await teamMembersApi.getInvitationLink(userId);
+      if (result.success && result.link) {
+        await navigator.clipboard.writeText(result.link);
+        toast.success('Invitation link copied to clipboard');
+      } else {
+        toast.error(result.message || 'Failed to get invitation link');
+      }
+    } catch (error: any) {
+      console.error('Error getting invitation link:', error);
+      toast.error(error?.message || 'Failed to copy invitation link');
     }
   };
 
@@ -372,9 +421,12 @@ export default function Team() {
                 <span className="text-sm font-medium text-muted-foreground">Email</span>
               </div>
               <div className="col-span-2">
+                <span className="text-sm font-medium text-muted-foreground">Status</span>
+              </div>
+              <div className="col-span-2">
                 <span className="text-sm font-medium text-muted-foreground">Role</span>
               </div>
-              <div className="col-span-3 text-right">
+              <div className="col-span-1 text-right">
                 <span className="text-sm font-medium text-muted-foreground">Actions</span>
               </div>
             </div>
@@ -390,12 +442,7 @@ export default function Team() {
                   )}
                 >
                   {/* Member Info */}
-                  <div className="col-span-4 flex items-center gap-4">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
-                        {getInitials(member.full_name || member.email)}
-                      </AvatarFallback>
-                    </Avatar>
+                  <div className="col-span-4 flex items-center gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="font-medium text-sm truncate">
                         {member.full_name || "Unnamed"}
@@ -416,6 +463,16 @@ export default function Team() {
                     </span>
                   </div>
 
+                  {/* Status */}
+                  <div className="col-span-2 flex items-center">
+                    <Badge
+                      variant={(member as any).status === 'active' ? 'default' : 'outline'}
+                      className="text-[10px] font-normal px-2 py-0.5"
+                    >
+                      {(member as any).status === 'active' ? 'Active' : 'Invited'}
+                    </Badge>
+                  </div>
+
                   {/* Role Selector */}
                   <div className="col-span-2 flex items-center">
                     <Select
@@ -434,26 +491,45 @@ export default function Team() {
                     </Select>
                   </div>
 
-                  {/* Actions */}
-                  <div className="col-span-3 flex items-center justify-end gap-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9"
-                      onClick={() => handleEditClick(member)}
-                      title="Edit member"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDeleteClick(member)}
-                      title="Delete member"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  {/* Actions - 3 Dots Menu */}
+                  <div className="col-span-1 flex items-center justify-end">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditClick(member)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        {(member as any).status === 'invited' && (
+                          <>
+                            <DropdownMenuItem onClick={() => handleResendInvitation(member.id)}>
+                              <Send className="h-4 w-4 mr-2" />
+                              Resend Invitation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleCopyInvitationLink(member.id)}>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy Invitation Link
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => handleDeleteClick(member)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               ))}

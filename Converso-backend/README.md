@@ -46,7 +46,26 @@ SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # Optional, for seeding
 PORT=3001
 NODE_ENV=development
+FRONTEND_URL=http://localhost:8082
+
+# SMTP Configuration (for sending invitation emails)
+# These should match the SMTP settings configured in Supabase Dashboard
+# Go to: Supabase Dashboard > Project Settings > Authentication > SMTP Settings
+# Based on your Supabase configuration:
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=info@leadnex.co
+SMTP_PASSWORD=your_smtp_password_here  # Get this from Supabase Dashboard (it's masked for security)
+SMTP_FROM_EMAIL=info@leadnex.co  # Optional, defaults to SMTP_USER
+SMTP_FROM_NAME=Converso AI  # Optional, defaults to "Converso AI"
+SMTP_SECURE=true  # true for port 465 (SSL), false for port 587 (TLS)
 ```
+
+**Important:** 
+- The SMTP password is the same one configured in Supabase Dashboard
+- Since Supabase masks the password for security, you'll need to re-enter it in your `.env` file
+- If you don't remember the password, you can update it in Supabase Dashboard and then use the new password in your `.env` file
+- The SMTP settings in Supabase are used for auth emails, and we use the same credentials for custom invitation emails
 
 ## 🐳 Docker
 

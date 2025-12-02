@@ -50,6 +50,11 @@ export interface TeamMember {
   email: string;
   avatar_url?: string;
   role: 'admin' | 'sdr';
+  status?: 'invited' | 'active';
+  workspace_id?: string;
+  is_deleted?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ConnectedAccount {

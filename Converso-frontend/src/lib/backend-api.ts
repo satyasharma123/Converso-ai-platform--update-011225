@@ -216,6 +216,20 @@ export const teamMembersApi = {
   async delete(id: string): Promise<void> {
     await apiClient.delete(`/api/team-members/${id}`);
   },
+
+  /**
+   * Resend invitation email to a team member
+   */
+  async resendInvitation(id: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.post<{ success: boolean; message: string }>(`/api/team-members/${id}/resend-invitation`, {});
+  },
+
+  /**
+   * Get invitation link for a team member
+   */
+  async getInvitationLink(id: string): Promise<{ success: boolean; link?: string; message: string }> {
+    return apiClient.get<{ success: boolean; link?: string; message: string }>(`/api/team-members/${id}/invitation-link`);
+  },
 };
 
 // ==================== Connected Accounts API ====================

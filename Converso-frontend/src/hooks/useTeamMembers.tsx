@@ -25,13 +25,24 @@ export function useCreateTeamMember() {
     }) => {
       return teamMembersApi.create(data);
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['team-members'] });
-      toast.success('Team member created successfully');
+      if (variables.role === 'sdr') {
+        toast.success('Team member created successfully. Invitation email sent.', {
+          duration: 5000,
+        });
+      } else {
+        toast.success('Team member created successfully', {
+          duration: 3000,
+        });
+      }
     },
     onError: (error: any) => {
       console.error('Error creating team member:', error);
-      toast.error(error?.message || 'Failed to create team member');
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to create team member';
+      toast.error(errorMessage, {
+        duration: 4000, // Auto-dismiss after 4 seconds
+      });
     },
   });
 }
@@ -55,7 +66,9 @@ export function useUpdateTeamMember() {
     },
     onError: (error: any) => {
       console.error('Error updating team member:', error);
-      toast.error(error?.message || 'Failed to update team member');
+      toast.error(error?.message || 'Failed to update team member', {
+        duration: 4000,
+      });
     },
   });
 }
@@ -79,7 +92,9 @@ export function useUpdateTeamMemberRole() {
     },
     onError: (error: any) => {
       console.error('Error updating role:', error);
-      toast.error(error?.message || 'Failed to update role');
+      toast.error(error?.message || 'Failed to update role', {
+        duration: 4000,
+      });
     },
   });
 }
@@ -97,7 +112,9 @@ export function useDeleteTeamMember() {
     },
     onError: (error: any) => {
       console.error('Error deleting team member:', error);
-      toast.error(error?.message || 'Failed to delete team member');
+      toast.error(error?.message || 'Failed to delete team member', {
+        duration: 4000,
+      });
     },
   });
 }

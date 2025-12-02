@@ -77,18 +77,27 @@ router.post(
       return res.status(400).json({ error: 'Role must be either admin or sdr' });
     }
 
-    // Get workspace ID for the current user
+    // Get workspace ID and admin info for the current user
     let workspaceId: string | undefined;
+    let adminName: string | undefined;
     if (userId) {
       const { data: profile } = await supabaseAdmin
         .from('profiles')
-        .select('workspace_id')
+        .select('workspace_id, full_name')
         .eq('id', userId)
         .single();
       workspaceId = profile?.workspace_id;
+      adminName = profile?.full_name;
     }
 
-    const member = await teamMembersService.createMember(email, full_name, role, workspaceId);
+    const member = await teamMembersService.createMember(
+      email, 
+      full_name, 
+      role, 
+      workspaceId,
+      userId,
+      adminName
+    );
     res.status(201).json({ data: member });
   })
 );
@@ -125,6 +134,58 @@ router.delete(
 
     await teamMembersService.deleteMember(id);
     res.json({ message: 'Team member deleted successfully' });
+  })
+);
+
+/**
+ * POST /api/team-members/:id/resend-invitation
+ * Resend invitation email to a team member
+ */
+router.post(
+  '/:id/resend-invitation',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
+
+    // Get admin info
+    let adminName: string | undefined;
+    if (userId) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single();
+      adminName = profile?.full_name;
+    }
+
+    const result = await teamMembersService.resendInvitation(id, userId, adminName);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  })
+);
+
+/**
+ * GET /api/team-members/:id/invitation-link
+ * Get invitation link for a team member
+ */
+router.get(
+  '/:id/invitation-link',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id } = req.params;
+    
+    const result = await teamMembersService.getInvitationLink(id);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
   })
 );
 

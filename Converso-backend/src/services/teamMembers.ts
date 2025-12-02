@@ -46,13 +46,15 @@ export const teamMembersService = {
     email: string,
     fullName: string,
     role: 'admin' | 'sdr',
-    workspaceId?: string
+    workspaceId?: string,
+    adminUserId?: string,
+    adminName?: string
   ): Promise<TeamMember> {
     if (!email || !fullName) {
       throw new Error('Email and full name are required');
     }
 
-    return teamMembersApi.createTeamMember(email, fullName, role, workspaceId);
+    return teamMembersApi.createTeamMember(email, fullName, role, workspaceId, adminUserId, adminName);
   },
 
   /**
@@ -78,6 +80,32 @@ export const teamMembersService = {
     }
 
     return teamMembersApi.deleteTeamMember(userId);
+  },
+
+  /**
+   * Resend invitation email to a team member
+   */
+  async resendInvitation(
+    userId: string,
+    adminUserId?: string,
+    adminName?: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    return teamMembersApi.resendInvitation(userId, adminUserId, adminName);
+  },
+
+  /**
+   * Get invitation link for a team member
+   */
+  async getInvitationLink(userId: string): Promise<{ success: boolean; link?: string; message: string }> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    return teamMembersApi.getInvitationLink(userId);
   },
 };
 
