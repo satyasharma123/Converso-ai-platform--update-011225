@@ -376,12 +376,12 @@ export default function EmailInbox() {
   };
 
   const leadData = selectedConv ? {
-    name: selectedConv.sender_name || selectedConv.senderName || '',
-    email: selectedConv.sender_email || selectedConv.senderEmail || '',
-    company: (selectedConv as any).company_name || (selectedConv as any).companyName || '',
+    name: selectedConv.sender_name || '',
+    email: selectedConv.sender_email || '',
+    company: (selectedConv as any).company_name || '',
     location: (selectedConv as any).location || '',
     stage: selectedConv.status,
-    stageId: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
+    stageId: (selectedConv as any).custom_stage_id || null,
     engagementScore: calculateEngagementScore(
       messagesForSelected.length, 
       selectedConv.last_message_at || (selectedConv as any).lastMessageAt
@@ -390,10 +390,10 @@ export default function EmailInbox() {
       selectedConv.last_message_at || (selectedConv as any).lastMessageAt
     ),
     messageCount: messagesForSelected.length,
-    source: selectedConv.conversation_type || selectedConv.type || 'email',
+    source: selectedConv.conversation_type || 'email',
     account: getAccountDisplay(selectedConv),
-    assignedTo: teamMembers?.find(m => m.id === selectedConv.assigned_to || selectedConv.assignedTo)?.full_name || "Unassigned",
-    assignedToId: selectedConv.assigned_to || selectedConv.assignedTo || '',
+    assignedTo: teamMembers?.find(m => m.id === selectedConv.assigned_to)?.full_name || "Unassigned",
+    assignedToId: selectedConv.assigned_to || '',
   } : null;
 
   // Generate timeline from actual messages
@@ -404,8 +404,8 @@ export default function EmailInbox() {
       timeline.push({
         id: "conv-created",
         type: "message" as const,
-        description: `${conv.conversation_type || conv.type === 'email' ? 'Email' : 'LinkedIn message'} received`,
-        timestamp: formatTimeAgo(conv.created_at || (conv as any).createdAt),
+        description: `${conv.conversation_type === 'email' ? 'Email' : 'LinkedIn message'} received`,
+        timestamp: formatTimeAgo((conv as any).created_at || (conv as any).createdAt),
         actor: "System"
       });
 
@@ -419,7 +419,7 @@ export default function EmailInbox() {
             type: "message" as const,
             description: "First message received",
             timestamp: formatTimeAgo(firstMessage.created_at || (firstMessage as any).createdAt),
-            actor: firstMessage.sender_name || firstMessage.senderName || "Lead"
+            actor: firstMessage.sender_name || "Lead"
           });
         } else {
           timeline.push({
@@ -427,13 +427,13 @@ export default function EmailInbox() {
             type: "message" as const,
             description: "Latest message received",
             timestamp: formatTimeAgo(lastMessage.created_at || (lastMessage as any).createdAt),
-            actor: lastMessage.sender_name || lastMessage.senderName || "Lead"
+            actor: lastMessage.sender_name || "Lead"
           });
         }
       }
 
       // Add assignment if assigned
-      const assignedMember = teamMembers?.find(m => m.id === (conv.assigned_to || conv.assignedTo));
+      const assignedMember = teamMembers?.find(m => m.id === conv.assigned_to);
       if (assignedMember) {
         timeline.push({
           id: "assignment",

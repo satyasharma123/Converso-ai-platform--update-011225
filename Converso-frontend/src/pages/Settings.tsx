@@ -15,6 +15,7 @@ import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
 import { useWorkspace, useUpdateWorkspace } from "@/hooks/useWorkspace";
 import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useCreateRoutingRule, useDeleteRoutingRule } from "@/hooks/useRoutingRules";
+import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { connectedAccountsApi } from "@/lib/backend-api";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
@@ -408,7 +409,7 @@ export default function Settings() {
                         Disconnect Account?
                       </AlertDialogTitle>
                       <AlertDialogDescription className="pt-2">
-                        Are you sure you want to disconnect <strong>{accountToDelete?.email || accountToDelete?.name || 'this account'}</strong>?
+                        Are you sure you want to disconnect <strong>{accountToDelete?.email || 'this account'}</strong>?
                         <br /><br />
                         <span className="text-destructive font-medium">
                           This action will permanently delete all associated data:
