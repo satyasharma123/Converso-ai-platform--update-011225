@@ -45,7 +45,7 @@ If you don't see the redirect URI:
 
 1. Go to **Overview** in the left menu
 2. Verify:
-   - **Application (client) ID**: Should be `c7de27fb-d0ad-4877-82a0-ce0e789a2211`
+   - **Application (client) ID**: Should be `d9b650d0-508e-4b1d-9164-6426e2807248`
 3. Go to **Certificates & secrets**
 4. Verify you have a client secret (if expired, create a new one)
 5. Update `OUTLOOK_CLIENT_SECRET` in your `.env` file if you created a new secret
@@ -81,8 +81,8 @@ If you don't see the redirect URI:
 Make sure your `.env` file in `Converso-backend` has:
 
 ```env
-OUTLOOK_CLIENT_ID=c7de27fb-d0ad-4877-82a0-ce0e789a2211
-OUTLOOK_CLIENT_SECRET=XGk8Q~iTUl1ZHp9xeFeM8TGGyV-FNFQFHIFqhaO4
+OUTLOOK_CLIENT_ID=d9b650d0-508e-4b1d-9164-6426e2807248
+OUTLOOK_CLIENT_SECRET=hmu8Q~xQmXP4ZnYvjXi76deTvf~PDyHWtQc89arh
 OUTLOOK_REDIRECT_URI=http://localhost:3001/api/integrations/outlook/callback
 OUTLOOK_TENANT_ID=common
 OUTLOOK_AUTH_URL=https://login.microsoftonline.com/common/oauth2/v2.0/authorize
@@ -104,7 +104,7 @@ If it's still not working after following all steps:
 
 3. **Verify the OAuth URL** being generated:
    - The URL should start with: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize`
-   - It should include: `client_id=c7de27fb-d0ad-4877-82a0-ce0e789a2211`
+   - It should include: `client_id=d9b650d0-508e-4b1d-9164-6426e2807248`
    - It should include: `redirect_uri=http://localhost:3001/api/integrations/outlook/callback`
 
 4. **Try creating a new app registration** in Azure as a last resort

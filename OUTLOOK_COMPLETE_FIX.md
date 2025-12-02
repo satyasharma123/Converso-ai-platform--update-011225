@@ -101,8 +101,8 @@ If the current app registration is stuck, create a fresh one:
 
 Your `.env` file should have:
 ```env
-OUTLOOK_CLIENT_ID=c7de27fb-d0ad-4877-82a0-ce0e789a2211
-OUTLOOK_CLIENT_SECRET=XGk8Q~iTUl1ZHp9xeFeM8TGGyV-FNFQFHIFqhaO4
+OUTLOOK_CLIENT_ID=d9b650d0-508e-4b1d-9164-6426e2807248
+OUTLOOK_CLIENT_SECRET=hmu8Q~xQmXP4ZnYvjXi76deTvf~PDyHWtQc89arh
 OUTLOOK_REDIRECT_URI=http://localhost:3001/api/integrations/outlook/callback
 OUTLOOK_TENANT_ID=common
 OUTLOOK_AUTH_URL=https://login.microsoftonline.com/common/oauth2/v2.0/authorize
@@ -114,7 +114,7 @@ OUTLOOK_TOKEN_URL=https://login.microsoftonline.com/common/oauth2/v2.0/token
 1. **Check backend logs** when clicking "Connect Email" → "Outlook"
 2. **Check browser console** (F12) for any JavaScript errors
 3. **Verify the OAuth URL** being generated includes:
-   - `client_id=c7de27fb-d0ad-4877-82a0-ce0e789a2211`
+   - `client_id=d9b650d0-508e-4b1d-9164-6426e2807248`
    - `redirect_uri=http://localhost:3001/api/integrations/outlook/callback`
    - Uses `/common` endpoint
 

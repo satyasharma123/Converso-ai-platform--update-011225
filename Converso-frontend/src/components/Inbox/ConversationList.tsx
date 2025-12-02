@@ -20,6 +20,7 @@ export interface Conversation {
   subject?: string;
   preview: string;
   timestamp: string;
+  lastMessageAt?: string;
   type: "email" | "linkedin";
   status: "new" | "engaged" | "qualified" | "converted" | "not_interested";
   isRead: boolean;
@@ -168,7 +169,11 @@ export function ConversationList({
                   {conversation.senderName}
                 </span>
                 <div className="flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
-                  <span className="text-xs text-muted-foreground">{formatTimeAgo(conversation.timestamp)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {(conversation.lastMessageAt || conversation.timestamp)
+                      ? formatTimeAgo(conversation.lastMessageAt || conversation.timestamp)
+                      : ""}
+                  </span>
                   {isUnread && (
                     <span className="w-1.5 h-1.5 rounded-full bg-foreground flex-shrink-0"></span>
                   )}
