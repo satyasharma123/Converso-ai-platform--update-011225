@@ -38,6 +38,10 @@ export function transformConversation(conv: Conversation): any {
     companyName: conv.company_name,
     company_name: conv.company_name, // Keep both
     location: conv.location,
+    // Email-specific fields
+    email_body: (conv as any).email_body || null,
+    has_full_body: (conv as any).has_full_body || false,
+    email_timestamp: (conv as any).email_timestamp || null,
   };
 }
 

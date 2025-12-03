@@ -70,6 +70,8 @@ interface EmailViewProps {
     assigned_to?: string;
     custom_stage_id?: string;
     is_read?: boolean;
+    email_body?: string; // Full email body for emails (stored in conversation)
+    preview?: string; // Email preview/description
   };
   messages: Message[];
 }
@@ -112,6 +114,52 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
   const currentStage = pipelineStages?.find(stage => stage.id === conversation.custom_stage_id);
+
+  // Helper function to clean HTML email body - removes excessive top spacing and malicious tags
+  const cleanEmailHtml = (html: string): string => {
+    if (!html) return html;
+    
+    // CRITICAL: Remove tags that can affect the entire page layout/styling
+    let cleaned = html
+      // Remove <html>, <head>, <body> tags (but keep their content)
+      .replace(/<\/?html[^>]*>/gi, '')
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<\/?body[^>]*>/gi, '')
+      // Remove ALL <style> tags and their content (prevents CSS injection)
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      // Remove <script> tags (security)
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      // Remove <link> tags (prevents external CSS)
+      .replace(/<link[^>]*>/gi, '')
+      // Remove <meta> tags
+      .replace(/<meta[^>]*>/gi, '')
+      // Remove <base> tags
+      .replace(/<base[^>]*>/gi, '')
+      // Remove on* event handlers (onclick, onload, etc.) - security
+      .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/\s+on\w+\s*=\s*[^\s>]*/gi, '')
+      // Remove javascript: protocol from links
+      .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
+      // Remove data: protocol for security (except images)
+      .replace(/href\s*=\s*["']data:[^"']*["']/gi, 'href="#"')
+      // Remove common spacer patterns at the start of HTML emails
+      .replace(/^[\s\n]*<div[^>]*style="[^"]*height:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
+      .replace(/^[\s\n]*<div[^>]*style="[^"]*padding-top:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
+      .replace(/^[\s\n]*<div[^>]*style="[^"]*margin-top:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
+      // Remove spacer images (1-10px height)
+      .replace(/^[\s\n]*<img[^>]*height=["']?[1-9]["']?[^>]*>/gi, '')
+      .replace(/^[\s\n]*<img[^>]*height=["']?10["']?[^>]*>/gi, '')
+      // Remove empty table rows with height at start
+      .replace(/^[\s\n]*<tr[^>]*><td[^>]*height=["']?\d+["']?[^>]*>(\s|&nbsp;)*<\/td><\/tr>/gi, '')
+      // Remove leading whitespace and newlines
+      .replace(/^[\s\n]+/, '')
+      // Remove empty paragraphs at start
+      .replace(/^<p[^>]*>(\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, '')
+      // Remove multiple consecutive empty divs at start
+      .replace(/^(<div[^>]*>\s*<\/div>\s*)+/gi, '');
+    
+    return cleaned;
+  };
 
   // Mark as read after 5 seconds
   useEffect(() => {
@@ -879,9 +927,51 @@ useEffect(() => {
         </div>
 
         {/* Email Thread */}
-        <ScrollArea className="flex-1 px-6 py-4">
+        <ScrollArea className="flex-1 px-6 pt-2 pb-4">
           <div className="space-y-0">
-            {[...messages].reverse().map((message, index) => (
+            {/* For emails: Display email body from conversation when messages array is empty */}
+            {messages.length === 0 && (conversation.email_body || conversation.preview) && (
+              <div className="space-y-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-12 w-12">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-base">
+                      {getInitials(conversation.senderName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-base font-semibold text-foreground">
+                          {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                        </p>
+                        <p className="text-sm text-foreground mt-1">
+                          <span className="font-medium">To:</span> {conversation.senderEmail}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {conversation.email_body ? (
+                  <div className="mt-16">
+                    <div 
+                      className="email-body-content"
+                      dangerouslySetInnerHTML={{ __html: cleanEmailHtml(conversation.email_body) }}
+                    />
+                  </div>
+                ) : conversation.preview ? (
+                  <div className="mt-16">
+                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
+                      {conversation.preview}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+            
+            {/* For LinkedIn or emails with messages: Display from messages array */}
+            {messages.length > 0 && [...messages].reverse().map((message, index) => (
               <div key={message.id}>
                 {/* Latest message - full display */}
                 {index === 0 && (
@@ -894,7 +984,7 @@ useEffect(() => {
                       </Avatar>
                       
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-start justify-between">
                           <div>
                             <p className="text-base font-semibold text-foreground">
                               {message.senderName} &lt;{message.senderEmail || conversation.senderEmail}&gt;
@@ -909,13 +999,17 @@ useEffect(() => {
                     </div>
                     
                     {message.email_body ? (
-                      <div 
-                        className="email-body-content"
-                        dangerouslySetInnerHTML={{ __html: message.email_body }}
-                      />
+                      <div className="mt-16">
+                        <div 
+                          className="email-body-content"
+                          dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
+                        />
+                      </div>
                     ) : (
-                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
-                        {message.content}
+                      <div className="mt-16">
+                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
+                          {message.content}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -934,11 +1028,11 @@ useEffect(() => {
                     
                     {message.email_body ? (
                       <div 
-                        className="email-body-content opacity-80"
-                        dangerouslySetInnerHTML={{ __html: message.email_body }}
+                        className="email-body-content opacity-80 mt-4"
+                        dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
                       />
                     ) : (
-                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80">
+                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80 mt-4">
                         {message.content}
                       </div>
                     )}

@@ -12,10 +12,13 @@
  */
 
 // Microsoft Outlook OAuth2 Credentials
-const CLIENT_ID = process.env.OUTLOOK_CLIENT_ID || 'c7de27fb-d0ad-4877-82a0-ce0e789a2211';
-const CLIENT_SECRET = process.env.OUTLOOK_CLIENT_SECRET || 'XGk8Q~iTUl1ZHp9xeFeM8TGGyV-FNFQFHIFqhaO4';
+// Application (client) ID: d9b650d0-508e-4b1d-9164-6426e2807248
+// Secret ID: 431ee4e9-6011-4736-9c7b-c9fcac2651b9
+const CLIENT_ID = process.env.OUTLOOK_CLIENT_ID || 'd9b650d0-508e-4b1d-9164-6426e2807248';
+const CLIENT_SECRET = process.env.OUTLOOK_CLIENT_SECRET || 'hmu8Q~xQmXP4ZnYvjXi76deTvf~PDyHWtQc89arh';
 const REDIRECT_URI = process.env.OUTLOOK_REDIRECT_URI || 'http://localhost:3001/api/integrations/outlook/callback';
 const TENANT_ID = process.env.OUTLOOK_TENANT_ID || 'common';
+// Use 'common' endpoint for multi-tenant/personal accounts, or specific tenant ID for single tenant
 const AUTH_URL = process.env.OUTLOOK_AUTH_URL || 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 const TOKEN_URL = process.env.OUTLOOK_TOKEN_URL || 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
 

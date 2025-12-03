@@ -88,7 +88,13 @@ export default function EmailInbox() {
     
     if (emailAccounts.length === 0) {
       if (isManual) {
-        toast.info('No email accounts connected');
+        toast.error('No email accounts connected. Please connect Gmail or Outlook from Settings → Integrations', {
+          duration: 5000,
+          action: {
+            label: 'Go to Settings',
+            onClick: () => window.location.href = '/settings?tab=integrations'
+          }
+        });
       }
       return;
     }
@@ -764,7 +770,9 @@ export default function EmailInbox() {
                     status: selectedConv.status,
                     assigned_to: (selectedConv as any).assigned_to || (selectedConv as any).assignedTo,
                     custom_stage_id: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
-                    is_read: selectedConv.is_read
+                    is_read: selectedConv.is_read,
+                    email_body: (selectedConv as any).email_body || null, // Pass email body from conversation
+                    preview: (selectedConv as any).preview || null // Pass preview as fallback
                   }} 
                   messages={messagesForSelected as any}
                 />

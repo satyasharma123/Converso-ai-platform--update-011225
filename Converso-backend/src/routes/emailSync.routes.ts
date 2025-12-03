@@ -280,20 +280,22 @@ router.get(
       return res.status(404).json({ error: 'Email not found' });
     }
 
-    // If body is already stored, return it
-    if (conversation.has_full_body) {
-      // Get message with body
-      const { data: messages } = await supabaseAdmin
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', id)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
+    // If body is already stored in conversation, return it
+    if (conversation.has_full_body && conversation.email_body) {
       return res.json({ 
         data: {
           ...conversation,
-          body: messages?.[0]?.email_body || messages?.[0]?.content || conversation.preview,
+          email_body: conversation.email_body, // Return email_body from conversation
+        }
+      });
+    }
+    
+    // Fallback to preview if email_body not available but has_full_body is true
+    if (conversation.has_full_body && !conversation.email_body) {
+      return res.json({ 
+        data: {
+          ...conversation,
+          email_body: conversation.preview || '',
         }
       });
     }
@@ -311,7 +313,7 @@ router.get(
         return res.json({ 
           data: {
             ...conversation,
-            body,
+            email_body: body, // Return as email_body (not body)
             has_full_body: true,
           }
         });
@@ -324,11 +326,11 @@ router.get(
       }
     }
 
-    // Fallback to preview if no Gmail ID
+    // Fallback to preview if no message ID or can't fetch body
     res.json({ 
       data: {
         ...conversation,
-        body: conversation.preview,
+        email_body: conversation.preview || conversation.email_body || '',
       }
     });
   })

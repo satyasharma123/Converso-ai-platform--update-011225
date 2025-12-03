@@ -82,14 +82,85 @@
 
 /* Email Body Content Styling - for viewing emails */
 .email-body-content {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
+  /* CRITICAL: Contain email styles to prevent leaking to parent */
+  contain: layout style;
+  isolation: isolate;
+  display: block;
+  box-sizing: border-box;
+  
+  /* Reset to safe defaults */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
   color: inherit;
   word-wrap: break-word;
   overflow-wrap: break-word;
   max-width: 100%;
   white-space: pre-wrap; /* Preserve line breaks for plain text */
+  
+  /* Prevent layout shifts */
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+/* ========================================
+   FIX: Remove excessive top spacing from HTML emails
+   ======================================== */
+
+/* CRITICAL: Allow margin on the container itself so we can position it */
+.email-body-content {
+  /* No !important margin here so React classes can control spacing */
+}
+
+/* Remove top spacing from all first-level children (The actual email content) */
+.email-body-content > *:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.email-body-content > div:first-child,
+.email-body-content > table:first-child,
+.email-body-content > tbody:first-child,
+.email-body-content > center:first-child,
+.email-body-content > p:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Aggressively remove spacing from nested elements (common in email templates) */
+.email-body-content > * > *:first-child,
+.email-body-content > * > * > *:first-child,
+.email-body-content > * > * > * > *:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Target table cells specifically - email layouts use nested tables */
+.email-body-content table:first-child tbody:first-child tr:first-child td:first-child,
+.email-body-content table:first-child tbody:first-child tr:first-child th:first-child {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* Remove height from empty spacer rows at the top */
+.email-body-content table tbody tr:first-child td[height],
+.email-body-content table tbody tr:first-child th[height] {
+  height: 0 !important;
+  max-height: 0 !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+/* Hide empty first rows completely */
+.email-body-content table tbody tr:first-child:empty,
+.email-body-content table tbody tr:first-child td:empty,
+.email-body-content table tbody tr:first-child th:empty {
+  display: none !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 /* Reset for email HTML - override pre-wrap for HTML emails */
@@ -327,6 +398,92 @@
 /* Reset margins for email content */
 .email-body-content body,
 .email-body-content html {
-  margin: 0;
-  padding: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove ALL vertical spacing from top-level tables */
+.email-body-content > table,
+.email-body-content > div > table,
+.email-body-content > center > table {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Force first table to have zero top spacing */
+.email-body-content table:first-child,
+.email-body-content > div:first-child > table:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Hide all spacer images (1px images used for spacing) */
+.email-body-content img[height="1"],
+.email-body-content img[width="1"],
+.email-body-content img[height="2"],
+.email-body-content img[height="3"],
+.email-body-content img[height="4"],
+.email-body-content img[height="5"] {
+  display: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+}
+
+/* Hide empty divs used as spacers */
+.email-body-content > div:first-child:empty,
+.email-body-content > div:first-child > div:empty {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove height attributes from first cells if they're just spacers */
+.email-body-content table tbody tr:first-child td[height]:empty,
+.email-body-content table tbody tr:first-child th[height]:empty {
+  display: none !important;
+}
+
+/* Collapse spacer rows (common in email templates) */
+.email-body-content table tbody tr:first-child[height] {
+  height: 0 !important;
+  max-height: 0 !important;
+}
+
+.email-body-content table tbody tr:first-child td[style*="height"] {
+  height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+}
+
+/* Override inline styles that add top spacing */
+.email-body-content [style*="margin-top"]:first-child {
+  margin-top: 0 !important;
+}
+
+.email-body-content [style*="padding-top"]:first-child {
+  padding-top: 0 !important;
+}
+
+/* ========================================
+   CRITICAL: Prevent email HTML from affecting page layout
+   ======================================== */
+
+/* Override any styles that try to affect body/html from within email content */
+.email-body-content > style,
+.email-body-content style {
+  display: none !important;
+}
+
+/* Ensure all email content inherits safe typography */
+.email-body-content,
+.email-body-content * {
+  font-family: inherit !important;
+  box-sizing: border-box !important;
+}
+
+/* Force containment - email content cannot affect outside elements */
+.email-body-content {
+  transform: translateZ(0);
+  will-change: auto;
 }

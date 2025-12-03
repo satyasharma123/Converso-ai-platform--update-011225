@@ -60,6 +60,8 @@ export async function initEmailSync(
   let account: any = null;
   
   try {
+    logger.info(`[Email Sync] Initiating sync for account ${accountId}, user ${userId}`);
+    
     // Get connected account
     const { data: accountData, error: accountError } = await supabaseAdmin
       .from('connected_accounts')
@@ -68,10 +70,12 @@ export async function initEmailSync(
       .single();
 
     if (accountError || !accountData) {
-      throw new Error('Connected account not found');
+      logger.error(`[Email Sync] Connected account not found: ${accountId}`, { error: accountError });
+      throw new Error(`Connected account not found: ${accountId}. Please reconnect your email account from Settings → Integrations.`);
     }
     
     account = accountData;
+    logger.info(`[Email Sync] Found account: ${account.account_email} (${account.oauth_provider})`);
 
     // Get workspace ID
     const workspaceId = await getWorkspaceId(userId);
@@ -79,7 +83,7 @@ export async function initEmailSync(
     // Set sync status to in_progress
     await upsertSyncStatus(workspaceId, accountId, 'in_progress');
 
-    logger.info(`Starting email sync for account ${accountId}, workspace ${workspaceId}, provider: ${account.oauth_provider}`);
+    logger.info(`[Email Sync] Starting sync - Account: ${account.account_email}, Workspace: ${workspaceId}, Provider: ${account.oauth_provider}`);
 
     // Determine provider and use appropriate integration
     const isGmail = account.oauth_provider === 'google';
@@ -244,6 +248,8 @@ export async function initEmailSync(
             // Only update has_full_body if we successfully fetched the body
             if (hasBody) {
               updateData.has_full_body = true;
+              // Store full email body directly in conversation
+              updateData.email_body = emailBody;
             }
 
             await supabaseAdmin
@@ -251,25 +257,8 @@ export async function initEmailSync(
               .update(updateData)
               .eq('id', existingConv.id);
 
-            // Update message body if we have it
-            if (hasBody) {
-              const { data: existingMessages } = await supabaseAdmin
-                .from('messages')
-                .select('id')
-                .eq('conversation_id', existingConv.id)
-                .order('created_at', { ascending: true })
-                .limit(1);
-
-              if (existingMessages && existingMessages.length > 0) {
-                await supabaseAdmin
-                  .from('messages')
-                  .update({
-                    email_body: emailBody,
-                    content: emailBody, // Also update content field
-                  })
-                  .eq('id', existingMessages[0].id);
-              }
-            }
+            // ✅ No message updates - emails don't use messages table
+            logger.info(`Updated email conversation: ${parsed.subject} (${existingConv.id})`);
           } else {
             // Create new conversation with full body
             const conversationData: any = {
@@ -306,27 +295,9 @@ export async function initEmailSync(
             if (convError) {
               logger.error(`Error creating conversation for message ${parsed.messageId}:`, convError);
             } else if (newConv) {
-              // Create initial message with full body
-              const messageData: any = {
-                conversation_id: newConv.id,
-                sender_name: parsed.from.name,
-                content: emailBody || parsed.snippet,
-                email_body: hasBody ? emailBody : null,
-                is_from_lead: true,
-                created_at: parsed.timestamp.toISOString(),
-                workspace_id: workspaceId,
-              };
-              
-              // Add provider-specific message ID
-              if (isGmail) {
-                messageData.gmail_message_id = parsed.messageId;
-              } else if (isOutlook) {
-                messageData.outlook_message_id = parsed.messageId;
-              }
-              
-              await supabaseAdmin
-                .from('messages')
-                .insert(messageData);
+              // ✅ Email data is stored in conversations table only
+              // No message record needed - prevents duplicate storage
+              logger.info(`Created email conversation: ${parsed.subject} (${newConv.id})`);
             }
           }
 
@@ -388,10 +359,10 @@ export async function initEmailSync(
     // Mark sync as completed
     await upsertSyncStatus(workspaceId, accountId, 'completed');
 
-    logger.info(`Email sync completed for account ${accountId}. Total: ${totalSynced} emails synced from all folders`);
+    logger.info(`[Email Sync] ✅ Completed for ${account.account_email}. Total: ${totalSynced} emails synced from all folders`);
   } catch (error: any) {
     const errorMessage = error?.message || 'Unknown error during email sync';
-    logger.error('Error during email sync:', {
+    logger.error(`[Email Sync] ❌ Error for account ${account?.account_email || accountId}:`, {
       accountId,
       userId,
       provider: account?.oauth_provider,
@@ -451,10 +422,11 @@ export async function fetchAndStoreEmailBody(
       ? await fetchGmailEmailBody(account, messageId)
       : await fetchOutlookEmailBody(account, messageId);
 
-    // Update conversation to mark body as fetched
+    // Update conversation to store body directly in conversation table
     const { error: updateError } = await supabaseAdmin
       .from('conversations')
       .update({
+        email_body: body, // Store full email body in conversation
         has_full_body: true,
         preview: body.substring(0, 500), // Update preview with full body snippet
       })
@@ -462,25 +434,11 @@ export async function fetchAndStoreEmailBody(
 
     if (updateError) {
       logger.error('Error updating conversation with body:', updateError);
+      throw updateError;
     }
 
-    // Also update the first message in the conversation with the body
-    const { data: messages } = await supabaseAdmin
-      .from('messages')
-      .select('id')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (messages && messages.length > 0) {
-      await supabaseAdmin
-        .from('messages')
-        .update({
-          email_body: body,
-          content: body, // Also update content field
-        })
-        .eq('id', messages[0].id);
-    }
+    // ✅ No message update needed - emails store body in conversation only
+    logger.info(`Email body stored in conversation ${conversationId}`);
 
     return body;
   } catch (error: any) {

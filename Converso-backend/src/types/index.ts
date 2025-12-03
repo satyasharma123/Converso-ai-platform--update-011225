@@ -18,6 +18,14 @@ export interface Conversation {
   email_folder?: string | null;
   company_name?: string | null;
   location?: string | null;
+  // Email-specific fields (only for conversation_type = 'email')
+  email_body?: string | null; // Full email content stored directly in conversation
+  has_full_body?: boolean; // Whether full email body has been fetched
+  gmail_message_id?: string | null; // Gmail-specific message ID
+  gmail_thread_id?: string | null; // Gmail-specific thread ID
+  outlook_message_id?: string | null; // Outlook-specific message ID
+  outlook_conversation_id?: string | null; // Outlook-specific conversation ID
+  email_timestamp?: string | null; // Original email timestamp
   received_account?: {
     account_name: string;
     account_email?: string;
@@ -27,12 +35,16 @@ export interface Conversation {
 
 export interface Message {
   id: string;
-  conversation_id: string;
+  conversation_id: string; // References conversations table (for LinkedIn only)
   sender_name: string;
   sender_id?: string;
   content: string;
   created_at: string;
   is_from_lead: boolean;
+  workspace_id?: string;
+  // LinkedIn-specific fields
+  linkedin_message_id?: string | null;
+  linkedin_sender_profile_url?: string | null;
 }
 
 export interface PipelineStage {
