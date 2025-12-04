@@ -3,7 +3,7 @@ import { ConversationList } from "@/components/Inbox/ConversationList";
 import { EmailView } from "@/components/Inbox/EmailView";
 import { EmailSidebar } from "@/components/Inbox/EmailSidebar";
 import { BulkActions } from "@/components/Inbox/BulkActions";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
+import { useEmailWithBody } from "@/hooks/useEmails";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
 import { toast } from "sonner";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
@@ -407,6 +408,58 @@ export default function EmailInbox() {
   };
 
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
+  const shouldFetchFullBody = !!(
+    selectedConv &&
+    (!selectedConv.email_body || !(selectedConv as any).has_full_body)
+  );
+
+  const {
+    data: fetchedEmail,
+    isFetching: isFetchingEmailBody,
+    isError: isEmailBodyError,
+  } = useEmailWithBody(shouldFetchFullBody ? selectedConv?.id ?? null : null);
+
+  const conversationForView = useMemo(() => {
+    if (!selectedConv) return null;
+
+    if (fetchedEmail && fetchedEmail.id === selectedConv.id) {
+      return {
+        ...selectedConv,
+        ...fetchedEmail,
+        email_body:
+          fetchedEmail.email_body ||
+          (fetchedEmail as any).body ||
+          selectedConv.email_body ||
+          "",
+        email_attachments:
+          fetchedEmail.email_attachments ||
+          (fetchedEmail as any).emailAttachments ||
+          selectedConv.email_attachments ||
+          [],
+        has_full_body:
+          fetchedEmail.has_full_body ??
+          (fetchedEmail as any).has_full_body ??
+          (selectedConv as any).has_full_body,
+      };
+    }
+
+    if (
+      shouldFetchFullBody &&
+      !selectedConv.email_body &&
+      !isEmailBodyError &&
+      !fetchedEmail
+    ) {
+      return null;
+    }
+
+    return selectedConv;
+  }, [selectedConv, fetchedEmail, shouldFetchFullBody, isEmailBodyError]);
+
+  const isEmailBodyLoading =
+    shouldFetchFullBody &&
+    !selectedConv?.email_body &&
+    !fetchedEmail &&
+    isFetchingEmailBody;
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
   // Calculate engagement score based on message count, response time, and activity
@@ -759,23 +812,35 @@ export default function EmailInbox() {
               isProfileOpen && "pr-[360px]"
             )}
           >
-            {selectedConv ? (
+            {conversationForView ? (
               <div className="h-full flex flex-col">
                 <EmailView 
                   conversation={{
-                    id: selectedConv.id,
-                    senderName: (selectedConv as any).senderName || selectedConv.sender_name || '',
-                    senderEmail: (selectedConv as any).senderEmail || selectedConv.sender_email || '',
-                    subject: selectedConv.subject || '',
-                    status: selectedConv.status,
-                    assigned_to: (selectedConv as any).assigned_to || (selectedConv as any).assignedTo,
-                    custom_stage_id: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
-                    is_read: selectedConv.is_read,
-                    email_body: (selectedConv as any).email_body || null, // Pass email body from conversation
-                    preview: (selectedConv as any).preview || null // Pass preview as fallback
+                    id: conversationForView.id,
+                    senderName: (conversationForView as any).senderName || conversationForView.sender_name || '',
+                    senderEmail: (conversationForView as any).senderEmail || conversationForView.sender_email || '',
+                    subject: conversationForView.subject || '',
+                    status: conversationForView.status,
+                    assigned_to: (conversationForView as any).assigned_to || (conversationForView as any).assignedTo,
+                    custom_stage_id: (conversationForView as any).custom_stage_id || (conversationForView as any).customStageId || null,
+                    is_read: conversationForView.is_read,
+                    email_body: (conversationForView as any).email_body || null,
+                    preview: (conversationForView as any).preview || null,
+                    email_timestamp: (conversationForView as any).emailTimestamp || (conversationForView as any).email_timestamp || conversationForView.last_message_at,
+                    received_account: (conversationForView as any).received_account || (conversationForView as any).receivedAccount || null,
+                    email_attachments: (conversationForView as any).email_attachments || (conversationForView as any).emailAttachments || [],
                   }} 
                   messages={messagesForSelected as any}
                 />
+                {isEmailBodyLoading && (
+                  <div className="absolute top-4 right-4 rounded-md bg-background/80 border px-3 py-1 text-xs text-muted-foreground shadow">
+                    Loading email body…
+                  </div>
+                )}
+              </div>
+            ) : isEmailBodyLoading ? (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                <p className="text-sm">Loading email content…</p>
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
