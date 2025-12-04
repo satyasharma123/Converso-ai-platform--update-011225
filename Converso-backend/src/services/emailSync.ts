@@ -5,10 +5,10 @@
 
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
-import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody } from './gmailIntegration';
-import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody } from './outlookIntegration';
+import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody, downloadGmailAttachment } from './gmailIntegration';
+import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody, downloadOutlookAttachment } from './outlookIntegration';
 import { upsertSyncStatus, getSyncStatus, updateSyncProgress } from '../api/syncStatus';
-import type { ConnectedAccount } from '../types';
+import type { ConnectedAccount, EmailAttachment } from '../types';
 
 interface EmailMetadata {
   messageId: string;
@@ -198,21 +198,25 @@ export async function initEmailSync(
             ? parseGmailMessageMetadata(message)
             : parseOutlookMessageMetadata(message);
 
-          // Fetch full email body
-          let emailBody = '';
-          let hasBody = false;
+        // Fetch full email body
+        let emailBody = '';
+        let emailAttachments: EmailAttachment[] = [];
+        let attachmentsFetched = false;
+        let hasBody = false;
+        
+        try {
+          const bodyResult = isGmail
+            ? await fetchGmailEmailBody(account as ConnectedAccount, parsed.messageId)
+            : await fetchOutlookEmailBody(account as ConnectedAccount, parsed.messageId);
+
+          emailBody = bodyResult.body || '';
+          emailAttachments = bodyResult.attachments || [];
+          attachmentsFetched = true;
           
-          try {
-            if (isGmail) {
-              emailBody = await fetchGmailEmailBody(account as ConnectedAccount, parsed.messageId);
-            } else if (isOutlook) {
-              emailBody = await fetchOutlookEmailBody(account as ConnectedAccount, parsed.messageId);
-            }
-            
-            if (emailBody && emailBody.trim().length > 0) {
-              hasBody = true;
-            }
-          } catch (bodyError: any) {
+          if (emailBody && emailBody.trim().length > 0) {
+            hasBody = true;
+          }
+        } catch (bodyError: any) {
             // Log but don't fail the entire sync if body fetch fails
             logger.warn(`Failed to fetch email body for ${parsed.messageId}: ${bodyError.message}`);
             emailBody = parsed.snippet || ''; // Fallback to snippet
@@ -252,6 +256,10 @@ export async function initEmailSync(
               updateData.email_body = emailBody;
             }
 
+            if (attachmentsFetched) {
+              updateData.email_attachments = emailAttachments;
+            }
+
             await supabaseAdmin
               .from('conversations')
               .update(updateData)
@@ -272,6 +280,7 @@ export async function initEmailSync(
               received_on_account_id: accountId,
               workspace_id: workspaceId,
               has_full_body: hasBody,
+              email_attachments: attachmentsFetched ? emailAttachments : [],
               is_read: false,
               status: 'new',
               email_folder: parsed.folder || folder, // Store folder information
@@ -418,9 +427,12 @@ export async function fetchAndStoreEmailBody(
     }
 
     // Fetch body from appropriate API
-    const body = isGmail
+    const bodyResult = isGmail
       ? await fetchGmailEmailBody(account, messageId)
       : await fetchOutlookEmailBody(account, messageId);
+
+    const body = bodyResult.body || '';
+    const attachments = bodyResult.attachments || [];
 
     // Update conversation to store body directly in conversation table
     const { error: updateError } = await supabaseAdmin
@@ -429,6 +441,7 @@ export async function fetchAndStoreEmailBody(
         email_body: body, // Store full email body in conversation
         has_full_body: true,
         preview: body.substring(0, 500), // Update preview with full body snippet
+        email_attachments: attachments,
       })
       .eq('id', conversationId);
 

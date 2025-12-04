@@ -57,7 +57,7 @@ async function fixMissingProfiles() {
 
     // Find users without profiles
     const usersWithoutProfiles = authUsers.users.filter(
-      user => !existingProfileIds.has(user.id)
+      (user: { id: string }) => !existingProfileIds.has(user.id)
     );
 
     if (usersWithoutProfiles.length === 0) {
@@ -104,3 +104,6 @@ fixMissingProfiles()
     console.error('Fatal error:', error);
     process.exit(1);
   });
+
+
+

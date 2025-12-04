@@ -6,6 +6,8 @@
 import type { Conversation, Message } from '../types';
 
 export function transformConversation(conv: Conversation): any {
+  const canonicalTimestamp = conv.email_timestamp || conv.last_message_at;
+
   return {
     id: conv.id,
     senderName: conv.sender_name,
@@ -16,8 +18,8 @@ export function transformConversation(conv: Conversation): any {
     sender_linkedin_url: conv.sender_linkedin_url, // Keep both
     subject: conv.subject,
     preview: conv.preview,
-    timestamp: new Date(conv.last_message_at).toLocaleString(),
-    lastMessageAt: conv.last_message_at,
+    timestamp: canonicalTimestamp,
+    lastMessageAt: canonicalTimestamp,
     type: conv.conversation_type,
     conversationType: conv.conversation_type,
     status: conv.status,
@@ -40,8 +42,14 @@ export function transformConversation(conv: Conversation): any {
     location: conv.location,
     // Email-specific fields
     email_body: (conv as any).email_body || null,
-    has_full_body: (conv as any).has_full_body || false,
-    email_timestamp: (conv as any).email_timestamp || null,
+    has_full_body: conv.has_full_body || (conv as any).has_full_body || false,
+    hasFullBody: conv.has_full_body || (conv as any).has_full_body || false,
+    email_timestamp: conv.email_timestamp || null,
+    emailTimestamp: conv.email_timestamp || null,
+    email_attachments: (conv as any).email_attachments || [],
+    emailAttachments: (conv as any).email_attachments || [],
+    gmail_message_id: conv.gmail_message_id || (conv as any).gmail_message_id || null,
+    outlook_message_id: conv.outlook_message_id || (conv as any).outlook_message_id || null,
   };
 }
 

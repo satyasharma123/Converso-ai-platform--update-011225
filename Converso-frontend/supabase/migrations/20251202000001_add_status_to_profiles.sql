@@ -21,3 +21,6 @@ WHERE status = 'invited' AND created_at < NOW();
 -- Comment for clarity
 COMMENT ON COLUMN public.profiles.status IS 'User status: invited (pending signup) or active (signed up)';
 COMMENT ON COLUMN public.profiles.is_deleted IS 'Soft delete flag - true means user is deleted but kept for data integrity';
+
+
+

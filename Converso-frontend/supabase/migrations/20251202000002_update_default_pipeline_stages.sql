@@ -52,3 +52,6 @@ END $$;
 -- Add comment explaining the stages
 COMMENT ON TABLE public.pipeline_stages IS 
 'Standard pipeline stages for lead management. Admins can edit these stages as per their business needs.';
+
+
+

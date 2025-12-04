@@ -1,5 +1,15 @@
 // Shared types for backend services
 
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  mimeType?: string | null;
+  size?: number | null;
+  isInline?: boolean | null;
+  contentId?: string | null;
+  provider?: 'gmail' | 'outlook';
+}
+
 export interface Conversation {
   id: string;
   sender_name: string;
@@ -26,10 +36,14 @@ export interface Conversation {
   outlook_message_id?: string | null; // Outlook-specific message ID
   outlook_conversation_id?: string | null; // Outlook-specific conversation ID
   email_timestamp?: string | null; // Original email timestamp
+  email_attachments?: EmailAttachment[] | null;
   received_account?: {
     account_name: string;
     account_email?: string;
     account_type: string;
+    oauth_provider?: 'google' | 'microsoft' | 'linkedin' | null;
+    oauth_access_token?: string | null;
+    oauth_refresh_token?: string | null;
   };
 }
 

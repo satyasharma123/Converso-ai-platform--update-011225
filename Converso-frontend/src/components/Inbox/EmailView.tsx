@@ -115,6 +115,20 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
   const currentStage = pipelineStages?.find(stage => stage.id === conversation.custom_stage_id);
 
+  // Helper to check if content is actual HTML vs plain text
+  const isActualHtml = (content: string): boolean => {
+    if (!content) return false;
+    // Check for common HTML tags that indicate formatted content
+    // Exclude just <br> tags alone - need actual structure
+    const htmlPatterns = [
+      /<(div|p|table|tr|td|th|span|a|img|ul|ol|li|h[1-6]|center|font|b|i|u|strong|em)[^>]*>/i,
+      /<html[^>]*>/i,
+      /<body[^>]*>/i,
+      /<!DOCTYPE/i,
+    ];
+    return htmlPatterns.some(pattern => pattern.test(content));
+  };
+
   // Helper function to clean HTML email body - removes excessive top spacing and malicious tags
   const cleanEmailHtml = (html: string): string => {
     if (!html) return html;
@@ -955,10 +969,16 @@ useEffect(() => {
                 
                 {conversation.email_body ? (
                   <div className="mt-16">
-                    <div 
-                      className="email-body-content"
-                      dangerouslySetInnerHTML={{ __html: cleanEmailHtml(conversation.email_body) }}
-                    />
+                    {isActualHtml(conversation.email_body) ? (
+                      <div 
+                        className="email-body-content"
+                        dangerouslySetInnerHTML={{ __html: cleanEmailHtml(conversation.email_body) }}
+                      />
+                    ) : (
+                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
+                        {conversation.email_body}
+                      </div>
+                    )}
                   </div>
                 ) : conversation.preview ? (
                   <div className="mt-16">
@@ -1000,10 +1020,16 @@ useEffect(() => {
                     
                     {message.email_body ? (
                       <div className="mt-16">
-                        <div 
-                          className="email-body-content"
-                          dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
-                        />
+                        {isActualHtml(message.email_body) ? (
+                          <div 
+                            className="email-body-content"
+                            dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
+                          />
+                        ) : (
+                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
+                            {message.email_body}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="mt-16">
@@ -1027,10 +1053,16 @@ useEffect(() => {
                     </p>
                     
                     {message.email_body ? (
-                      <div 
-                        className="email-body-content opacity-80 mt-4"
-                        dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
-                      />
+                      isActualHtml(message.email_body) ? (
+                        <div 
+                          className="email-body-content opacity-80 mt-4"
+                          dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
+                        />
+                      ) : (
+                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80 mt-4">
+                          {message.email_body}
+                        </div>
+                      )
                     ) : (
                       <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80 mt-4">
                         {message.content}

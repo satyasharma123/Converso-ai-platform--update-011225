@@ -6,7 +6,7 @@
 
 import { google } from 'googleapis';
 import { logger } from '../utils/logger';
-import type { ConnectedAccount } from '../types';
+import type { ConnectedAccount, EmailAttachment } from '../types';
 
 interface GmailMessage {
   id: string;
@@ -27,6 +27,11 @@ interface GmailMessageMetadata {
   headers: Array<{ name: string; value: string }>;
   internalDate: string;
   folder?: string; // Track which folder this email belongs to
+}
+
+export interface GmailEmailBodyResult {
+  body: string;
+  attachments: EmailAttachment[];
 }
 
 /**
@@ -145,7 +150,7 @@ export async function fetchGmailEmailMetadata(
 export async function fetchGmailEmailBody(
   account: ConnectedAccount,
   messageId: string
-): Promise<string> {
+): Promise<GmailEmailBodyResult> {
   if (!account.oauth_access_token) {
     throw new Error('OAuth access token not found for this account');
   }
@@ -162,60 +167,105 @@ export async function fetchGmailEmailBody(
 
     const payload = message.data.payload;
     if (!payload) {
-      return '';
+      return { body: '', attachments: [] };
     }
 
-    // Extract body from payload - handle nested parts recursively
     let body = '';
-    
-    // Recursive function to extract body from parts
+    const attachments: EmailAttachment[] = [];
+
     const extractBodyFromParts = (parts: any[]): string => {
       let extractedBody = '';
-      
+
       for (const part of parts) {
-        // If this part has nested parts, recurse
+        const headers = part.headers || [];
+        const mimeType = part.mimeType?.toLowerCase() || '';
+        const filename = part.filename || '';
+        const attachmentId = part.body?.attachmentId;
+        const contentDisposition = headers.find((h: any) => h.name?.toLowerCase() === 'content-disposition')?.value?.toLowerCase() || '';
+        const contentIdHeader = headers.find((h: any) => h.name?.toLowerCase() === 'content-id')?.value || '';
+        const normalizedContentId = contentIdHeader?.replace(/[<>]/g, '') || undefined;
+        const isInline = contentDisposition.includes('inline') || Boolean(contentIdHeader);
+
+        const isAttachmentCandidate =
+          Boolean(attachmentId || filename) &&
+          !['text/plain', 'text/html'].includes(mimeType);
+
+        if (isAttachmentCandidate) {
+          attachments.push({
+            id: attachmentId || part.partId || `${mimeType}-${attachments.length}`,
+            filename: filename || normalizedContentId || 'attachment',
+            mimeType: part.mimeType,
+            size: part.body?.size,
+            isInline,
+            contentId: normalizedContentId,
+            provider: 'gmail',
+          });
+          continue;
+        }
+
         if (part.parts && part.parts.length > 0) {
           const nestedBody = extractBodyFromParts(part.parts);
           if (nestedBody) {
             extractedBody = nestedBody;
-            break; // Prefer first found body
+            break;
           }
         }
-        
-        // Check if this part has body data
+
         if (part.body?.data) {
           const partBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
-          const mimeType = part.mimeType?.toLowerCase() || '';
-          
-          // Prefer text/html for rich content, but fallback to text/plain
           if (mimeType === 'text/html' || (mimeType === 'text/plain' && !extractedBody)) {
             extractedBody = partBody;
           }
         }
       }
-      
+
       return extractedBody;
     };
-    
-    // Check if body is directly in payload (simple emails)
+
     if (payload.body?.data) {
       body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
-    } 
-    // Check parts for body (multipart emails)
-    else if (payload.parts && payload.parts.length > 0) {
+    } else if (payload.parts && payload.parts.length > 0) {
       body = extractBodyFromParts(payload.parts);
-      
-      // If still no body, try getting from first part directly
+
       if (!body && payload.parts[0]?.body?.data) {
         body = Buffer.from(payload.parts[0].body.data, 'base64').toString('utf-8');
       }
     }
 
-    return body || '';
+    return {
+      body: body || '',
+      attachments,
+    };
   } catch (error: any) {
     logger.error('Error fetching Gmail email body:', error);
     throw new Error(`Failed to fetch email body: ${error.message}`);
   }
+}
+
+/**
+ * Download Gmail attachment data
+ */
+export async function downloadGmailAttachment(
+  account: ConnectedAccount,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer> {
+  if (!account.oauth_access_token) {
+    throw new Error('OAuth access token not found for this account');
+  }
+
+  const gmail = getGmailClient(account.oauth_access_token);
+  const response = await gmail.users.messages.attachments.get({
+    userId: 'me',
+    messageId,
+    id: attachmentId,
+  });
+
+  if (!response.data.data) {
+    return Buffer.alloc(0);
+  }
+
+  return Buffer.from(response.data.data, 'base64');
 }
 
 /**

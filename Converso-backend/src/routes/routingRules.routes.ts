@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { routingRulesService } from '../services/routingRules';
 import { asyncHandler } from '../utils/errorHandler';
-import { optionalAuth } from '../middleware/auth';
+import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 

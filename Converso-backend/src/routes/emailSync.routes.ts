@@ -8,6 +8,8 @@ import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { getSyncStatus, upsertSyncStatus } from '../api/syncStatus';
 import { initEmailSync, fetchAndStoreEmailBody } from '../services/emailSync';
+import { downloadGmailAttachment } from '../services/gmailIntegration';
+import { downloadOutlookAttachment } from '../services/outlookIntegration';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import { workspaceService } from '../services/workspace';
@@ -333,6 +335,85 @@ router.get(
         email_body: conversation.preview || conversation.email_body || '',
       }
     });
+  })
+);
+
+/**
+ * GET /api/emails/:id/attachments/:attachmentId/download
+ * Download an attachment for a specific email
+ */
+router.get(
+  '/:id/attachments/:attachmentId/download',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { id, attachmentId } = req.params;
+
+    const { data: conversation, error } = await supabaseAdmin
+      .from('conversations')
+      .select(`
+        id,
+        email_attachments,
+        gmail_message_id,
+        outlook_message_id,
+        received_account:connected_accounts(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !conversation) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    const attachments: any[] = conversation.email_attachments || [];
+    const attachment = attachments.find((att) => att.id === attachmentId);
+
+    if (!attachment) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    const account = conversation.received_account as any;
+    if (!account) {
+      return res.status(400).json({ error: 'Email account not available for this message' });
+    }
+
+    const isGmail = account.oauth_provider === 'google';
+    const isOutlook = account.oauth_provider === 'microsoft';
+
+    try {
+      let fileBuffer: Buffer;
+
+      if (isGmail) {
+        if (!conversation.gmail_message_id) {
+          return res.status(400).json({ error: 'Gmail message ID missing for this email' });
+        }
+        fileBuffer = await downloadGmailAttachment(
+          account,
+          conversation.gmail_message_id,
+          attachmentId
+        );
+      } else if (isOutlook) {
+        if (!conversation.outlook_message_id) {
+          return res.status(400).json({ error: 'Outlook message ID missing for this email' });
+        }
+        fileBuffer = await downloadOutlookAttachment(
+          account,
+          conversation.outlook_message_id,
+          attachmentId
+        );
+      } else {
+        return res.status(400).json({ error: 'Unsupported email provider for attachments' });
+      }
+
+      res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(attachment.filename || 'attachment')}"`
+      );
+      res.send(fileBuffer);
+    } catch (downloadError: any) {
+      logger.error('Attachment download error:', downloadError);
+      res.status(500).json({ error: downloadError.message || 'Failed to download attachment' });
+    }
   })
 );
 

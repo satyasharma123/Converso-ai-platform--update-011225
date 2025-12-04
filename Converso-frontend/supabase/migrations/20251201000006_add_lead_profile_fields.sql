@@ -15,3 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_conversations_location
 -- Notify PostgREST to reload schema
 SELECT pg_notify('pgrst', 'reload schema');
 
+
+
+

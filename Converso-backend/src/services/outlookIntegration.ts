@@ -4,7 +4,7 @@
  */
 
 import { logger } from '../utils/logger';
-import type { ConnectedAccount } from '../types';
+import type { ConnectedAccount, EmailAttachment } from '../types';
 
 interface OutlookMessage {
   id: string;
@@ -37,6 +37,11 @@ interface OutlookMessageMetadata {
     };
   };
   folder?: string; // Track which folder this email belongs to
+}
+
+export interface OutlookEmailBodyResult {
+  body: string;
+  attachments: EmailAttachment[];
 }
 
 /**
@@ -171,7 +176,7 @@ function extractSkipToken(nextLink: string): string | undefined {
 export async function fetchOutlookEmailBody(
   account: ConnectedAccount,
   messageId: string
-): Promise<string> {
+): Promise<OutlookEmailBodyResult> {
   if (!account.oauth_access_token) {
     throw new Error('OAuth access token not found for this account');
   }
@@ -179,7 +184,7 @@ export async function fetchOutlookEmailBody(
   try {
     // Fetch body with both HTML and text formats
     const response = await fetch(
-      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview`,
+      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview,hasAttachments&$expand=attachments($select=id,name,contentType,size,isInline,contentId)`,
       {
         headers: {
           Authorization: `Bearer ${account.oauth_access_token}`,
@@ -217,16 +222,27 @@ export async function fetchOutlookEmailBody(
     const message: any = await response.json();
     
     // Extract body content - prefer HTML, fallback to text, then bodyPreview
+    const attachments: EmailAttachment[] = (message?.attachments || []).map((attachment: any) => ({
+      id: attachment.id,
+      filename: attachment.name,
+      mimeType: attachment.contentType,
+      size: attachment.size,
+      isInline: attachment.isInline,
+      contentId: attachment.contentId,
+      provider: 'outlook',
+    }));
+
+    let bodyContent = '';
     if (message?.body?.content) {
-      return message.body.content;
+      bodyContent = message.body.content;
+    } else if (message?.bodyPreview) {
+      bodyContent = message.bodyPreview;
     }
 
-    // Fallback to bodyPreview if body is not available
-    if (message?.bodyPreview) {
-      return message.bodyPreview;
-    }
-
-    return '';
+    return {
+      body: bodyContent,
+      attachments,
+    };
   } catch (error: any) {
     logger.error('Error fetching Outlook email body:', {
       messageId,
@@ -235,6 +251,34 @@ export async function fetchOutlookEmailBody(
     });
     throw error;
   }
+}
+
+export async function downloadOutlookAttachment(
+  account: ConnectedAccount,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer> {
+  if (!account.oauth_access_token) {
+    throw new Error('OAuth access token not found for this account');
+  }
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments/${attachmentId}/$value`,
+    {
+      headers: {
+        Authorization: `Bearer ${account.oauth_access_token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const statusCode = response.status;
+    const message = await response.text();
+    throw new Error(`Failed to download Outlook attachment (status ${statusCode}): ${message}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 /**
