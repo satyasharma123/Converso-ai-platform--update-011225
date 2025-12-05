@@ -17,6 +17,76 @@ import { LINKEDIN_INITIAL_SYNC_DAYS } from '../config/unipile';
 import { checkAndConsumeDmQuota } from './linkedinUsageGuard';
 
 /**
+ * Fetch chats from Unipile with fallback paths
+ * Primary: /accounts/{id}/chats
+ * Fallback: /chats?account_id={id}
+ */
+async function fetchChats(
+  unipileAccountId: string,
+  since: string,
+  limit: number
+): Promise<UnipileConversation[]> {
+  try {
+    const { items } = await unipileGet<{ items: UnipileConversation[] }>(
+      `/accounts/${unipileAccountId}/chats`,
+      {
+        since,
+        limit,
+      }
+    );
+    return items || [];
+  } catch (err: any) {
+    // Fallback if path not supported
+    logger.warn(`[LinkedIn Messaging] Fallback to /chats?account_id after error: ${err.message}`);
+    const { items } = await unipileGet<{ items: UnipileConversation[] }>(
+      `/chats`,
+      {
+        account_id: unipileAccountId,
+        since,
+        limit,
+      }
+    );
+    return items || [];
+  }
+}
+
+/**
+ * Fetch chat messages with fallback paths
+ * Primary: /accounts/{id}/chats/{chatId}/messages
+ * Fallback: /chats/{chatId}/messages?account_id={id}
+ */
+async function fetchChatMessages(
+  unipileAccountId: string,
+  chatId: string,
+  since: string,
+  limit: number
+): Promise<UnipileMessage[]> {
+  try {
+    const { items } = await unipileGet<{ items: UnipileMessage[] }>(
+      `/accounts/${unipileAccountId}/chats/${chatId}/messages`,
+      {
+        since,
+        limit,
+      }
+    );
+    return items || [];
+  } catch (err: any) {
+    logger.warn(
+      `[LinkedIn Messaging] Fallback to /chats/${chatId}/messages?account_id after error: ${err.message}`
+    );
+    const { items } = await unipileGet<{ items: UnipileMessage[] }>(
+      `/chats/${chatId}/messages`,
+      {
+        account_id: unipileAccountId,
+        since,
+        limit,
+      }
+    );
+    return items || [];
+  }
+}
+
+/**
  * Initial sync: Import last N days of LinkedIn DMs
  */
 export async function initialSyncLastNDays(
@@ -50,14 +120,8 @@ export async function initialSyncLastNDays(
       .update({ sync_status: 'syncing', sync_error: null })
       .eq('id', accountId);
 
-    // Fetch conversations (chats) from Unipile
-    const { items: conversations } = await unipileGet<{ items: UnipileConversation[] }>(
-      `/accounts/${account.unipile_account_id}/chats`,
-      {
-        since: sinceTimestamp,
-        limit: 100, // Adjust as needed
-      }
-    );
+    // Fetch conversations (chats) from Unipile with fallback
+    const conversations = await fetchChats(account.unipile_account_id, sinceTimestamp, 100);
 
     logger.info(`[LinkedIn Messaging] Found ${conversations.length} conversations`);
 
@@ -71,12 +135,11 @@ export async function initialSyncLastNDays(
         const conversationId = await upsertConversation(accountId, workspaceId, conv);
 
         // Fetch messages for this conversation
-        const { items: messages } = await unipileGet<{ items: UnipileMessage[] }>(
-          `/accounts/${account.unipile_account_id}/chats/${conv.id}/messages`,
-          {
-            since: sinceTimestamp,
-            limit: 100,
-          }
+        const messages = await fetchChatMessages(
+          account.unipile_account_id,
+          conv.id,
+          sinceTimestamp,
+          100
         );
 
         // Upsert messages
@@ -153,14 +216,8 @@ export async function syncNewMessagesFromUnipile(
 
     logger.info(`[LinkedIn Messaging] Syncing messages since ${sinceTimestamp}`);
 
-    // Fetch new conversations
-    const { items: conversations } = await unipileGet<{ items: UnipileConversation[] }>(
-      `/accounts/${account.unipile_account_id}/chats`,
-      {
-        since: sinceTimestamp,
-        limit: 50,
-      }
-    );
+    // Fetch new conversations with fallback
+    const conversations = await fetchChats(account.unipile_account_id, sinceTimestamp, 50);
 
     let conversationCount = 0;
     let messageCount = 0;
@@ -169,13 +226,12 @@ export async function syncNewMessagesFromUnipile(
       try {
         const conversationId = await upsertConversation(accountId, workspaceId, conv);
 
-        // Fetch new messages
-        const { items: messages } = await unipileGet<{ items: UnipileMessage[] }>(
-          `/accounts/${account.unipile_account_id}/chats/${conv.id}/messages`,
-          {
-            since: sinceTimestamp,
-            limit: 50,
-          }
+        // Fetch new messages with fallback
+        const messages = await fetchChatMessages(
+          account.unipile_account_id,
+          conv.id,
+          sinceTimestamp,
+          50
         );
 
         const inserted = await upsertMessages(conversationId, workspaceId, accountId, messages);
@@ -313,7 +369,10 @@ async function upsertConversation(
     return existing.id;
   } else {
     // Create new
-    const participantNames = conv.participants.map((p) => p.name).join(', ');
+    const participantNames = (conv.participants || [])
+      .map((p) => p.name || '')
+      .filter(Boolean)
+      .join(', ') || 'Unknown';
 
     const { data, error } = await supabaseAdmin
       .from('conversations')
