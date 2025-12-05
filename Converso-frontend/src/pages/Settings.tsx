@@ -473,17 +473,35 @@ export default function Settings() {
                                 <Linkedin className="h-4 w-4 text-blue-600" />
                                 <span className="text-sm">{account.account_name}</span>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRemoveAccount({
-                                  id: account.id,
-                                  name: account.account_name,
-                                  type: 'linkedin'
-                                })}
-                              >
-                                Disconnect
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      const { initialSyncLinkedIn } = await import('@/api/linkedin');
+                                      const res = await initialSyncLinkedIn(account.id);
+                                      toast.success(`Sync started: ${res.conversations} conversations, ${res.messages} messages`);
+                                      await handleLinkedInSuccess();
+                                    } catch (err: any) {
+                                      toast.error(err.message || 'Failed to sync');
+                                    }
+                                  }}
+                                >
+                                  Sync
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveAccount({
+                                    id: account.id,
+                                    name: account.account_name,
+                                    type: 'linkedin'
+                                  })}
+                                >
+                                  Disconnect
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
