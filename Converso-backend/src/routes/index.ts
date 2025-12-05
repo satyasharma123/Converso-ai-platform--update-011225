@@ -14,6 +14,8 @@ import routingRulesRoutes from './routingRules.routes';
 import integrationsRoutes from './integrations.routes';
 import emailSyncRoutes from './emailSync.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
+import linkedinUnipileRoutes from './linkedinUnipile.routes';
+import unipileWebhookRoutes from './unipileWebhook.routes';
 import testRoutes from './test.routes';
 
 const router = Router();
@@ -35,10 +37,13 @@ router.use('/integrations', integrationsRoutes);
 router.use('/emails', emailSyncRoutes);
 router.use('/email-templates', emailTemplatesRoutes);
 
+// LinkedIn routes (Unipile-based)
+router.use('/linkedin', linkedinUnipileRoutes);
+router.use('/unipile', unipileWebhookRoutes);
+
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {
   router.use('/test', testRoutes);
 }
 
 export default router;
-

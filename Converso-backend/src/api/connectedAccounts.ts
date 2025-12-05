@@ -8,17 +8,47 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function getConnectedAccounts(userId?: string, client?: SupabaseClient): Promise<ConnectedAccount[]> {
   const dbClient = client || supabase;
-  let query = dbClient
+  
+  // If userId is provided, get their workspace_id and fetch all accounts for that workspace
+  if (userId) {
+    // First, get the user's workspace_id from their profile
+    const { data: profile } = await dbClient
+      .from('profiles')
+      .select('workspace_id')
+      .eq('id', userId) // profiles primary key is id (not user_id)
+      .single();
+    
+    if (profile?.workspace_id) {
+      // Fetch all accounts for this workspace (includes email accounts via user_id AND LinkedIn via workspace_id)
+      const { data, error } = await dbClient
+        .from('connected_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .or(`user_id.eq.${userId},workspace_id.eq.${profile.workspace_id}`)
+        .order('account_name');
+      
+      if (error) throw error;
+      return data as ConnectedAccount[];
+    } else {
+      // Fallback to user_id only if no workspace found
+      const { data, error } = await dbClient
+        .from('connected_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .eq('user_id', userId)
+        .order('account_name');
+      
+      if (error) throw error;
+      return data as ConnectedAccount[];
+    }
+  }
+  
+  // No userId provided, fetch all accounts
+  const { data, error } = await dbClient
     .from('connected_accounts')
     .select('*')
     .eq('is_active', true)
     .order('account_name');
-
-  if (userId) {
-    query = query.eq('user_id', userId);
-  }
-
-  const { data, error } = await query;
 
   if (error) throw error;
   return data as ConnectedAccount[];

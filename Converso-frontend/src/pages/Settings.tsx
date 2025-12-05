@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Mail, Linkedin, Link, Loader2, AlertTriangle } from "lucide-react";
 import { RulesEngine } from "@/components/Admin/RulesEngine";
 import { PipelineStages } from "@/components/Admin/PipelineStages";
+import { LinkedInConnectDrawer } from "@/components/linkedin/LinkedInConnectDrawer";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
 import { useWorkspace, useUpdateWorkspace } from "@/hooks/useWorkspace";
@@ -17,11 +18,12 @@ import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useCreateRoutingRule, useDeleteRoutingRule } from "@/hooks/useRoutingRules";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { connectedAccountsApi } from "@/lib/backend-api";
+import { getLinkedInAccounts, disconnectLinkedInAccount } from "@/api/linkedin";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export default function Settings() {
   const { user, userRole } = useAuth();
@@ -35,8 +37,21 @@ export default function Settings() {
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
   const updateWorkspace = useUpdateWorkspace();
   const { data: connectedAccounts = [], isLoading: accountsLoading, refetch: refetchAccounts } = useConnectedAccounts();
+  const {
+    data: linkedInAccountsData = [],
+    isLoading: linkedInAccountsLoading,
+    refetch: refetchLinkedInAccounts,
+  } = useQuery({
+    queryKey: ['linkedin_accounts', workspace?.id],
+    queryFn: async () => {
+      if (!workspace?.id) return [];
+      const res = await getLinkedInAccounts(workspace.id);
+      return res.accounts || [];
+    },
+    enabled: !!workspace?.id,
+  });
   const queryClient = useQueryClient();
-  const [accountToDelete, setAccountToDelete] = useState<{ id: string; email: string } | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<{ id: string; email?: string; name?: string; type?: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Get active tab from URL or default
@@ -54,9 +69,7 @@ export default function Settings() {
 
   // Integrations state
   const [isEmailProviderModalOpen, setIsEmailProviderModalOpen] = useState(false);
-  const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
-  const [newLinkedInAccount, setNewLinkedInAccount] = useState({ name: "", type: "linkedin" as "email" | "linkedin" });
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
+  const [isLinkedInDrawerOpen, setIsLinkedInDrawerOpen] = useState(false);
 
   // Initialize form values from data
   useEffect(() => {
@@ -188,37 +201,9 @@ export default function Settings() {
     }
   };
 
-  const handleAddLinkedInAccount = async () => {
-    if (!newLinkedInAccount.name.trim()) {
-      toast.error("Account name is required");
-      return;
-    }
-
-    if (!user?.id) {
-      toast.error("User not authenticated");
-      return;
-    }
-
-    setIsAddingAccount(true);
-
-    try {
-      await connectedAccountsApi.create({
-        account_name: newLinkedInAccount.name,
-        account_email: null,
-        account_type: "linkedin",
-        is_active: true,
-        user_id: user.id,
-      });
-
-      toast.success("LinkedIn account connected successfully");
-      setIsLinkedInModalOpen(false);
-      setNewLinkedInAccount({ name: "", type: "linkedin" });
-      refetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to connect LinkedIn account");
-    } finally {
-      setIsAddingAccount(false);
-    }
+  const handleLinkedInSuccess = async () => {
+    // Refresh both general accounts and LinkedIn accounts after successful connect/refresh
+    await Promise.all([refetchAccounts(), refetchLinkedInAccounts()]);
   };
 
   const handleRemoveAccount = async (account: { id: string; email?: string; name?: string }) => {
@@ -234,11 +219,16 @@ export default function Settings() {
 
     setIsDeleting(true);
     try {
-      await connectedAccountsApi.delete(accountToDelete.id);
-      
-      // Invalidate and refetch connected accounts
-      await queryClient.invalidateQueries({ queryKey: ['connected_accounts'] });
-      await refetchAccounts();
+      // If this is a LinkedIn account, call LinkedIn disconnect
+      const isLinkedIn = accountToDelete.type === 'linkedin';
+      if (isLinkedIn) {
+        await disconnectLinkedInAccount(accountToDelete.id);
+        await refetchLinkedInAccounts();
+      } else {
+        await connectedAccountsApi.delete(accountToDelete.id);
+        await queryClient.invalidateQueries({ queryKey: ['connected_accounts'] });
+        await refetchAccounts();
+      }
       
       toast.success("Account disconnected successfully");
       setAccountToDelete(null);
@@ -250,7 +240,7 @@ export default function Settings() {
   };
 
   const emailAccounts = connectedAccounts.filter(acc => acc.account_type === "email");
-  const linkedInAccounts = connectedAccounts.filter(acc => acc.account_type === "linkedin");
+  const linkedInAccounts = linkedInAccountsData;
 
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
@@ -384,7 +374,8 @@ export default function Settings() {
                                   onClick={() => handleRemoveAccount({
                                     id: account.id,
                                     email: account.account_email,
-                                    name: account.account_name
+                                    name: account.account_name,
+                                    type: account.account_type
                                   })}
                                 >
                                   Disconnect
@@ -458,43 +449,17 @@ export default function Settings() {
                     <CardDescription>Connect your LinkedIn accounts</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <Dialog open={isLinkedInModalOpen} onOpenChange={setIsLinkedInModalOpen}>
-                      <DialogTrigger asChild>
-                        <Button onClick={() => setIsLinkedInModalOpen(true)}>
-                          <Linkedin className="h-4 w-4 mr-2" />
-                          Add LinkedIn Account
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Connect LinkedIn Account</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="linkedin-account-name">Account Name</Label>
-                            <Input
-                              id="linkedin-account-name"
-                              placeholder="e.g., LinkedIn Business Account"
-                              value={newLinkedInAccount.name}
-                              onChange={(e) => setNewLinkedInAccount({ ...newLinkedInAccount, name: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsLinkedInModalOpen(false)}>Cancel</Button>
-                          <Button onClick={handleAddLinkedInAccount} disabled={isAddingAccount}>
-                            {isAddingAccount ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Connecting...
-                              </>
-                            ) : (
-                              "Connect"
-                            )}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                    <Button onClick={() => setIsLinkedInDrawerOpen(true)}>
+                      <Linkedin className="h-4 w-4 mr-2" />
+                      Add LinkedIn Account
+                    </Button>
+
+                    {/* LinkedIn Connect Drawer */}
+                    <LinkedInConnectDrawer
+                      isOpen={isLinkedInDrawerOpen}
+                      onClose={() => setIsLinkedInDrawerOpen(false)}
+                      onSuccess={handleLinkedInSuccess}
+                    />
 
                     {accountsLoading ? (
                       <div className="text-center py-4">Loading accounts...</div>
@@ -513,7 +478,8 @@ export default function Settings() {
                                 size="sm"
                                 onClick={() => handleRemoveAccount({
                                   id: account.id,
-                                  name: account.account_name
+                                  name: account.account_name,
+                                  type: 'linkedin'
                                 })}
                               >
                                 Disconnect
