@@ -90,6 +90,7 @@ export interface ConnectedAccount {
   account_type: 'email' | 'linkedin';
   is_active: boolean;
   user_id: string;
+  workspace_id?: string;
   created_at?: string;
   // OAuth fields (optional, only for OAuth-connected accounts)
   oauth_access_token?: string | null;
@@ -99,6 +100,8 @@ export interface ConnectedAccount {
   last_synced_at?: string | null;
   sync_status?: 'pending' | 'syncing' | 'success' | 'error' | null;
   sync_error?: string | null;
+  // Unipile-specific fields (for LinkedIn accounts)
+  unipile_account_id?: string | null;
 }
 
 export interface Profile {

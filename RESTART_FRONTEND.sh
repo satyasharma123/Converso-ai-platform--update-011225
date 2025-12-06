@@ -31,3 +31,5 @@ sleep 1
 echo "✅ Starting frontend on port 8082..."
 npm run dev
 
+
+

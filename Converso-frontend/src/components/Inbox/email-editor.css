@@ -487,3 +487,157 @@
   transform: translateZ(0);
   will-change: auto;
 }
+
+/* Preserve width attributes from email HTML */
+.email-body-content [width] {
+  width: auto !important;
+  max-width: 100% !important;
+}
+
+/* Handle email containers */
+.email-body-content > table,
+.email-body-content > div > table,
+.email-body-content > center > table {
+  max-width: 100% !important;
+  width: auto !important;
+}
+
+/* Preserve spacing from email HTML */
+.email-body-content [cellpadding] td,
+.email-body-content [cellspacing] td {
+  padding: inherit;
+}
+
+/* Handle font tags (legacy email HTML) */
+.email-body-content font {
+  font-family: inherit;
+}
+
+/* Responsive images in emails */
+.email-body-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+.email-body-content img[align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Handle spacer images */
+.email-body-content img[width="1"],
+.email-body-content img[height="1"] {
+  display: inline !important;
+}
+
+/* Email buttons */
+.email-body-content a[style*="background-color"],
+.email-body-content td[style*="background-color"] a {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* Preserve email styling for colored backgrounds */
+.email-body-content [style*="background-color"] {
+  background-color: inherit !important;
+}
+
+/* Handle Outlook conditional comments gracefully */
+.email-body-content mso,
+.email-body-content o\\:p {
+  display: none;
+}
+
+/* Reset margins for email content */
+.email-body-content body,
+.email-body-content html {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove ALL vertical spacing from top-level tables */
+.email-body-content > table,
+.email-body-content > div > table,
+.email-body-content > center > table {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Force first table to have zero top spacing */
+.email-body-content table:first-child,
+.email-body-content > div:first-child > table:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Hide all spacer images (1px images used for spacing) */
+.email-body-content img[height="1"],
+.email-body-content img[width="1"],
+.email-body-content img[height="2"],
+.email-body-content img[height="3"],
+.email-body-content img[height="4"],
+.email-body-content img[height="5"] {
+  display: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+}
+
+/* Hide empty divs used as spacers */
+.email-body-content > div:first-child:empty,
+.email-body-content > div:first-child > div:empty {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove height attributes from first cells if they're just spacers */
+.email-body-content table tbody tr:first-child td[height]:empty,
+.email-body-content table tbody tr:first-child th[height]:empty {
+  display: none !important;
+}
+
+/* Collapse spacer rows (common in email templates) */
+.email-body-content table tbody tr:first-child[height] {
+  height: 0 !important;
+  max-height: 0 !important;
+}
+
+.email-body-content table tbody tr:first-child td[style*="height"] {
+  height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+}
+
+/* Override inline styles that add top spacing */
+.email-body-content [style*="margin-top"]:first-child {
+  margin-top: 0 !important;
+}
+
+.email-body-content [style*="padding-top"]:first-child {
+  padding-top: 0 !important;
+}
+
+/* ========================================
+   CRITICAL: Prevent email HTML from affecting page layout
+   ======================================== */
+
+/* Override any styles that try to affect body/html from within email content */
+.email-body-content > style,
+.email-body-content style {
+  display: none !important;
+}
+
+/* Ensure all email content inherits safe typography */
+.email-body-content,
+.email-body-content * {
+  font-family: inherit !important;
+  box-sizing: border-box !important;
+}
+
+/* Force containment - email content cannot affect outside elements */
+.email-body-content {
+  transform: translateZ(0);
+  will-change: auto;
+}

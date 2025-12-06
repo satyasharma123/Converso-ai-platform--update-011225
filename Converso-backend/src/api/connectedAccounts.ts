@@ -15,7 +15,7 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
     const { data: profile } = await dbClient
       .from('profiles')
       .select('workspace_id')
-      .eq('id', userId) // profiles primary key is id (not user_id)
+      .eq('id', userId)
       .single();
     
     if (profile?.workspace_id) {
