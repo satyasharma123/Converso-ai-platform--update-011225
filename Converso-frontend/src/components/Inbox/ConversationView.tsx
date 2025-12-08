@@ -1,4 +1,4 @@
-import { Send, MoreVertical, UserCheck, Archive } from "lucide-react";
+import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,13 @@ import { toast } from "sonner";
 interface Message {
   id: string;
   senderName: string;
+  senderProfilePictureUrl?: string | null;
+  senderLinkedinUrl?: string | null;
   content: string;
   timestamp: string;
   isFromLead: boolean;
+  reactions?: any[];
+  attachments?: any[];
 }
 
 interface ConversationViewProps {
@@ -22,6 +26,8 @@ interface ConversationViewProps {
     senderName: string;
     senderEmail?: string;
     status: string;
+    sender_profile_picture_url?: string | null;
+    sender_linkedin_url?: string | null;
   };
   messages: Message[];
 }
@@ -61,10 +67,18 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       <div className="border-b p-3 space-y-2 bg-muted/30">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-semibold text-primary">
-                {conversation.senderName.split(' ').map(n => n[0]).join('').slice(0, 2)}
-              </span>
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+              {conversation.sender_profile_picture_url ? (
+                <img
+                  src={conversation.sender_profile_picture_url}
+                  alt={conversation.senderName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-xs font-semibold text-primary">
+                  {conversation.senderName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                </span>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold truncate">{conversation.senderName}</h2>
@@ -103,7 +117,18 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                 key={message.id}
                 className={`flex ${message.isFromLead ? 'justify-start' : 'justify-end'} group`}
               >
-                <div className="flex items-start gap-1 max-w-[75%]">
+                <div className="flex items-start gap-2 max-w-[75%]">
+                  <div className="h-7 w-7 rounded-full bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center text-[10px] font-semibold">
+                    {message.senderProfilePictureUrl ? (
+                      <img
+                        src={message.senderProfilePictureUrl}
+                        alt={message.senderName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{message.senderName.split(' ').map(n => n[0]).join('').slice(0, 2)}</span>
+                    )}
+                  </div>
                   {!message.isFromLead && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -141,8 +166,58 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-[10px] font-semibold">{message.senderName}</span>
                       <span className="text-[10px] opacity-70">{message.timestamp}</span>
+                      {message.senderLinkedinUrl && (
+                        <a
+                          href={message.senderLinkedinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] underline flex items-center gap-0.5"
+                        >
+                          <LinkIcon className="h-3 w-3" />
+                          LinkedIn
+                        </a>
+                      )}
                     </div>
                     <p className="text-xs whitespace-pre-wrap">{message.content}</p>
+
+                    {/* Attachments */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {message.attachments.map((att: any, idx) => (
+                          <a
+                            key={idx}
+                            href={att.url || att.href || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded bg-background/60 px-2 py-1 text-[11px] border"
+                          >
+                            {att.type?.includes?.('image') ? (
+                              <ImageIcon className="h-3 w-3" />
+                            ) : (
+                              <FileIcon className="h-3 w-3" />
+                            )}
+                            <span className="truncate max-w-[120px]">
+                              {att.name || att.filename || 'Attachment'}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reactions */}
+                    {message.reactions && message.reactions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1 items-center">
+                        <Smile className="h-3 w-3 text-muted-foreground" />
+                        {message.reactions.map((r: any, idx) => (
+                          <span
+                            key={idx}
+                            className="text-[11px] px-1.5 py-0.5 rounded bg-background/60 border"
+                          >
+                            {r.emoji || r.reaction || '🙂'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {message.isFromLead && (
                     <DropdownMenu>

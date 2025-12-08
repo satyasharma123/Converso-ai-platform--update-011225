@@ -20,11 +20,19 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
     
     if (profile?.workspace_id) {
       // Fetch all accounts for this workspace (includes email accounts via user_id AND LinkedIn via workspace_id)
+      // Also include LinkedIn accounts that may have workspace_id missing (legacy rows) so they still appear.
       const { data, error } = await dbClient
         .from('connected_accounts')
         .select('*')
         .eq('is_active', true)
-        .or(`user_id.eq.${userId},workspace_id.eq.${profile.workspace_id}`)
+        .or(
+          [
+            `user_id.eq.${userId}`,
+            `workspace_id.eq.${profile.workspace_id}`,
+            // Fallback: legacy LinkedIn accounts without workspace_id set
+            `and(account_type.eq.linkedin,workspace_id.is.null)`
+          ].join(',')
+        )
         .order('account_name');
       
       if (error) throw error;

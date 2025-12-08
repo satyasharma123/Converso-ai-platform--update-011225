@@ -41,10 +41,10 @@ unipileClient.interceptors.response.use(
     } else if (error.request) {
       logger.error('[Unipile] No response received:', error.request);
     } else {
-      logger.error('[Unipile] Request setup error:', error.message);
+      logger.error('[Unipile] Request setup error:', (error as any)?.message || error);
     }
     
-    const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
+    const errorMsg = (error.response?.data as any)?.message || (error as any)?.message || 'Unknown error';
     throw new Error(`API request failed: ${errorMsg}`);
   }
 );
@@ -69,3 +69,7 @@ export async function unipilePatch<T>(endpoint: string, data?: any): Promise<T> 
   const response = await unipileClient.patch<T>(endpoint, data);
   return response.data;
 }
+
+
+
+

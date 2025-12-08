@@ -11,8 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
-import { useConversations } from "@/hooks/useConversations";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
+import { useConversations } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 
 export default function LinkedInInbox() {

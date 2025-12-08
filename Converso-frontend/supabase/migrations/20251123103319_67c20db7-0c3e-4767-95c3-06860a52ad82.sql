@@ -12,17 +12,37 @@ CREATE TABLE IF NOT EXISTS public.pipeline_stages (
 ALTER TABLE public.pipeline_stages ENABLE ROW LEVEL SECURITY;
 
 -- Allow admins to manage all stages
-CREATE POLICY "Admins can manage pipeline stages"
-ON public.pipeline_stages
-FOR ALL
-USING (public.has_role(auth.uid(), 'admin'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'pipeline_stages' 
+    AND policyname = 'Admins can manage pipeline stages'
+  ) THEN
+    CREATE POLICY "Admins can manage pipeline stages"
+    ON public.pipeline_stages
+    FOR ALL
+    USING (public.has_role(auth.uid(), 'admin'));
+  END IF;
+END $$;
 
 -- Allow all authenticated users to view stages
-CREATE POLICY "Users can view pipeline stages"
-ON public.pipeline_stages
-FOR SELECT
-TO authenticated
-USING (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'pipeline_stages' 
+    AND policyname = 'Users can view pipeline stages'
+  ) THEN
+    CREATE POLICY "Users can view pipeline stages"
+    ON public.pipeline_stages
+    FOR SELECT
+    TO authenticated
+    USING (true);
+  END IF;
+END $$;
 
 -- Add custom_stage field to conversations to link to custom stages
 ALTER TABLE public.conversations 
@@ -32,6 +52,7 @@ ADD COLUMN IF NOT EXISTS custom_stage_id UUID REFERENCES public.pipeline_stages(
 CREATE INDEX IF NOT EXISTS idx_conversations_custom_stage ON public.conversations(custom_stage_id);
 
 -- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_pipeline_stages_updated_at ON public.pipeline_stages;
 CREATE TRIGGER update_pipeline_stages_updated_at
 BEFORE UPDATE ON public.pipeline_stages
 FOR EACH ROW

@@ -4,7 +4,6 @@ import cors from 'cors';
 import apiRoutes from './routes';
 import { errorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
-// import { startLinkedInSyncScheduler } from './linkedin/linkedinSync'; // LinkedIn sync temporarily disabled
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,6 +11,12 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Debug logger to trace all API requests
+app.use((req, _res, next) => {
+  console.log(`[API DEBUG] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {
@@ -70,7 +75,5 @@ app.listen(PORT, () => {
   logger.info(`📡 API routes available at http://localhost:${PORT}/api`);
   logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
 
-  // Start background LinkedIn sync (every 5 minutes)
-  // startLinkedInSyncScheduler(); // LinkedIn sync temporarily disabled
 });
 

@@ -12,7 +12,10 @@ import profilesRoutes from './profiles.routes';
 import workspaceRoutes from './workspace.routes';
 import routingRulesRoutes from './routingRules.routes';
 import integrationsRoutes from './integrations.routes';
-import linkedinRoutes from './linkedin.routes';
+import linkedinMessagesRoutes from './linkedin.messages.routes';
+import linkedinAccountsRoutes from './linkedin.accounts.routes';
+import linkedinWebhookRoutes from './linkedinWebhook.routes';
+import linkedinSyncRoutes from './linkedin.sync.routes';
 import emailSyncRoutes from './emailSync.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
 import testRoutes from './test.routes';
@@ -35,7 +38,11 @@ router.use('/routing-rules', routingRulesRoutes);
 router.use('/integrations', integrationsRoutes);
 router.use('/emails', emailSyncRoutes);
 router.use('/email-templates', emailTemplatesRoutes);
-router.use('/linkedin', linkedinRoutes);
+router.use('/linkedin/messages', linkedinMessagesRoutes);
+// Mount accounts under /api/linkedin/... (no double "accounts" segment)
+router.use('/linkedin', linkedinAccountsRoutes);
+router.use('/linkedin/sync', linkedinSyncRoutes);
+router.use('/linkedin/webhook', linkedinWebhookRoutes);
 
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {

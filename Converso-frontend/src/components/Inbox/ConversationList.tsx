@@ -15,9 +15,12 @@ export interface Conversation {
   id: string;
   senderName: string;
   senderEmail?: string;
+  sender_profile_picture_url?: string;
+  sender_linkedin_url?: string;
   subject?: string;
   preview: string;
-  timestamp: string;
+  timestamp?: string;
+  last_message_at?: string;
   type: "email" | "linkedin";
   status: "new" | "engaged" | "qualified" | "converted" | "not_interested";
   isRead: boolean;
@@ -121,6 +124,13 @@ export function ConversationList({
         {conversations.map((conversation) => {
           // Determine if email is unread (show dot if unread)
           const isUnread = !(conversation.isRead ?? (conversation as any).is_read ?? false);
+          const ts = conversation.timestamp || (conversation as any).last_message_at || '';
+          const initials = (conversation.senderName || 'U')
+            .split(' ')
+            .map(n => n[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
           
           return (
           <div
@@ -143,19 +153,35 @@ export function ConversationList({
               className="flex-1 min-w-0"
               onClick={() => onConversationClick(conversation.id)}
             >
-              {/* Line 1: Sender Name (left) + Timestamp (right) */}
+              {/* Avatar + Name */}
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className={cn("text-sm truncate", isUnread && "font-bold")}>
-                  {conversation.senderName}
-                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="h-7 w-7 rounded-full bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center text-[10px] font-semibold">
+                    {conversation.sender_profile_picture_url ? (
+                      <img
+                        src={conversation.sender_profile_picture_url}
+                        alt={conversation.senderName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{initials}</span>
+                    )}
+                  </div>
+                  <span className={cn("text-sm truncate", isUnread && "font-bold")}>
+                    {conversation.senderName}
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
-                  <span className="text-xs text-muted-foreground">{formatTimeAgo(conversation.timestamp)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {ts ? formatTimeAgo(ts) : ''}
+                  </span>
                   {isUnread && (
                     <span className="w-1.5 h-1.5 rounded-full bg-foreground flex-shrink-0"></span>
                   )}
                 </div>
               </div>
 
+              {/* Line 1: Sender Name (left) + Timestamp (right) */}
               {/* Line 2: Email Subject */}
               {conversation.subject && (
                 <p className={cn("text-xs text-foreground mb-1 truncate", isUnread && "font-bold")}>

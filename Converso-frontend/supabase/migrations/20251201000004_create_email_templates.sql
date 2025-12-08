@@ -21,53 +21,93 @@ CREATE INDEX IF NOT EXISTS idx_email_templates_created_by ON public.email_templa
 ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can view all templates in their workspace
-CREATE POLICY "Users can view templates in workspace"
-  ON public.email_templates FOR SELECT
-  TO authenticated
-  USING (
-    workspace_id IN (
-      SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'email_templates'
+      AND policyname = 'Users can view templates in workspace'
+  ) THEN
+    CREATE POLICY "Users can view templates in workspace"
+      ON public.email_templates FOR SELECT
+      TO authenticated
+      USING (
+        workspace_id IN (
+          SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
+        )
+      );
+  END IF;
+END $$;
 
 -- Policy: Users can create templates in their workspace
-CREATE POLICY "Users can create templates in workspace"
-  ON public.email_templates FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    workspace_id IN (
-      SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
-    )
-    AND created_by = auth.uid()
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'email_templates'
+      AND policyname = 'Users can create templates in workspace'
+  ) THEN
+    CREATE POLICY "Users can create templates in workspace"
+      ON public.email_templates FOR INSERT
+      TO authenticated
+      WITH CHECK (
+        workspace_id IN (
+          SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND created_by = auth.uid()
+      );
+  END IF;
+END $$;
 
 -- Policy: Users can update their own templates or admins can update any template
-CREATE POLICY "Users can update templates in workspace"
-  ON public.email_templates FOR UPDATE
-  TO authenticated
-  USING (
-    workspace_id IN (
-      SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
-    )
-    AND (
-      created_by = auth.uid() 
-      OR public.has_role(auth.uid(), 'admin')
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'email_templates'
+      AND policyname = 'Users can update templates in workspace'
+  ) THEN
+    CREATE POLICY "Users can update templates in workspace"
+      ON public.email_templates FOR UPDATE
+      TO authenticated
+      USING (
+        workspace_id IN (
+          SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND (
+          created_by = auth.uid() 
+          OR public.has_role(auth.uid(), 'admin')
+        )
+      );
+  END IF;
+END $$;
 
 -- Policy: Users can delete their own templates or admins can delete any template
-CREATE POLICY "Users can delete templates in workspace"
-  ON public.email_templates FOR DELETE
-  TO authenticated
-  USING (
-    workspace_id IN (
-      SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
-    )
-    AND (
-      created_by = auth.uid() 
-      OR public.has_role(auth.uid(), 'admin')
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'email_templates'
+      AND policyname = 'Users can delete templates in workspace'
+  ) THEN
+    CREATE POLICY "Users can delete templates in workspace"
+      ON public.email_templates FOR DELETE
+      TO authenticated
+      USING (
+        workspace_id IN (
+          SELECT workspace_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND (
+          created_by = auth.uid() 
+          OR public.has_role(auth.uid(), 'admin')
+        )
+      );
+  END IF;
+END $$;
 
 -- Create trigger for updated_at
 CREATE OR REPLACE FUNCTION update_email_templates_updated_at()
@@ -78,6 +118,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_email_templates_updated_at ON public.email_templates;
 CREATE TRIGGER update_email_templates_updated_at
 BEFORE UPDATE ON public.email_templates
 FOR EACH ROW

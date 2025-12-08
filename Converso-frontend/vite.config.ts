@@ -9,6 +9,13 @@ export default defineConfig(({ mode }) => ({
     host: "localhost",
     port: 8082,
     strictPort: false,
+    proxy: {
+      // Proxy API calls to backend during development to avoid CORS/port issues
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

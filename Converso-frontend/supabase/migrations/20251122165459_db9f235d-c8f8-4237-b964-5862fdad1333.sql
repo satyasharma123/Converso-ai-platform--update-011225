@@ -27,8 +27,24 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Enable realtime for conversations and messages
-ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
-ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+DO $$
+BEGIN
+  -- Try to add conversations table to publication
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+  EXCEPTION WHEN duplicate_object THEN
+    -- Table already in publication, skip
+    NULL;
+  END;
+  
+  -- Try to add messages table to publication
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+  EXCEPTION WHEN duplicate_object THEN
+    -- Table already in publication, skip
+    NULL;
+  END;
+END $$;
 
 ALTER TABLE conversations REPLICA IDENTITY FULL;
 ALTER TABLE messages REPLICA IDENTITY FULL;

@@ -17,12 +17,12 @@ import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useCreateRoutingRule, useDeleteRoutingRule } from "@/hooks/useRoutingRules";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { connectedAccountsApi } from "@/lib/backend-api";
-import { getLinkedInAccounts, initialSyncLinkedIn, disconnectLinkedInAccount } from "@/api/linkedin";
+import { initialSyncLinkedIn, disconnectLinkedInAccount } from "@/api/linkedinApi";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Settings() {
   const { user, userRole } = useAuth();
@@ -39,20 +39,17 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [accountToDelete, setAccountToDelete] = useState<{ id: string; email?: string; name?: string; type?: string } | null>(null);
   
-  // LinkedIn accounts query
-  const {
-    data: linkedInAccountsData = [],
-    isLoading: linkedInAccountsLoading,
-    refetch: refetchLinkedInAccounts,
-  } = useQuery({
-    queryKey: ['linkedin_accounts', workspace?.id],
-    queryFn: async () => {
-      if (!workspace?.id) return [];
-      const res = await getLinkedInAccounts(workspace.id);
-      return res.accounts || [];
-    },
-    enabled: !!workspace?.id,
-  });
+  useEffect(() => {
+    function handleLinkedInConnected(event: MessageEvent) {
+      if (event.data?.type === 'linkedin_connected') {
+        toast.success('LinkedIn account connected.');
+        refetchAccounts();
+      }
+    }
+    window.addEventListener('message', handleLinkedInConnected);
+    return () => window.removeEventListener('message', handleLinkedInConnected);
+  }, [refetchAccounts]);
+  
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Get active tab from URL or default
@@ -210,30 +207,53 @@ export default function Settings() {
       return;
     }
 
-    if (!user?.id) {
-      toast.error("User not authenticated");
+    if (!user?.id || !workspace?.id) {
+      toast.error("User/workspace not loaded");
       return;
     }
 
     setIsAddingAccount(true);
 
     try {
-      await connectedAccountsApi.create({
-        account_name: newLinkedInAccount.name,
-        account_email: null,
-        account_type: "linkedin",
-        is_active: true,
-        user_id: user.id,
-      });
+      // Use proxy in dev (relative /api), or absolute if provided
+      const backendUrl = import.meta.env.VITE_API_URL;
+      const startAuthUrl = backendUrl
+        ? `${backendUrl}/api/linkedin/accounts/start-auth`
+        : `/api/linkedin/accounts/start-auth`;
 
-      toast.success("LinkedIn account connected successfully");
+      // Start Hosted Auth with Unipile via backend
+      const startResp = await fetch(startAuthUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+        account_name: newLinkedInAccount.name,
+        user_id: user.id,
+          workspace_id: workspace.id,
+        }),
+      }).then(r => r.json());
+
+      if (!startResp.hostedAuthUrl) {
+        throw new Error(startResp.error || "Failed to start LinkedIn authentication");
+      }
+
+      // Open Unipile Hosted Auth popup
+      const popup = window.open(startResp.hostedAuthUrl, "UnipileAuth", "width=500,height=700");
+      const poll = setInterval(async () => {
+        if (popup && popup.closed) {
+          clearInterval(poll);
+          setIsAddingAccount(false);
+          await refetchAccounts();
+          toast.success("LinkedIn account connected. Refresh if not visible.");
+        }
+      }, 800);
+
       setIsLinkedInModalOpen(false);
       setNewLinkedInAccount({ name: "", type: "linkedin" });
-      refetchAccounts();
     } catch (error: any) {
       toast.error(error.message || "Failed to connect LinkedIn account");
     } finally {
-      setIsAddingAccount(false);
+      // Note: when popup flow finishes, we also clear loader there; keep a guard here.
+      setTimeout(() => setIsAddingAccount(false), 500);
     }
   };
 
@@ -255,7 +275,7 @@ export default function Settings() {
       // If this is a LinkedIn account, use LinkedIn disconnect
       if (accountToDelete.type === 'linkedin') {
         await disconnectLinkedInAccount(accountToDelete.id);
-        await refetchLinkedInAccounts();
+        await refetchAccounts();
       } else {
         await connectedAccountsApi.delete(accountToDelete.id);
       }
@@ -275,7 +295,7 @@ export default function Settings() {
 
   const emailAccounts = connectedAccounts.filter(acc => acc.account_type === "email");
   // Use dedicated LinkedIn accounts query to ensure workspace-level accounts are shown
-  const linkedInAccounts = linkedInAccountsData.length > 0 ? linkedInAccountsData : connectedAccounts.filter(acc => acc.account_type === "linkedin");
+  const linkedInAccounts = connectedAccounts.filter(acc => acc.account_type === "linkedin");
 
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
@@ -541,7 +561,7 @@ export default function Settings() {
                                     try {
                                       const res = await initialSyncLinkedIn(account.id);
                                       toast.success(`Sync started: ${res.conversations} conversations, ${res.messages} messages`);
-                                      await refetchLinkedInAccounts();
+                                      await refetchAccounts();
                                     } catch (err: any) {
                                       toast.error(err.message || 'Failed to sync');
                                     }

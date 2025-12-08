@@ -45,13 +45,33 @@ CREATE INDEX IF NOT EXISTS idx_conversations_gmail_message_id ON public.conversa
 ALTER TABLE public.sync_status ENABLE ROW LEVEL SECURITY;
 
 -- RLS policies for sync_status
-CREATE POLICY "Users can view sync status for their workspace"
-  ON public.sync_status FOR SELECT
-  TO authenticated
-  USING (true); -- Admins can view all, will filter by workspace in queries
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'sync_status' 
+    AND policyname = 'Users can view sync status for their workspace'
+  ) THEN
+    CREATE POLICY "Users can view sync status for their workspace"
+      ON public.sync_status FOR SELECT
+      TO authenticated
+      USING (true); -- Admins can view all, will filter by workspace in queries
+  END IF;
+END $$;
 
-CREATE POLICY "Admins can manage sync status"
-  ON public.sync_status FOR ALL
-  TO authenticated
-  USING (public.has_role(auth.uid(), 'admin'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'sync_status' 
+    AND policyname = 'Admins can manage sync status'
+  ) THEN
+    CREATE POLICY "Admins can manage sync status"
+      ON public.sync_status FOR ALL
+      TO authenticated
+      USING (public.has_role(auth.uid(), 'admin'));
+  END IF;
+END $$;
 
