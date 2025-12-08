@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Pencil, Check, X } from "lucide-react";
+import { Send, Pencil, Check, X, Linkedin, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
@@ -16,6 +16,8 @@ interface LeadProfilePanelProps {
   lead: {
     name: string;
     email?: string;
+    profilePictureUrl?: string | null;
+    linkedinUrl?: string | null;
     company?: string;
     location?: string;
     stage?: string;
@@ -177,103 +179,215 @@ export function LeadProfilePanel({ lead, timeline, conversationId }: LeadProfile
   const assignedSDRName = assignedSDR?.full_name || "Unassigned";
 
   return (
-    <div className="h-fit px-5 py-4 space-y-6 text-sm">
-      {/* Identity */}
-      <div className="rounded-2xl border border-border/40 bg-background px-4 py-3 space-y-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 space-y-2">
-            <div className="space-y-1.5">
-            {isEditingName ? (
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={editedName}
-                  onChange={(e) => setEditedName(e.target.value)}
-                  className="h-8 text-base font-semibold px-2"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveName();
-                    if (e.key === 'Escape') handleCancelEdit('name');
-                  }}
-                  autoFocus
+    <div className="h-fit px-5 py-4 space-y-4 text-sm">
+      {/* Profile Header */}
+      <div className="rounded-2xl border border-border/40 bg-background px-4 py-3">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            {/* Profile Picture */}
+            <div className="h-12 w-12 rounded-full bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-semibold">
+              {lead.profilePictureUrl ? (
+                <img
+                  src={lead.profilePictureUrl}
+                  alt={lead.name}
+                  className="h-full w-full object-cover"
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={handleSaveName}
-                >
-                  <Check className="h-3 w-3 text-green-600" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => handleCancelEdit('name')}
-                >
-                  <X className="h-3 w-3 text-red-600" />
-                </Button>
-              </div>
-            ) : (
-              <button
-                className="text-left text-base font-semibold leading-tight hover:text-primary"
-                onClick={() => setIsEditingName(true)}
-              >
-                {editedName || lead.name}
-              </button>
-            )}
-
-            {isEditingCompany ? (
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={editedCompany}
-                  onChange={(e) => setEditedCompany(e.target.value)}
-                  className="h-7 text-xs text-muted-foreground px-2"
-                  placeholder="Company name"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveCompany();
-                    if (e.key === 'Escape') handleCancelEdit('company');
-                  }}
-                  autoFocus
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={handleSaveCompany}
-                >
-                  <Check className="h-3 w-3 text-green-600" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleCancelEdit('company')}
-                >
-                  <X className="h-3 w-3 text-red-600" />
-                </Button>
-              </div>
-            ) : (
-              <button
-                className="block w-full text-left text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setIsEditingCompany(true)}
-              >
-                {editedCompany || lead.company || "Add company"}
-              </button>
-            )}
+              ) : (
+                <span className="text-muted-foreground">
+                  {lead.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </span>
+              )}
             </div>
 
-            {lead.email && (
-              <p className="text-xs text-muted-foreground break-all mt-2">{lead.email}</p>
-            )}
+            {/* Name */}
+            <div className="flex-1 min-w-0">
+              {isEditingName ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="h-7 text-base font-semibold px-2"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') handleCancelEdit('name');
+                    }}
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={handleSaveName}
+                  >
+                    <Check className="h-3 w-3 text-green-600" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => handleCancelEdit('name')}
+                  >
+                    <X className="h-3 w-3 text-red-600" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  className="text-left text-base font-semibold leading-tight hover:text-primary truncate w-full"
+                  onClick={() => setIsEditingName(true)}
+                >
+                  {editedName || lead.name}
+                </button>
+              )}
+            </div>
           </div>
 
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setIsEditingName(true)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
+          {/* LinkedIn Icon */}
+          {lead.linkedinUrl && (
+            <a
+              href={lead.linkedinUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-shrink-0 h-9 w-9 rounded-lg bg-blue-600 hover:bg-blue-700 flex items-center justify-center transition-colors"
+              title="View LinkedIn Profile"
+            >
+              <Linkedin className="h-5 w-5 text-white" />
+            </a>
+          )}
+        </div>
+
+        {/* Emails Section */}
+        <div className="space-y-2 pb-2">
+          <h4 className="text-xs font-semibold">Emails</h4>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Enriched email</span>
+            <Button variant="default" size="sm" className="h-6 text-xs">
+              Find email
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Custom email</span>
+            {lead.email ? (
+              <span className="text-xs text-foreground truncate max-w-[140px]" title={lead.email}>
+                {lead.email}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Not set</span>
+            )}
+          </div>
+        </div>
+
+        {/* Tags Section */}
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold">Tags</h4>
+            <Button variant="ghost" size="icon" className="h-6 w-6">
+              <span className="text-lg">+</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Activity */}
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold">Activity</h4>
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs">
+              Show more
+            </Button>
+          </div>
+        </div>
+
+        {/* Headline */}
+        <div className="border-t pt-3">
+          <h4 className="text-xs font-semibold mb-1">Headline</h4>
+          {isEditingCompany ? (
+            <div className="flex items-center gap-1.5">
+              <Input
+                value={editedCompany}
+                onChange={(e) => setEditedCompany(e.target.value)}
+                className="h-7 text-xs text-muted-foreground px-2"
+                placeholder="Headline"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveCompany();
+                  if (e.key === 'Escape') handleCancelEdit('company');
+                }}
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleSaveCompany}
+              >
+                <Check className="h-3 w-3 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => handleCancelEdit('company')}
+              >
+                <X className="h-3 w-3 text-red-600" />
+              </Button>
+            </div>
+          ) : (
+            <p 
+              className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+              onClick={() => setIsEditingCompany(true)}
+            >
+              {editedCompany || lead.company || "Add headline"}
+            </p>
+          )}
+        </div>
+
+        {/* Company */}
+        <div className="border-t pt-3">
+          <h4 className="text-xs font-semibold mb-1">Company</h4>
+          <p className="text-xs text-muted-foreground">
+            {editedCompany || lead.company || "Not set"}
+          </p>
+        </div>
+
+        {/* Address/Location */}
+        <div className="border-t pt-3">
+          <h4 className="text-xs font-semibold mb-1">Address</h4>
+          {isEditingLocation ? (
+            <div className="flex items-center gap-1">
+              <Input
+                value={editedLocation}
+                onChange={(e) => setEditedLocation(e.target.value)}
+                className="h-6 text-xs px-2"
+                placeholder="City, Country"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveLocation();
+                  if (e.key === 'Escape') handleCancelEdit('location');
+                }}
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
+                onClick={handleSaveLocation}
+              >
+                <Check className="h-3 w-3 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0"
+                onClick={() => handleCancelEdit('location')}
+              >
+                <X className="h-3 w-3 text-red-600" />
+              </Button>
+            </div>
+          ) : (
+            <p 
+              className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+              onClick={() => setIsEditingLocation(true)}
+            >
+              {editedLocation || lead.location || "Not set"}
+            </p>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
-import { ConversationList } from "@/components/Inbox/ConversationList";
+import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -14,12 +14,14 @@ import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
 import { useConversations } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
+import { toast } from "sonner";
 
 export default function LinkedInInbox() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState('all');
   
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
@@ -29,20 +31,39 @@ export default function LinkedInInbox() {
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
+  // Calculate unread count
+  const unreadCount = conversations.filter(conv => 
+    !((conv as any).isRead ?? (conv as any).is_read ?? false)
+  ).length;
+
   // Apply filters
   const filteredConversations = conversations
     .filter(conv => {
       // SDR role filtering is handled by backend service
       const matchesAccount = accountFilter === 'all' || 
         conv.received_account?.account_name === accountFilter;
+      
+      const senderName = (conv as any).senderName || (conv as any).sender_name || '';
       const matchesSearch = searchQuery === '' || 
-        (conv.senderName || conv.sender_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         conv.subject?.toLowerCase().includes(searchQuery.toLowerCase());
       
-      return matchesAccount && matchesSearch;
+      // Tab filtering
+      const isUnread = !((conv as any).isRead ?? (conv as any).is_read ?? false);
+      const matchesTab = 
+        activeTab === 'all' ? true :
+        activeTab === 'unread' ? isUnread :
+        activeTab === 'favorites' ? false : // Favorites not yet implemented
+        true;
+      
+      return matchesAccount && matchesSearch && matchesTab;
     })
     .map(conv => ({
       ...conv,
+      senderName: (conv as any).senderName || (conv as any).sender_name,
+      senderEmail: (conv as any).senderEmail || (conv as any).sender_email,
+      type: (conv as any).type || (conv as any).conversation_type,
+      isRead: (conv as any).isRead ?? (conv as any).is_read,
       selected: selectedConversations.includes(conv.id),
     }));
 
@@ -64,8 +85,10 @@ export default function LinkedInInbox() {
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
   const mockLead = selectedConv ? {
-    name: selectedConv.senderName || selectedConv.sender_name,
-    email: selectedConv.senderEmail || selectedConv.sender_email,
+    name: (selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown',
+    email: (selectedConv as any).senderEmail || (selectedConv as any).sender_email || '',
+    profilePictureUrl: (selectedConv as any).sender_profile_picture_url,
+    linkedinUrl: (selectedConv as any).sender_linkedin_url,
     company: "TechCorp Inc",
     dealSize: "$50k",
     stage: selectedConv.status,
@@ -81,10 +104,10 @@ export default function LinkedInInbox() {
 
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-120px)]">
-        <div className="overflow-hidden lg:col-span-3 flex flex-col">
+      <div className="flex flex-col lg:flex-row gap-2 h-[calc(100vh-120px)]">
+        <div className="overflow-hidden flex flex-col lg:w-[29.17%]">
           <div className="space-y-2 mb-3">
-            <Tabs defaultValue="all" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
                 <TabsTrigger 
                   value="all" 
@@ -94,9 +117,14 @@ export default function LinkedInInbox() {
                 </TabsTrigger>
                 <TabsTrigger 
                   value="unread"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5 relative"
                 >
                   Unread
+                  {unreadCount > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold text-white bg-blue-600 rounded-full">
+                      {unreadCount}
+                    </span>
+                  )}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="favorites"
@@ -129,25 +157,46 @@ export default function LinkedInInbox() {
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 pl-2">
                 <Checkbox 
                   className="h-3.5 w-3.5" 
                   checked={selectedConversations.length === filteredConversations.length && filteredConversations.length > 0}
                   onCheckedChange={handleSelectAll}
                 />
-                <span className="text-xs">Select all</span>
+                <span className="text-xs">
+                  {selectedConversations.length > 0 
+                    ? `${selectedConversations.length} Selected` 
+                    : 'Select all'}
+                </span>
               </div>
-              <div className="flex items-center gap-0.5">
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <Tag className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <Send className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <Archive className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+              {selectedConversations.length > 0 && (
+                <div className="flex items-center gap-0.5">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7"
+                    onClick={() => toast.info('Tag feature coming soon')}
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7"
+                    onClick={() => toast.info('Bulk send feature coming soon')}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7"
+                    onClick={() => toast.info('Archive feature coming soon')}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -163,7 +212,7 @@ export default function LinkedInInbox() {
                   <p className="text-xs text-muted-foreground">The database is empty. Please seed the database.</p>
                 </div>
               ) : (
-                <ConversationList
+                <LinkedInConversationList
                   conversations={filteredConversations}
                   onConversationClick={setSelectedConversation}
                   selectedId={selectedConversation || undefined}
@@ -174,17 +223,39 @@ export default function LinkedInInbox() {
           </div>
         </div>
 
-        <div className="overflow-hidden lg:col-span-6 flex flex-col">
+        <div className="overflow-hidden flex flex-col lg:w-[45.83%]">
             {selectedConv ? (
               <div className="h-full bg-background rounded-lg border">
                 <ConversationView 
                   conversation={{
                     id: selectedConv.id,
-                    senderName: selectedConv.senderName,
-                    senderEmail: selectedConv.senderEmail,
+                    senderName: (selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown',
+                    senderEmail: (selectedConv as any).senderEmail || (selectedConv as any).sender_email,
                     status: selectedConv.status,
+                    sender_profile_picture_url: (selectedConv as any).sender_profile_picture_url,
+                    sender_linkedin_url: (selectedConv as any).sender_linkedin_url,
+                    account_name: (selectedConv as any).account_name,
+                    is_account_connected: (selectedConv as any).is_account_connected,
+                    is_read: (selectedConv as any).isRead ?? (selectedConv as any).is_read ?? true,
+                    assignedTo: (selectedConv as any).assignedTo || (selectedConv as any).assigned_to,
+                    customStageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
                   }} 
-                  messages={messagesForSelected}
+                  messages={messagesForSelected.map(msg => {
+                    const isFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead ?? true;
+                    // Use conversation sender name for lead messages, otherwise use message sender name
+                    const senderName = isFromLead 
+                      ? ((selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown')
+                      : ((msg as any).senderName || (msg as any).sender_name || 'You');
+                    
+                    return {
+                      ...msg,
+                      senderName,
+                      senderProfilePictureUrl: (msg as any).senderProfilePictureUrl || (msg as any).sender_profile_picture_url || (selectedConv as any).sender_profile_picture_url,
+                      senderLinkedinUrl: (msg as any).senderLinkedinUrl || (msg as any).sender_linkedin_url || (selectedConv as any).sender_linkedin_url,
+                      timestamp: (msg as any).timestamp || (msg as any).created_at || '',
+                      isFromLead,
+                    };
+                  })}
                 />
               </div>
             ) : (
@@ -194,7 +265,7 @@ export default function LinkedInInbox() {
             )}
           </div>
 
-        <div className="lg:col-span-3 overflow-y-auto flex flex-col">
+        <div className="lg:w-[25%] overflow-y-auto flex flex-col">
           {selectedConv && mockLead && (
             <LeadProfilePanel 
               lead={mockLead} 

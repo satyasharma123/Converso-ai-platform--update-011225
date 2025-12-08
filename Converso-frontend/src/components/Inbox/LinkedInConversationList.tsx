@@ -11,7 +11,7 @@ import { useToggleRead, useAssignConversation, useUpdateConversationStage } from
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
-export interface Conversation {
+export interface LinkedInConversation {
   id: string;
   senderName: string;
   senderEmail?: string;
@@ -34,26 +34,26 @@ export interface Conversation {
   };
 }
 
-interface ConversationListProps {
-  conversations: Conversation[];
+interface LinkedInConversationListProps {
+  conversations: LinkedInConversation[];
   onConversationClick: (id: string) => void;
   selectedId?: string;
   onToggleSelect?: (id: string) => void;
 }
 
-export function ConversationList({
+export function LinkedInConversationList({
   conversations,
   onConversationClick,
   selectedId,
   onToggleSelect,
-}: ConversationListProps) {
+}: LinkedInConversationListProps) {
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
 
-  const getStatusColor = (status: Conversation["status"]) => {
+  const getStatusColor = (status: LinkedInConversation["status"]) => {
     switch (status) {
       case "new": return "bg-blue-500";
       case "engaged": return "bg-yellow-500";
@@ -77,11 +77,7 @@ export function ConversationList({
   const getSdrDisplayName = (assignedToId?: string): string | null => {
     if (!assignedToId) return null;
     const member = teamMembers.find(m => m.id === assignedToId);
-    if (!member) {
-      // If member not found, return "Unknown" instead of ID
-      console.warn('Team member not found for ID:', assignedToId);
-      return 'Unknown';
-    }
+    if (!member) return assignedToId; // Fallback to ID if member not found
     
     // Extract first name (before first space)
     const firstName = member.full_name.split(' ')[0];
@@ -94,7 +90,7 @@ export function ConversationList({
     return firstName;
   };
 
-  const handleToggleRead = (conversation: Conversation) => {
+  const handleToggleRead = (conversation: LinkedInConversation) => {
     const currentReadStatus = conversation.isRead ?? (conversation as any).is_read ?? false;
     toggleRead.mutate({ 
       conversationId: conversation.id, 
@@ -140,91 +136,78 @@ export function ConversationList({
           <div
             key={conversation.id}
             className={cn(
-              "flex items-start gap-2.5 p-2.5 transition-colors border-b cursor-pointer",
-              "hover:bg-muted/40",
-              conversation.selected && "bg-accent/30",
-              selectedId === conversation.id && "bg-accent/20 border-l-2 border-l-primary"
+              "flex items-center gap-3 p-3 transition-colors border-b cursor-pointer",
+              "hover:bg-muted/30",
+              isUnread && "bg-blue-50/50",
+              conversation.selected && "bg-accent/20",
+              selectedId === conversation.id && "bg-muted/40 border-l-4 border-l-green-600"
             )}
           >
-            {/* Checkbox */}
             <Checkbox 
-              className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" 
+              className="h-3.5 w-3.5 flex-shrink-0" 
               checked={conversation.selected}
               onCheckedChange={() => onToggleSelect?.(conversation.id)}
               onClick={(e) => e.stopPropagation()}
             />
             
-            {/* Main Content */}
             <div 
-              className="flex-1 min-w-0 space-y-1"
+              className="flex-1 min-w-0 flex gap-3"
               onClick={() => onConversationClick(conversation.id)}
             >
-              {/* First Row: Sender Name + Time + Unread Dot */}
-              <div className="flex items-center justify-between gap-2">
-                <span className={cn(
-                  "text-[13px] truncate flex-1",
-                  isUnread ? "font-semibold text-foreground" : "font-normal text-foreground"
-                )}>
-                  {conversation.senderName}
-                </span>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className="text-[11px] text-muted-foreground">
-                    {ts ? formatTimeAgo(ts) : ''}
-                  </span>
-                  {isUnread && (
-                    <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+              {/* Avatar with unread indicator - Smaller for LinkedIn */}
+              <div className="relative h-10 w-10 flex-shrink-0">
+                <div className="h-10 w-10 rounded-full bg-muted overflow-hidden flex items-center justify-center text-xs font-semibold">
+                  {conversation.sender_profile_picture_url ? (
+                    <img
+                      src={conversation.sender_profile_picture_url}
+                      alt={conversation.senderName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span>{initials}</span>
                   )}
                 </div>
+                {isUnread && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center border-2 border-background">
+                    <span className="text-[9px] font-bold text-white">1</span>
+                  </div>
+                )}
               </div>
 
-              {/* Second Row: Subject */}
-              {conversation.subject && (
-                <p className={cn(
-                  "text-[13px] truncate leading-tight",
-                  isUnread ? "font-medium text-foreground" : "text-muted-foreground"
-                )}>
-                  {conversation.subject}
-                </p>
-              )}
-
-              {/* Third Row: Preview (2 lines max) */}
-              <p className="text-[12px] text-muted-foreground leading-snug line-clamp-2">
-                {stripHtml(conversation.preview)}
-              </p>
-
-              {/* Fourth Row: Account Badge + SDR Badge */}
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  {conversation.receivedAccount && (
-                    <ReceivedAccountBadge
-                      accountName={conversation.receivedAccount.account_name}
-                      accountEmail={conversation.receivedAccount.account_email}
-                      accountType={conversation.receivedAccount.account_type}
-                    />
-                  )}
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                {/* Name and Date */}
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className={cn("text-xs font-medium truncate", isUnread && "font-semibold")}>
+                    {conversation.senderName}
+                  </span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {ts ? formatTimeAgo(ts) : ''}
+                  </span>
                 </div>
-                <div className="flex-shrink-0">
-                  {(() => {
-                    const assignedId = conversation.assignedTo || (conversation as any).assigned_to;
-                    return assignedId ? (
-                      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                        {getSdrDisplayName(assignedId)}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-orange-500 text-orange-500">
-                        Unassigned
-                      </Badge>
-                    );
-                  })()}
-                </div>
+
+                {/* Message Preview (2 lines) - LinkedIn style */}
+                {conversation.preview && (
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-snug mb-1">
+                    <span className="font-normal">You: </span>
+                    {stripHtml(conversation.preview)}
+                  </p>
+                )}
+
+                {/* From line */}
+                {conversation.receivedAccount && (
+                  <p className="text-xs text-muted-foreground">
+                    From: {conversation.receivedAccount.account_name}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Actions Menu */}
+            {/* Three-dot menu */}
             <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0 mt-1">
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0">
+                <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover border shadow-md z-50">
@@ -252,7 +235,7 @@ export function ConversationList({
                     onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, null); }}
                   >
                     Unassigned
-                    {!(conversation.assignedTo || (conversation as any).assigned_to) && " ✓"}
+                    {!conversation.assignedTo && " ✓"}
                   </DropdownMenuItem>
                   {teamMembers.map((member) => (
                     <DropdownMenuItem 
@@ -260,7 +243,7 @@ export function ConversationList({
                       onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, member.id); }}
                     >
                       {member.full_name}
-                      {(conversation.assignedTo || (conversation as any).assigned_to) === member.id && " ✓"}
+                      {conversation.assignedTo === member.id && " ✓"}
                     </DropdownMenuItem>
                   ))}
                   {teamMembers.length === 0 && (
@@ -281,7 +264,7 @@ export function ConversationList({
                       onClick={(e) => { e.stopPropagation(); handleChangeStage(conversation.id, stage.id); }}
                     >
                       {stage.name}
-                      {(conversation.customStageId || (conversation as any).custom_stage_id) === stage.id && " ✓"}
+                      {conversation.customStageId === stage.id && " ✓"}
                     </DropdownMenuItem>
                   ))}
                   {stages.length === 0 && (
