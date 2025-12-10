@@ -16,9 +16,12 @@ import linkedinMessagesRoutes from './linkedin.messages.routes';
 import linkedinAccountsRoutes from './linkedin.accounts.routes';
 import linkedinWebhookRoutes from './linkedinWebhook.routes';
 import linkedinSyncRoutes from './linkedin.sync.routes';
+import linkedinFixRoutes from './linkedin.fix.routes';
+import unipileWebhookRoutes from './unipile.webhook.routes';
 import emailSyncRoutes from './emailSync.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
 import testRoutes from './test.routes';
+import eventsRoutes from './events.routes';
 
 const router = Router();
 
@@ -43,6 +46,9 @@ router.use('/linkedin/messages', linkedinMessagesRoutes);
 router.use('/linkedin', linkedinAccountsRoutes);
 router.use('/linkedin/sync', linkedinSyncRoutes);
 router.use('/linkedin/webhook', linkedinWebhookRoutes);
+router.use('/linkedin/fix', linkedinFixRoutes);
+router.use('/unipile/webhook', unipileWebhookRoutes);
+router.use('/events', eventsRoutes);
 
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {

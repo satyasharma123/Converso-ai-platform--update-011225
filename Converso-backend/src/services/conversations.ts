@@ -124,6 +124,8 @@ export const conversationsService = {
     conversationId: string,
     updates: {
       sender_name?: string;
+      sender_email?: string;
+      mobile?: string;
       company_name?: string;
       location?: string;
     }

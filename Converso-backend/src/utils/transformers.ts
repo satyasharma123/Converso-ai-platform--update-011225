@@ -40,6 +40,13 @@ export function transformConversation(conv: Conversation): any {
     companyName: conv.company_name,
     company_name: conv.company_name, // Keep both
     location: conv.location,
+    // LinkedIn-specific fields
+    chat_id: conv.chat_id || (conv as any).chat_id || null,
+    chatId: conv.chat_id || (conv as any).chat_id || null,
+    sender_attendee_id: conv.sender_attendee_id || (conv as any).sender_attendee_id || null,
+    senderAttendeeId: conv.sender_attendee_id || (conv as any).sender_attendee_id || null,
+    sender_profile_picture_url: conv.sender_profile_picture_url || (conv as any).sender_profile_picture_url || null,
+    senderProfilePictureUrl: conv.sender_profile_picture_url || (conv as any).sender_profile_picture_url || null,
     // Email-specific fields
     email_body: (conv as any).email_body || null,
     has_full_body: conv.has_full_body || (conv as any).has_full_body || false,

@@ -1,9 +1,9 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Tag, Send, Archive } from "lucide-react";
+import { Search, Filter, Tag, Send, Archive, RefreshCcw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,9 +12,10 @@ import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
-import { useConversations } from "@/hooks/useConversations";
+import { useConversations, useToggleRead } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function LinkedInInbox() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
@@ -22,34 +23,109 @@ export default function LinkedInInbox() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('all');
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: conversations = [], isLoading } = useConversations('linkedin');
+  const toggleRead = useToggleRead();
+  const queryClient = useQueryClient();
   
+  const parseBoolean = (value: any) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    if (typeof value === 'number') return value === 1;
+    return Boolean(value);
+  };
+
+  const normalizedConversations = conversations.map((conv: any) => {
+    const rawIsRead = conv.isRead ?? conv.is_read;
+    const isRead = rawIsRead === undefined ? true : parseBoolean(rawIsRead);
+
+    return {
+      ...conv,
+      senderName: conv.senderName || conv.sender_name,
+      senderEmail: conv.senderEmail || conv.sender_email,
+      type: conv.type || conv.conversation_type,
+      isRead,
+    };
+  });
+
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
+  // Live updates via SSE for new LinkedIn messages
+  useEffect(() => {
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const es = new EventSource(`${base}/api/events/stream`);
+
+    const handler = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        if (data?.conversation_id) {
+          queryClient.invalidateQueries({ queryKey: ['messages', data.conversation_id] });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.addEventListener('linkedin_message', handler);
+
+    es.onerror = () => {
+      // connection errors: allow browser to retry automatically
+    };
+
+    return () => {
+      es.removeEventListener('linkedin_message', handler);
+      es.close();
+    };
+  }, [queryClient]);
+
+  // Handle conversation click - select and mark as read if unread
+  const handleConversationClick = useCallback((conversationId: string) => {
+    setSelectedConversation(conversationId);
+    
+    // Find the conversation and mark as read if it's unread
+    const conv = normalizedConversations.find(c => c.id === conversationId);
+    if (conv) {
+      if (!conv.isRead) {
+        toggleRead.mutate({ conversationId, isRead: true });
+      }
+    }
+  }, [normalizedConversations, toggleRead]);
+
+  const handleManualRefresh = useCallback(async () => {
+    setIsManualRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      if (selectedConversation) {
+        await queryClient.invalidateQueries({ queryKey: ['messages', selectedConversation] });
+      }
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [queryClient, selectedConversation]);
+
   // Calculate unread count
-  const unreadCount = conversations.filter(conv => 
-    !((conv as any).isRead ?? (conv as any).is_read ?? false)
-  ).length;
+  const unreadCount = normalizedConversations.filter(conv => !conv.isRead).length;
 
   // Apply filters
-  const filteredConversations = conversations
+  const filteredConversations = normalizedConversations
     .filter(conv => {
       // SDR role filtering is handled by backend service
       const matchesAccount = accountFilter === 'all' || 
         conv.received_account?.account_name === accountFilter;
       
-      const senderName = (conv as any).senderName || (conv as any).sender_name || '';
+      const senderName = conv.senderName || '';
       const matchesSearch = searchQuery === '' || 
         senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         conv.subject?.toLowerCase().includes(searchQuery.toLowerCase());
       
       // Tab filtering
-      const isUnread = !((conv as any).isRead ?? (conv as any).is_read ?? false);
+      const isUnread = !conv.isRead;
       const matchesTab = 
         activeTab === 'all' ? true :
         activeTab === 'unread' ? isUnread :
@@ -60,10 +136,6 @@ export default function LinkedInInbox() {
     })
     .map(conv => ({
       ...conv,
-      senderName: (conv as any).senderName || (conv as any).sender_name,
-      senderEmail: (conv as any).senderEmail || (conv as any).sender_email,
-      type: (conv as any).type || (conv as any).conversation_type,
-      isRead: (conv as any).isRead ?? (conv as any).is_read,
       selected: selectedConversations.includes(conv.id),
     }));
 
@@ -81,7 +153,7 @@ export default function LinkedInInbox() {
     }
   };
 
-  const selectedConv = conversations.find((c) => c.id === selectedConversation);
+  const selectedConv = normalizedConversations.find((c) => c.id === selectedConversation);
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
   const mockLead = selectedConv ? {
@@ -97,15 +169,10 @@ export default function LinkedInInbox() {
     messageCount: messagesForSelected.length,
   } : null;
 
-  const mockTimeline = selectedConv ? [
-    { id: "1", type: "message" as const, description: "LinkedIn DM received", timestamp: "2 hours ago", actor: "System" },
-    { id: "2", type: "assignment" as const, description: "Assigned to John SDR", timestamp: "2 hours ago", actor: "Admin User" },
-  ] : [];
-
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col lg:flex-row gap-2 h-[calc(100vh-120px)]">
-        <div className="overflow-hidden flex flex-col lg:w-[29.17%]">
+        <div className="overflow-hidden flex flex-col lg:w-[28%]">
           <div className="space-y-2 mb-3">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
@@ -151,6 +218,16 @@ export default function LinkedInInbox() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleManualRefresh}
+                disabled={isManualRefreshing}
+                title="Refresh conversations"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
               <Button variant="outline" size="icon" className="h-8 w-8">
                 <Filter className="h-3.5 w-3.5" />
               </Button>
@@ -214,7 +291,7 @@ export default function LinkedInInbox() {
               ) : (
                 <LinkedInConversationList
                   conversations={filteredConversations}
-                  onConversationClick={setSelectedConversation}
+                  onConversationClick={handleConversationClick}
                   selectedId={selectedConversation || undefined}
                   onToggleSelect={handleToggleSelect}
                 />
@@ -223,7 +300,7 @@ export default function LinkedInInbox() {
           </div>
         </div>
 
-        <div className="overflow-hidden flex flex-col lg:w-[45.83%]">
+        <div className="overflow-hidden flex flex-col lg:w-[52%]">
             {selectedConv ? (
               <div className="h-full bg-background rounded-lg border">
                 <ConversationView 
@@ -239,6 +316,8 @@ export default function LinkedInInbox() {
                     is_read: (selectedConv as any).isRead ?? (selectedConv as any).is_read ?? true,
                     assignedTo: (selectedConv as any).assignedTo || (selectedConv as any).assigned_to,
                     customStageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
+                    chat_id: (selectedConv as any).chat_id,
+                    unipile_account_id: selectedConv.received_account?.unipile_account_id,
                   }} 
                   messages={messagesForSelected.map(msg => {
                     const isFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead ?? true;
@@ -265,11 +344,10 @@ export default function LinkedInInbox() {
             )}
           </div>
 
-        <div className="lg:w-[25%] overflow-y-auto flex flex-col">
+        <div className="lg:w-[20%] overflow-y-auto flex flex-col">
           {selectedConv && mockLead && (
             <LeadProfilePanel 
-              lead={mockLead} 
-              timeline={mockTimeline}
+              lead={mockLead}
               conversationId={selectedConv.id}
             />
           )}

@@ -45,7 +45,8 @@ export async function getConversations(
         account_name,
         account_email,
         account_type,
-        oauth_provider
+        oauth_provider,
+        unipile_account_id
       )
     `)
     .order('last_message_at', { ascending: false });
@@ -189,6 +190,8 @@ export async function updateLeadProfile(
   conversationId: string,
   updates: {
     sender_name?: string;
+    sender_email?: string;
+    mobile?: string;
     company_name?: string;
     location?: string;
   }

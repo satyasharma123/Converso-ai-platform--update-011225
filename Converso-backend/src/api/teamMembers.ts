@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabaseAdmin } from '../lib/supabase';
 import type { TeamMember } from '../types';
 
 /**
@@ -6,10 +6,35 @@ import type { TeamMember } from '../types';
  */
 
 export async function getTeamMembers(userId?: string): Promise<TeamMember[]> {
-  const { data: profiles, error: profilesError } = await supabase
+  // If userId is provided, get their workspace_id first
+  let workspaceId: string | null = null;
+  if (userId) {
+    const { data: userProfile, error: userError } = await supabaseAdmin
+      .from('profiles')
+      .select('workspace_id')
+      .eq('id', userId)
+      .single();
+    
+    if (userError) {
+      console.error('Error fetching user workspace:', userError);
+      // Don't throw - continue with no workspace filter
+    } else {
+      workspaceId = userProfile?.workspace_id || null;
+    }
+  }
+
+  // Build query to get profiles
+  let query = supabaseAdmin
     .from('profiles')
     .select('*')
     .or('is_deleted.is.null,is_deleted.eq.false'); // Exclude deleted users
+
+  // Filter by workspace if we have one
+  if (workspaceId) {
+    query = query.eq('workspace_id', workspaceId);
+  }
+
+  const { data: profiles, error: profilesError } = await query;
 
   if (profilesError) throw profilesError;
 
@@ -19,7 +44,7 @@ export async function getTeamMembers(userId?: string): Promise<TeamMember[]> {
 
   // Get roles only for the fetched users
   const userIds = profiles.map(p => p.id);
-  const { data: roles, error: rolesError } = await supabase
+  const { data: roles, error: rolesError } = await supabaseAdmin
     .from('user_roles')
     .select('*')
     .in('user_id', userIds);
@@ -40,7 +65,7 @@ export async function getTeamMembers(userId?: string): Promise<TeamMember[]> {
 }
 
 export async function getTeamMemberById(userId: string): Promise<TeamMember | null> {
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
     .select('*')
     .eq('id', userId)
@@ -48,7 +73,7 @@ export async function getTeamMemberById(userId: string): Promise<TeamMember | nu
 
   if (profileError) throw profileError;
 
-  const { data: role, error: roleError } = await supabase
+  const { data: role, error: roleError } = await supabaseAdmin
     .from('user_roles')
     .select('*')
     .eq('user_id', userId)
@@ -66,7 +91,7 @@ export async function updateTeamMemberRole(
   role: 'admin' | 'sdr'
 ): Promise<void> {
   // Check if role exists
-  const { data: existingRole } = await supabase
+  const { data: existingRole } = await supabaseAdmin
     .from('user_roles')
     .select('id')
     .eq('user_id', userId)
@@ -74,7 +99,7 @@ export async function updateTeamMemberRole(
 
   if (existingRole) {
     // Update existing role
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('user_roles')
       .update({ role })
       .eq('user_id', userId);
@@ -82,7 +107,7 @@ export async function updateTeamMemberRole(
     if (error) throw error;
   } else {
     // Create new role
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('user_roles')
       .insert({ user_id: userId, role });
 

@@ -7,7 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Linkedin, Link, Loader2, AlertTriangle } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Mail, Linkedin, Link, Loader2, AlertTriangle, MoreVertical, RefreshCw } from "lucide-react";
 import { RulesEngine } from "@/components/Admin/RulesEngine";
 import { PipelineStages } from "@/components/Admin/PipelineStages";
 import { useAuth } from "@/hooks/useAuth";
@@ -70,6 +72,7 @@ export default function Settings() {
   const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
   const [newLinkedInAccount, setNewLinkedInAccount] = useState({ name: "", type: "linkedin" as "email" | "linkedin" });
   const [isAddingAccount, setIsAddingAccount] = useState(false);
+  const [reconnectingAccountId, setReconnectingAccountId] = useState<string | null>(null);
 
   // Initialize form values from data
   useEffect(() => {
@@ -267,6 +270,52 @@ export default function Settings() {
     });
   };
 
+  const handleReconnectLinkedIn = async (accountId: string, accountName: string) => {
+    if (!user?.id || !workspace?.id) {
+      toast.error("User/workspace not loaded");
+      return;
+    }
+
+    setReconnectingAccountId(accountId);
+
+    try {
+      const backendUrl = import.meta.env.VITE_API_URL;
+      const startAuthUrl = backendUrl
+        ? `${backendUrl}/api/linkedin/accounts/start-auth`
+        : `/api/linkedin/accounts/start-auth`;
+
+      // Start reconnection flow
+      const startResp = await fetch(startAuthUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_name: accountName,
+          user_id: user.id,
+          workspace_id: workspace.id,
+          reconnect_account_id: accountId
+        }),
+      }).then(r => r.json());
+
+      if (!startResp.hostedAuthUrl) {
+        throw new Error(startResp.error || "Failed to start LinkedIn reconnection");
+      }
+
+      // Open Unipile Hosted Auth popup
+      const popup = window.open(startResp.hostedAuthUrl, "UnipileAuth", "width=500,height=700");
+      const poll = setInterval(async () => {
+        if (popup && popup.closed) {
+          clearInterval(poll);
+          setReconnectingAccountId(null);
+          await refetchAccounts();
+          toast.success("LinkedIn account reconnected successfully");
+        }
+      }, 800);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reconnect LinkedIn account");
+      setReconnectingAccountId(null);
+    }
+  };
+
   const confirmDeleteAccount = async () => {
     if (!accountToDelete) return;
 
@@ -330,16 +379,17 @@ export default function Settings() {
 
               <TabsContent value="integrations" className="mt-6 space-y-6 max-w-4xl">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Email Integration</CardTitle>
-                    <CardDescription>Connect your email accounts</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                    <div>
+                      <CardTitle>Email Integration</CardTitle>
+                      <CardDescription>Connect your email accounts</CardDescription>
+                    </div>
                     <Button onClick={handleConnectEmail} disabled={!user?.id}>
                       <Mail className="h-4 w-4 mr-2" />
                       Connect Email
                     </Button>
-                    
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     <Dialog open={isEmailProviderModalOpen} onOpenChange={setIsEmailProviderModalOpen}>
                       <DialogContent>
                         <DialogHeader>
@@ -498,11 +548,11 @@ export default function Settings() {
                 </AlertDialog>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>LinkedIn Integration</CardTitle>
-                    <CardDescription>Connect your LinkedIn accounts</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                    <div>
+                      <CardTitle>LinkedIn Integration</CardTitle>
+                      <CardDescription>Connect your LinkedIn accounts</CardDescription>
+                    </div>
                     <Dialog open={isLinkedInModalOpen} onOpenChange={setIsLinkedInModalOpen}>
                       <DialogTrigger asChild>
                         <Button onClick={() => setIsLinkedInModalOpen(true)}>
@@ -540,49 +590,162 @@ export default function Settings() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
-
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     {accountsLoading ? (
                       <div className="text-center py-4">Loading accounts...</div>
                     ) : linkedInAccounts.length > 0 ? (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Connected Accounts</Label>
-                        <div className="space-y-2">
-                          {linkedInAccounts.map(account => (
-                            <div key={account.id} className="flex items-center justify-between p-3 border rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <Linkedin className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm">{account.account_name}</span>
+                        <div className="border rounded-lg overflow-hidden">
+                          {/* Table Header */}
+                          <div className="grid grid-cols-[2fr_1.5fr_2fr_auto] gap-4 p-3 bg-muted/50 border-b text-xs font-medium text-muted-foreground">
+                            <div>LinkedIn Account</div>
+                            <div>Status</div>
+                            <div>Sending limits</div>
+                            <div className="w-20"></div>
+                          </div>
+                          
+                          {/* Account Rows */}
+                          {linkedInAccounts.map(account => {
+                            const accountData = account as any;
+                            const isConnected = accountData.status === 'connected' || accountData.connection_status === 'connected';
+                            const hasError = accountData.status === 'error' || accountData.connection_status === 'error' || accountData.error;
+                            const isReconnecting = reconnectingAccountId === account.id;
+                            
+                            // Get initials for avatar
+                            const nameParts = account.account_name.split(' ');
+                            const initials = nameParts.length > 1 
+                              ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+                              : account.account_name.substring(0, 2).toUpperCase();
+
+                            // Default sending limits (can be customized per account if available in data)
+                            const sendingLimits = {
+                              connections: accountData.daily_connection_limit || 11,
+                              messages: accountData.daily_message_limit || 14,
+                              invitations: accountData.daily_invitation_limit || 9
+                            };
+
+                            return (
+                              <div key={account.id} className="grid grid-cols-[2fr_1.5fr_2fr_auto] gap-4 p-3 items-center hover:bg-muted/30 transition-colors">
+                                {/* Account Info */}
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="h-9 w-9">
+                                    <AvatarImage src={accountData.profile_picture || undefined} />
+                                    <AvatarFallback className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                      {initials}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium">{account.account_name}</span>
+                                  </div>
+                                </div>
+
+                                {/* Status */}
+                                <div className="flex items-center gap-2">
+                                  {hasError ? (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className="bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-800 gap-1"
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                      Wrong credentials
+                                    </Badge>
+                                  ) : isConnected ? (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className="bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800"
+                                    >
+                                      Connected
+                                    </Badge>
+                                  ) : (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className="bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-950 dark:text-gray-300 dark:border-gray-800"
+                                    >
+                                      Unknown
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                {/* Sending Limits */}
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                  <div className="flex items-center gap-1">
+                                    <Link className="h-3 w-3" />
+                                    <span>{sendingLimits.connections}/day</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    <span>{sendingLimits.messages}/day</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                                      <line x1="3" y1="10" x2="21" y2="10" />
+                                    </svg>
+                                    <span>{sendingLimits.invitations}/day</span>
+                                  </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2 justify-end">
+                                  {hasError && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
+                                      disabled={isReconnecting}
+                                      className="gap-1"
+                                    >
+                                      {isReconnecting ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          Reconnecting...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-3 w-3" />
+                                          Re-connect
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                  
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                        <MoreVertical className="h-4 w-4" />
+                                        <span className="sr-only">Open menu</span>
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => handleRemoveAccount({
+                                          id: account.id,
+                                          name: account.account_name,
+                                          type: 'linkedin'
+                                        })}
+                                        className="text-destructive focus:text-destructive"
+                                      >
+                                        Disconnect
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
+                                      >
+                                        Reconnect
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        disabled
+                                        className="text-muted-foreground"
+                                      >
+                                        Configure proxy
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={async () => {
-                                    try {
-                                      const res = await initialSyncLinkedIn(account.id);
-                                      toast.success(`Sync started: ${res.conversations} conversations, ${res.messages} messages`);
-                                      await refetchAccounts();
-                                    } catch (err: any) {
-                                      toast.error(err.message || 'Failed to sync');
-                                    }
-                                  }}
-                                >
-                                  Sync
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleRemoveAccount({
-                                    id: account.id,
-                                    name: account.account_name,
-                                    type: 'linkedin'
-                                  })}
-                                >
-                                  Disconnect
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ) : (
@@ -592,15 +755,17 @@ export default function Settings() {
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>CRM Integration</CardTitle>
-                    <CardDescription>Connect your CRM platform</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                    <div>
+                      <CardTitle>CRM Integration</CardTitle>
+                      <CardDescription>Connect your CRM platform</CardDescription>
+                    </div>
                     <Button disabled>
                       <Link className="h-4 w-4 mr-2" />
                       Add CRM Connection
                     </Button>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     <div className="p-4 bg-muted/50 rounded-lg">
                       <p className="text-sm text-muted-foreground">
                         Supported CRMs: HubSpot, Salesforce, Pipedrive (Coming Soon)

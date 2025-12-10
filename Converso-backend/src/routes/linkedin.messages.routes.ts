@@ -1,17 +1,25 @@
 import { Router } from 'express';
 import { unipilePost } from '../unipile/unipileClient';
 import { mapMessage } from '../unipile/linkedinMessageMapper';
-import { mapConversation, deterministicId } from '../unipile/linkedinConversationMapper';
+import { deterministicId } from '../unipile/linkedinConversationMapper';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
+import axios from 'axios';
+const FormData = require('form-data');
 
 const router = Router();
 
 // Send LinkedIn message via Unipile and store locally
+// Supports text, attachments (files, images, videos)
 router.post('/send-message', async (req, res) => {
   const { chat_id, account_id, text, attachments } = req.body;
-  if (!chat_id || !account_id || !text) {
-    return res.status(400).json({ error: 'chat_id, account_id, and text are required' });
+  
+  if (!chat_id || !account_id) {
+    return res.status(400).json({ error: 'chat_id and account_id are required' });
+  }
+
+  if (!text && (!attachments || attachments.length === 0)) {
+    return res.status(400).json({ error: 'Either text or attachments must be provided' });
   }
 
   const { data: account, error: accountError } = await supabaseAdmin
@@ -26,8 +34,52 @@ router.post('/send-message', async (req, res) => {
   }
 
   try {
-    const unipilePath = `/api/v1/chats/${encodeURIComponent(chat_id)}/messages?account_id=${encodeURIComponent(account_id)}`;
-    const sendResp: any = await unipilePost(unipilePath, { text, attachments: attachments || [] });
+    // Get Unipile configuration
+    const UNIPILE_BASE_URL = process.env.UNIPILE_BASE_URL || 'https://api23.unipile.com:15315/api/v1';
+    const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY;
+
+    // Build request payload
+    let sendResp: any;
+    
+    if (attachments && attachments.length > 0) {
+      // Use multipart/form-data for attachments
+      const formData = new FormData();
+      if (text) {
+        formData.append('text', text);
+      }
+      
+      // Add attachments to form data
+      for (const attachment of attachments) {
+        if (attachment.file) {
+          // If attachment has a file buffer/stream
+          formData.append('attachments', attachment.file, attachment.name);
+        } else if (attachment.url) {
+          // If attachment has a URL, fetch it and add to form
+          try {
+            const fileResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+            formData.append('attachments', Buffer.from(fileResponse.data), attachment.name);
+          } catch (err) {
+            logger.error('[LinkedIn] Failed to fetch attachment from URL', { url: attachment.url, error: err });
+          }
+        }
+      }
+
+      // Send with multipart/form-data
+      // UNIPILE_BASE_URL already includes /api/v1
+      const unipileUrl = `${UNIPILE_BASE_URL}/chats/${encodeURIComponent(chat_id)}/messages`;
+      const response = await axios.post(unipileUrl, formData, {
+        headers: {
+          ...formData.getHeaders(),
+          'X-API-KEY': UNIPILE_API_KEY,
+        },
+        params: { account_id },
+      });
+      sendResp = response.data;
+    } else {
+      // Simple text-only message (unipilePost already adds /api/v1 prefix)
+      const unipilePath = `/chats/${encodeURIComponent(chat_id)}/messages?account_id=${encodeURIComponent(account_id)}`;
+      sendResp = await unipilePost(unipilePath, { text });
+    }
 
     // Derive conversation id and basic sender info (self)
     const conversationId = deterministicId(`chat-${chat_id}`);
@@ -65,25 +117,22 @@ router.post('/send-message', async (req, res) => {
       logger.error('[LinkedIn] Failed to upsert sent message', msgError);
     }
 
-    // Update conversation last_message_at
-    const convRecord = mapConversation(
-      { id: chat_id, title: null, updated_at: createdAt },
-      null,
-      null,
-      createdAt,
-      { accountId: account.id, workspaceId: account.workspace_id || null }
-    );
-    const { error: convError } = await supabaseAdmin
-      .from('conversations')
-      .upsert(convRecord, { onConflict: 'id' });
-    if (convError) {
-      logger.error('[LinkedIn] Failed to update conversation after send', convError);
-    }
+    // NOTE: We intentionally do NOT update the conversation here.
+    // The conversation data (sender_name, etc.) should only be set by the sync process
+    // to avoid overwriting with incorrect data.
+    // The frontend polling will pick up changes automatically.
 
     return res.json({ status: 'ok', message: msgRecord });
-  } catch (err) {
-    logger.error('[LinkedIn] send-message failed', err);
-    return res.status(500).json({ error: 'Failed to send message' });
+  } catch (err: any) {
+    logger.error('[LinkedIn] send-message failed', {
+      error: err.message,
+      response: err.response?.data,
+      status: err.response?.status
+    });
+    return res.status(500).json({ 
+      error: 'Failed to send message',
+      details: err.response?.data || err.message
+    });
   }
 });
 

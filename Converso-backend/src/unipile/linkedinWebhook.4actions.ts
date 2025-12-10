@@ -10,16 +10,48 @@ import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../lib/supabase';
 import { unipileGet } from './unipileClient';
 import crypto from 'crypto';
+import { sendSseEvent } from '../utils/sse';
 
 // ===== TYPES =====
 
 interface WebhookEvent {
-  type: 'message.created' | 'message.updated' | 'chat.updated' | string;
+  type: 'message.created' | 'message.updated' | 'chat.updated' | 
+        'message.received' | 'message_received' | 'message.new' | 'message_new' |
+        'message.read' | 'message.delivered' | 'message.reaction' | 
+        'message.deleted' | 'message_read' | 'message_delivered' | 
+        'message_reaction' | 'message_delete' | string;
   chat_id?: string;
   account_id?: string;
   message_id?: string;
   last_message_timestamp?: string;
   timestamp?: string;
+  // For reaction events
+  reaction?: {
+    emoji?: string;
+    type?: string;
+    user_id?: string;
+  };
+  // For message content (some events include full message)
+  message?: {
+    id: string;
+    chat_id?: string;
+    account_id?: string;
+    text?: string;
+    reactions?: any[];
+  };
+  attendees?: EventAttendee[];
+  sender?: EventAttendee;
+}
+
+interface EventAttendee {
+  attendee_id?: string;
+  attendee_provider_id?: string;
+  attendee_name?: string;
+  attendee_profile_url?: string;
+  attendee_specifics?: {
+    member_urn?: string | null;
+    [key: string]: any;
+  };
 }
 
 interface ChatAttendee {
@@ -89,6 +121,14 @@ function safeTimestamp(msg: Message): string | null {
 // In-memory cache for attendee details (to avoid repeated API calls)
 const attendeeCache = new Map<string, ChatAttendee>();
 
+const INCOMING_MESSAGE_EVENT_TYPES = new Set([
+  'message.created',
+  'message.received',
+  'message_received',
+  'message.new',
+  'message_new',
+]);
+
 /**
  * Get or fetch attendee details
  */
@@ -138,6 +178,47 @@ async function getAttendeePicture(
   }
 }
 
+async function provisionConnectedAccount(unipileAccountId: string) {
+  try {
+    const { data: templateAccount } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('user_id, workspace_id')
+      .eq('account_type', 'linkedin')
+      .limit(1)
+      .single();
+
+    if (!templateAccount?.user_id) {
+      logger.error('[Webhook] Cannot auto-provision connected account - no template account found');
+      return null;
+    }
+
+    const { data: newAccount, error } = await supabaseAdmin
+      .from('connected_accounts')
+      .insert({
+        account_name: `LinkedIn Account ${unipileAccountId}`,
+        account_email: null,
+        account_type: 'linkedin',
+        is_active: true,
+        user_id: templateAccount.user_id,
+        workspace_id: templateAccount.workspace_id || null,
+        unipile_account_id: unipileAccountId,
+      })
+      .select('id, workspace_id')
+      .single();
+
+    if (error || !newAccount) {
+      logger.error('[Webhook] Failed to auto-provision connected account', error);
+      return null;
+    }
+
+    logger.info(`[Webhook] Auto-provisioned connected account ${newAccount.id} for unipile_account_id ${unipileAccountId}`);
+    return newAccount;
+  } catch (err) {
+    logger.error('[Webhook] Error auto-provisioning connected account', err);
+    return null;
+  }
+}
+
 /**
  * Ensure conversation exists and is enriched
  */
@@ -145,7 +226,8 @@ async function ensureConversationExists(
   chatId: string,
   unipileAccountId: string,
   connectedAccountId: string,
-  workspaceId: string | null
+  workspaceId: string | null,
+  payloadAttendee?: EventAttendee
 ): Promise<{ conversationId: string; senderName: string; senderLinkedinUrl: string | null }> {
   const conversationId = deterministicId(`chat-${chatId}`);
 
@@ -168,26 +250,39 @@ async function ensureConversationExists(
   // Conversation doesn't exist - create it with full enrichment
   logger.info(`[Webhook] Creating new conversation for chat ${chatId}`);
 
+  let payloadAttendeeId =
+    payloadAttendee?.attendee_provider_id || payloadAttendee?.attendee_id || null;
+  let senderName = payloadAttendee?.attendee_name || 'LinkedIn Contact';
+  let senderLinkedinUrl =
+    payloadAttendee?.attendee_profile_url ||
+    (payloadAttendee?.attendee_specifics?.member_urn
+      ? `https://www.linkedin.com/in/${
+          payloadAttendee.attendee_specifics.member_urn.split(':').pop() || ''
+        }`
+      : null);
+  let senderProfilePictureUrl: string | null =
+    (payloadAttendee as any)?.attendee_profile_picture_url || null;
+  let linkedinSenderId: string | null = payloadAttendee?.attendee_provider_id || null;
+  let providerMemberUrn: string | null = payloadAttendee?.attendee_specifics?.member_urn || null;
+
   try {
     // Fetch chat details
     const chat = await unipileGet<Chat>(
       `/chats/${encodeURIComponent(chatId)}?account_id=${encodeURIComponent(unipileAccountId)}`
     );
 
-    const senderAttendeeId = chat.attendee_provider_id;
-    let senderName = 'LinkedIn Contact';
-    let senderLinkedinUrl: string | null = null;
-    let senderProfilePictureUrl: string | null = null;
-    let linkedinSenderId: string | null = null;
-    let providerMemberUrn: string | null = null;
+    const fetchedAttendeeId = chat.attendee_provider_id;
+    if (fetchedAttendeeId) {
+      payloadAttendeeId = fetchedAttendeeId;
+    }
 
     // Enrich sender details if we have an attendee ID
-    if (senderAttendeeId) {
-      const attendee = await getAttendeeDetails(senderAttendeeId, unipileAccountId);
+    if (payloadAttendeeId) {
+      const attendee = await getAttendeeDetails(payloadAttendeeId, unipileAccountId);
 
       if (attendee) {
-        senderName = attendee.name || attendee.display_name || 'LinkedIn Contact';
-        
+        senderName = attendee.name || attendee.display_name || senderName;
+
         // Build LinkedIn URL
         if (attendee.profile_url) {
           senderLinkedinUrl = attendee.profile_url;
@@ -195,11 +290,12 @@ async function ensureConversationExists(
           senderLinkedinUrl = `https://www.linkedin.com/in/${attendee.public_identifier}`;
         }
 
-        linkedinSenderId = attendee.provider_id || null;
-        providerMemberUrn = attendee.specifics?.member_urn || null;
+        linkedinSenderId = attendee.provider_id || linkedinSenderId;
+        providerMemberUrn = attendee.specifics?.member_urn || providerMemberUrn;
 
         // Fetch profile picture
-        senderProfilePictureUrl = await getAttendeePicture(senderAttendeeId, unipileAccountId);
+        senderProfilePictureUrl =
+          (await getAttendeePicture(payloadAttendeeId, unipileAccountId)) || senderProfilePictureUrl;
       }
     }
 
@@ -212,7 +308,7 @@ async function ensureConversationExists(
         chat_id: chatId,
         received_on_account_id: connectedAccountId,
         workspace_id: workspaceId,
-        sender_attendee_id: senderAttendeeId || null,
+        sender_attendee_id: payloadAttendeeId || null,
         sender_name: senderName,
         sender_linkedin_url: senderLinkedinUrl,
         sender_profile_picture_url: senderProfilePictureUrl,
@@ -222,8 +318,8 @@ async function ensureConversationExists(
         subject: chat.title || null,
         created_at: new Date().toISOString(),
         initial_sync_done: false,
-        sender_enriched: !!senderAttendeeId,
-        picture_enriched: !!senderAttendeeId,
+        sender_enriched: !!payloadAttendeeId,
+        picture_enriched: !!payloadAttendeeId,
       },
       { onConflict: 'id' }
     );
@@ -245,11 +341,13 @@ async function ensureConversationExists(
         chat_id: chatId,
         received_on_account_id: connectedAccountId,
         workspace_id: workspaceId,
-        sender_name: 'LinkedIn Contact',
+        sender_attendee_id: payloadAttendeeId || null,
+        sender_name: senderName,
+        sender_linkedin_url: senderLinkedinUrl,
         last_message_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         initial_sync_done: false,
-        sender_enriched: false,
+        sender_enriched: !!payloadAttendeeId,
         picture_enriched: false,
       },
       { onConflict: 'id' }
@@ -257,8 +355,8 @@ async function ensureConversationExists(
 
     return {
       conversationId,
-      senderName: 'LinkedIn Contact',
-      senderLinkedinUrl: null,
+      senderName,
+      senderLinkedinUrl,
     };
   }
 }
@@ -272,17 +370,33 @@ async function syncChatMessages(
   conversationId: string,
   conversationSenderName: string,
   conversationSenderLinkedinUrl: string | null,
+  markUnread: boolean,
   fromTimestamp?: string
 ): Promise<number> {
   try {
-    // Fetch messages
-    const messagesResponse = await unipileGet<MessageList>(
-      `/chats/${encodeURIComponent(chatId)}/messages${
-        fromTimestamp ? `?from=${encodeURIComponent(fromTimestamp)}` : ''
-      }&account_id=${encodeURIComponent(unipileAccountId)}`
+    const baseQuery = new URLSearchParams({
+      account_id: unipileAccountId,
+      limit: '10',
+    });
+
+    const withFromQuery = new URLSearchParams(baseQuery);
+    if (fromTimestamp) {
+      withFromQuery.append('from', fromTimestamp);
+    }
+
+    let messagesResponse = await unipileGet<MessageList>(
+      `/chats/${encodeURIComponent(chatId)}/messages?${withFromQuery.toString()}`
     );
 
-    const messages = messagesResponse.items || [];
+    let messages = messagesResponse.items || [];
+
+    // Fallback: if no messages returned (Unipile may require without "from"), fetch latest without filter
+    if (messages.length === 0 && fromTimestamp) {
+      const fallbackResponse = await unipileGet<MessageList>(
+        `/chats/${encodeURIComponent(chatId)}/messages?${baseQuery.toString()}`
+      );
+      messages = fallbackResponse.items || [];
+    }
     logger.info(`[Webhook] Found ${messages.length} new messages for chat ${chatId}`);
 
     let syncedCount = 0;
@@ -342,15 +456,27 @@ async function syncChatMessages(
       }
     }
 
-    // Update conversation's last_message_at
+    // Update conversation's last_message_at (and optionally unread state)
     if (messages.length > 0) {
       const latestTimestamp =
         messages.map(safeTimestamp).filter(Boolean).sort().pop() || new Date().toISOString();
 
+      const updatePayload: Record<string, any> = {
+        last_message_at: latestTimestamp,
+      };
+
+      if (markUnread) {
+        updatePayload.is_read = false;
+      }
+
       await supabaseAdmin
         .from('conversations')
-        .update({ last_message_at: latestTimestamp })
+        .update(updatePayload)
         .eq('id', conversationId);
+
+      if (markUnread) {
+        logger.info(`[Webhook] Marked conversation ${conversationId} as unread (new messages synced)`);
+      }
     }
 
     return syncedCount;
@@ -366,63 +492,248 @@ async function syncChatMessages(
 export async function handleLinkedInWebhook(req: Request, res: Response) {
   const event = req.body as WebhookEvent;
 
-  if (!event.chat_id || !event.account_id) {
-    logger.warn('[Webhook] Missing chat_id or account_id');
+  const chatId =
+    event.chat_id ||
+    event.message?.chat_id ||
+    event.message?.provider_chat_id ||
+    event.provider_chat_id;
+
+  const accountId =
+    event.account_id ||
+    event.message?.account_id ||
+    event.account_id; // fallback
+
+  const eventType = event.type || (event as any)?.event || 'unknown';
+
+  if (!chatId || !accountId) {
+    logger.warn('[Webhook] Missing chat_id or account_id', { event });
     return res.status(400).json({ error: 'Missing chat_id or account_id' });
   }
 
   logger.info('[Webhook] Received event', {
-    type: event.type,
-    chat_id: event.chat_id,
-    account_id: event.account_id,
+    type: eventType,
+    chat_id: chatId,
+    account_id: accountId,
   });
 
   try {
     // Find the connected account
+    let connectedAccountId: string | null = null;
+    let workspaceId: string | null = null;
+
     const { data: account, error: accountError } = await supabaseAdmin
       .from('connected_accounts')
       .select('id, workspace_id')
       .eq('account_type', 'linkedin')
-      .eq('unipile_account_id', event.account_id)
+      .eq('unipile_account_id', accountId)
       .single();
 
     if (accountError || !account) {
-      logger.warn(`[Webhook] Connected account not found for unipile_account_id: ${event.account_id}`);
-      return res.status(404).json({ error: 'Connected account not found' });
+      logger.warn(`[Webhook] Connected account not found for unipile_account_id: ${accountId}. Attempting fallback via chat_id=${chatId}`);
+
+      if (chatId) {
+        const { data: fallbackConversation } = await supabaseAdmin
+          .from('conversations')
+          .select('received_on_account_id, workspace_id')
+          .eq('conversation_type', 'linkedin')
+          .eq('chat_id', chatId)
+          .single();
+
+        if (fallbackConversation?.received_on_account_id) {
+          connectedAccountId = fallbackConversation.received_on_account_id;
+          workspaceId = fallbackConversation.workspace_id || null;
+          logger.info(`[Webhook] Fallback connected account ${connectedAccountId} resolved via conversation chat_id=${chatId}`);
+        } else {
+          logger.warn(`[Webhook] Fallback failed: conversation with chat_id ${chatId} not found or missing received_on_account_id`);
+          const provisioned = await provisionConnectedAccount(accountId);
+          if (provisioned) {
+            connectedAccountId = provisioned.id;
+            workspaceId = provisioned.workspace_id || null;
+          } else {
+            return res.status(404).json({ error: 'Connected account not found' });
+          }
+        }
+      } else {
+        const provisioned = await provisionConnectedAccount(accountId);
+        if (provisioned) {
+          connectedAccountId = provisioned.id;
+          workspaceId = provisioned.workspace_id || null;
+        } else {
+          return res.status(404).json({ error: 'Connected account not found' });
+        }
+      }
+    } else {
+      connectedAccountId = account.id;
+      workspaceId = account.workspace_id || null;
     }
 
-    const connectedAccountId = account.id;
-    const workspaceId = account.workspace_id || null;
-
     // Handle different event types
-    switch (event.type) {
+    switch (eventType) {
       case 'message.created':
       case 'message.updated':
+      case 'message.received':
+      case 'message_received':
+      case 'message.new':
+      case 'message_new':
       case 'chat.updated': {
+        const payloadLeadAttendee =
+          event.attendees?.find(
+            (att) => att.attendee_provider_id && att.attendee_provider_id !== event.sender?.attendee_provider_id
+          ) || event.attendees?.[0];
+
         // Ensure conversation exists and get sender info
         const { conversationId, senderName, senderLinkedinUrl } = await ensureConversationExists(
-          event.chat_id,
-          event.account_id,
+          chatId,
+          accountId,
           connectedAccountId,
-          workspaceId
+          workspaceId,
+          payloadLeadAttendee
         );
 
         // Sync messages (incremental if timestamp provided)
+        const shouldMarkUnread = INCOMING_MESSAGE_EVENT_TYPES.has(eventType);
+
         const syncedCount = await syncChatMessages(
-          event.chat_id,
-          event.account_id,
+          chatId,
+          accountId,
           conversationId,
           senderName,
           senderLinkedinUrl,
+          shouldMarkUnread,
           event.last_message_timestamp || event.timestamp
         );
 
-        logger.info(`[Webhook] Synced ${syncedCount} messages for chat ${event.chat_id}`);
+        logger.info(`[Webhook] Synced ${syncedCount} messages for chat ${chatId}`);
+        if (syncedCount > 0) {
+          sendSseEvent('linkedin_message', {
+            chat_id: chatId,
+            account_id: accountId,
+            conversation_id: conversationId,
+            timestamp: event.timestamp || new Date().toISOString(),
+          });
+        }
+        break;
+      }
+
+      // Handle message delivered event
+      case 'message.delivered':
+      case 'message_delivered': {
+        const messageId = event.message_id || event.message?.id;
+        if (messageId) {
+          const dbMessageId = deterministicId(`msg-${messageId}`);
+          const { error } = await supabaseAdmin
+            .from('messages')
+            .update({ delivery_status: 'delivered' })
+            .eq('id', dbMessageId);
+
+          if (error) {
+            logger.error(`[Webhook] Failed to update delivery status for message ${messageId}`, error);
+          } else {
+            logger.info(`[Webhook] Message ${messageId} marked as delivered`);
+          }
+        } else {
+          logger.warn('[Webhook] message.delivered event missing message_id');
+        }
+        break;
+      }
+
+      // Handle message read event
+      case 'message.read':
+      case 'message_read': {
+        const messageId = event.message_id || event.message?.id;
+        if (messageId) {
+          const dbMessageId = deterministicId(`msg-${messageId}`);
+          const { error } = await supabaseAdmin
+            .from('messages')
+            .update({ delivery_status: 'read' })
+            .eq('id', dbMessageId);
+
+          if (error) {
+            logger.error(`[Webhook] Failed to update read status for message ${messageId}`, error);
+          } else {
+            logger.info(`[Webhook] Message ${messageId} marked as read`);
+          }
+        } else {
+          // If no specific message_id, mark the conversation as read
+        const conversationId = deterministicId(`chat-${chatId}`);
+          await supabaseAdmin
+            .from('conversations')
+            .update({ is_read: true })
+            .eq('id', conversationId);
+          logger.info(`[Webhook] Conversation ${chatId} marked as read`);
+        }
+        break;
+      }
+
+      // Handle message reaction event
+      case 'message.reaction':
+      case 'message_reaction': {
+        const messageId = event.message_id || event.message?.id;
+        if (messageId) {
+          const dbMessageId = deterministicId(`msg-${messageId}`);
+          
+          // Get existing reactions and append new one
+          const { data: existingMessage } = await supabaseAdmin
+            .from('messages')
+            .select('reactions')
+            .eq('id', dbMessageId)
+            .single();
+
+          const existingReactions = existingMessage?.reactions || [];
+          const newReaction = event.reaction || event.message?.reactions?.[0];
+          
+          let updatedReactions = existingReactions;
+          if (newReaction) {
+            updatedReactions = [...existingReactions, newReaction];
+          } else if (event.message?.reactions) {
+            updatedReactions = event.message.reactions;
+          }
+
+          const { error } = await supabaseAdmin
+            .from('messages')
+            .update({ reactions: updatedReactions })
+            .eq('id', dbMessageId);
+
+          if (error) {
+            logger.error(`[Webhook] Failed to update reactions for message ${messageId}`, error);
+          } else {
+            logger.info(`[Webhook] Reactions updated for message ${messageId}`);
+          }
+        } else {
+          logger.warn('[Webhook] message.reaction event missing message_id');
+        }
+        break;
+      }
+
+      // Handle message delete event
+      case 'message.deleted':
+      case 'message_delete': {
+        const messageId = event.message_id || event.message?.id;
+        if (messageId) {
+          const dbMessageId = deterministicId(`msg-${messageId}`);
+          
+          // Soft delete - mark as deleted rather than removing
+          const { error } = await supabaseAdmin
+            .from('messages')
+            .update({ 
+              content: '[Message deleted]',
+              is_deleted: true 
+            })
+            .eq('id', dbMessageId);
+
+          if (error) {
+            logger.error(`[Webhook] Failed to mark message ${messageId} as deleted`, error);
+          } else {
+            logger.info(`[Webhook] Message ${messageId} marked as deleted`);
+          }
+        } else {
+          logger.warn('[Webhook] message.deleted event missing message_id');
+        }
         break;
       }
 
       default:
-        logger.warn(`[Webhook] Unknown event type: ${event.type}`);
+        logger.info(`[Webhook] Unhandled event type: ${event.type} - acknowledging receipt`);
     }
 
     return res.json({ status: 'ok' });

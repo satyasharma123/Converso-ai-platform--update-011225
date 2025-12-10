@@ -1,11 +1,10 @@
-import { LayoutDashboard, Inbox, Users, Settings, BarChart3, Linkedin, Mail, KanbanSquare, LogOut } from "lucide-react";
-import { NavLink } from "@/components/NavLink";
+import { Inbox, Users, Settings, BarChart3, Linkedin, Mail, KanbanSquare, LogOut } from "lucide-react";
+import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -14,25 +13,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { useConversations } from "@/hooks/useConversations";
 
-const adminItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+// Navigation structure grouped by section
+const communicationItems = [
   { title: "Email Inbox", url: "/inbox/email", icon: Mail },
   { title: "LinkedIn Inbox", url: "/inbox/linkedin", icon: Linkedin },
   { title: "All Conversations", url: "/inbox/conversations", icon: Inbox },
-  { title: "Sales Pipeline", url: "/pipeline", icon: KanbanSquare },
-  { title: "Team", url: "/team", icon: Users },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
-const sdrItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Email Inbox", url: "/inbox/email", icon: Mail },
-  { title: "LinkedIn Inbox", url: "/inbox/linkedin", icon: Linkedin },
-  { title: "All Conversations", url: "/inbox/conversations", icon: Inbox },
+const salesItemsAdmin = [
   { title: "Sales Pipeline", url: "/pipeline", icon: KanbanSquare },
+  { title: "Team", url: "/team", icon: Users },
+];
+
+const salesItemsSdr = [
+  { title: "Sales Pipeline", url: "/pipeline", icon: KanbanSquare },
+];
+
+const analyticsItems = [
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+];
+
+const systemItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -40,15 +43,88 @@ interface SidebarProps {
   role?: "admin" | "sdr";
 }
 
+// Section label component
+function SectionLabel({ children, isFirst = false }: { children: React.ReactNode; isFirst?: boolean }) {
+  return (
+    <div 
+      className={`text-[11px] tracking-wide text-[#9CA3AF] px-3 ${isFirst ? 'mt-2' : 'mt-5'} mb-1.5`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Sidebar({ role = "admin" }: SidebarProps) {
   const { open } = useSidebar();
-  const items = role === "admin" ? adminItems : sdrItems;
+  const location = useLocation();
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  
+  // Fetch conversations to calculate unread counts
+  const { data: emailConversations = [] } = useConversations('email');
+  const { data: linkedinConversations = [] } = useConversations('linkedin');
+  
+  // Calculate unread counts
+  const emailUnreadCount = emailConversations.filter((conv: any) => {
+    const isRead = conv.isRead ?? conv.is_read;
+    return isRead === false || isRead === 'false' || isRead === 0;
+  }).length;
+  
+  const linkedinUnreadCount = linkedinConversations.filter((conv: any) => {
+    const isRead = conv.isRead ?? conv.is_read;
+    return isRead === false || isRead === 'false' || isRead === 0;
+  }).length;
+
+  const salesItems = role === "admin" ? salesItemsAdmin : salesItemsSdr;
 
   const handleLogout = async () => {
     await signOut();
     navigate("/login");
+  };
+
+  // Check if a path is active
+  const isActive = (url: string) => {
+    if (url === '/') {
+      return location.pathname === '/';
+    }
+    return location.pathname.startsWith(url);
+  };
+
+  // Get unread count for a menu item
+  const getUnreadCount = (url: string) => {
+    if (url === '/inbox/email') return emailUnreadCount;
+    if (url === '/inbox/linkedin') return linkedinUnreadCount;
+    return 0;
+  };
+
+  // Render a navigation item
+  const renderNavItem = (item: { title: string; url: string; icon: any }) => {
+    const active = isActive(item.url);
+    const unreadCount = getUnreadCount(item.url);
+    
+    return (
+      <SidebarMenuItem key={item.title}>
+        <SidebarMenuButton asChild size="sm">
+          <RouterNavLink
+            to={item.url}
+            end={item.url === '/'}
+            className={`flex items-center gap-2 text-xs transition-all duration-150 ${
+              active 
+                ? 'bg-[#EEF2FF] text-[#3B82F6] rounded-xl font-medium' 
+                : 'hover:bg-gray-100'
+            }`}
+          >
+            <item.icon className="h-3.5 w-3.5" />
+            <span className="flex-1">{item.title}</span>
+            {unreadCount > 0 && (
+              <span className="ml-auto bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center font-medium">
+                {unreadCount}
+              </span>
+            )}
+          </RouterNavLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
   };
 
   return (
@@ -66,25 +142,42 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
           )}
         </div>
 
+        {/* COMMUNICATION Section */}
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] px-2">Navigation</SidebarGroupLabel>
+          {open && <SectionLabel isFirst>COMMUNICATION</SectionLabel>}
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild size="sm">
-                    <NavLink
-                      to={item.url}
-                      end
-                      className="flex items-center gap-2 hover:bg-accent text-xs"
-                      activeClassName="bg-accent text-accent-foreground"
-                    >
-                      <item.icon className="h-3.5 w-3.5" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {communicationItems.map(renderNavItem)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* SALES Section */}
+        <SidebarGroup>
+          {open && <SectionLabel>SALES</SectionLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {salesItems.map(renderNavItem)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* ANALYTICS Section */}
+        <SidebarGroup>
+          {open && <SectionLabel>ANALYTICS</SectionLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {analyticsItems.map(renderNavItem)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* SYSTEM Section */}
+        <SidebarGroup>
+          {open && <SectionLabel>SYSTEM</SectionLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {systemItems.map(renderNavItem)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

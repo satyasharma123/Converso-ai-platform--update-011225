@@ -17,6 +17,9 @@ export function useConversations(type?: 'email' | 'linkedin') {
       return conversationsApi.list(type);
     },
     enabled: !!user,
+    refetchInterval: 8000, // Poll every 8 seconds for new messages/conversations
+    refetchOnWindowFocus: true, // Refetch when user focuses window
+    staleTime: 5000, // Data is fresh for 5 seconds
   });
 }
 
@@ -163,6 +166,8 @@ export function useUpdateLeadProfile() {
       conversationId: string;
       updates: {
         sender_name?: string;
+        sender_email?: string;
+        mobile?: string;
         company_name?: string;
         location?: string;
       };
@@ -200,6 +205,29 @@ export function useBulkReassignConversations() {
     onError: (error) => {
       console.error('Error bulk reassigning conversations:', error);
       toast.error('Failed to reassign conversations');
+    },
+  });
+}
+
+/**
+ * Sync/refresh messages for a LinkedIn conversation from Unipile
+ */
+export function useSyncConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (conversationId: string) => {
+      return conversationsApi.sync(conversationId);
+    },
+    onSuccess: () => {
+      // Invalidate both conversations and messages queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      toast.success('Messages synced successfully');
+    },
+    onError: (error: any) => {
+      console.error('Error syncing conversation:', error);
+      toast.error(error?.message || 'Failed to sync messages');
     },
   });
 }

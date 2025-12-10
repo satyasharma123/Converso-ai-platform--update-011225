@@ -17,6 +17,9 @@ export function useMessages(conversationId: string | null) {
       return messagesApi.getByConversation(conversationId);
     },
     enabled: !!conversationId && !!user,
+    refetchInterval: 5000, // Poll every 5 seconds for new messages (real-time feel)
+    refetchOnWindowFocus: true, // Refetch when user focuses window
+    staleTime: 3000, // Data is fresh for 3 seconds
   });
 }
 

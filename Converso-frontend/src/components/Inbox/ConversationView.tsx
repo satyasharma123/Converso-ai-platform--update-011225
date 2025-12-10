@@ -1,16 +1,19 @@
-import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch } from "lucide-react";
+import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch, X, Paperclip, Video, AtSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AssignmentDropdown } from "./AssignmentDropdown";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { formatTimeAgo } from "@/utils/timeFormat";
-import { useToggleRead, useAssignConversation, useUpdateConversationStage } from "@/hooks/useConversations";
+import { useToggleRead, useAssignConversation, useUpdateConversationStage, useSyncConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Message {
   id: string;
@@ -37,13 +40,38 @@ interface ConversationViewProps {
     is_read?: boolean;
     assignedTo?: string | null;
     customStageId?: string | null;
+    chat_id?: string | null;
+    unipile_account_id?: string | null;
   };
   messages: Message[];
+}
+
+interface AttachmentPreview {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  file: File;
+  preview?: string;
 }
 
 export function ConversationView({ conversation, messages }: ConversationViewProps) {
   const [reply, setReply] = useState("");
   const [status, setStatus] = useState(conversation.status);
+  const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when conversation changes or new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [conversation.id, messages.length]);
 
   // Hooks for data and mutations
   const { data: teamMembers = [] } = useTeamMembers();
@@ -51,6 +79,37 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
+  const sendMessage = useSendLinkedInMessage();
+  const syncConversation = useSyncConversation();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!conversation?.id) return;
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const es = new EventSource(`${base}/api/events/stream`);
+
+    const handler = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data?.conversation_id === conversation.id) {
+          queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.addEventListener('linkedin_message', handler);
+
+    es.onerror = () => {
+      // allow automatic retry
+    };
+
+    return () => {
+      es.removeEventListener('linkedin_message', handler);
+      es.close();
+    };
+  }, [conversation.id, queryClient]);
 
   const handleStatusChange = (newStatus: string) => {
     setStatus(newStatus);
@@ -58,13 +117,96 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   };
 
   const handleSendReply = async () => {
-    if (!reply.trim()) {
-      toast.error('Please enter a message');
+    if (!reply.trim() && attachments.length === 0) {
+      toast.error('Please enter a message or attach a file');
       return;
     }
 
-    toast.success('Message sent successfully');
-    setReply('');
+    // Debug: Log conversation data
+    console.log('🔍 Conversation data for message sending:', {
+      chat_id: conversation.chat_id,
+      unipile_account_id: conversation.unipile_account_id,
+      conversation_id: conversation.id,
+      full_conversation: conversation
+    });
+
+    if (!conversation.chat_id || !conversation.unipile_account_id) {
+      toast.error(`Cannot send message: Missing ${!conversation.chat_id ? 'chat_id' : 'unipile_account_id'}`);
+      console.error('❌ Missing required fields:', {
+        has_chat_id: !!conversation.chat_id,
+        has_unipile_account_id: !!conversation.unipile_account_id
+      });
+      return;
+    }
+
+    try {
+      await sendMessage.mutateAsync({
+        chat_id: conversation.chat_id,
+        account_id: conversation.unipile_account_id,
+        text: reply.trim() || undefined,
+        attachments: attachments.length > 0 ? attachments.map(att => ({
+          name: att.name,
+          type: att.type,
+          file: att.file,
+        })) : undefined,
+      });
+
+      setReply('');
+      setAttachments([]);
+    } catch (error) {
+      // Error is handled by the mutation
+      console.error('Failed to send message:', error);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+
+    const newAttachments: AttachmentPreview[] = Array.from(files).map(file => ({
+      id: `${Date.now()}-${Math.random()}`,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      file,
+    }));
+
+    // Generate previews for images
+    newAttachments.forEach(att => {
+      if (att.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setAttachments(prev => prev.map(a => 
+            a.id === att.id ? { ...a, preview: reader.result as string } : a
+          ));
+        };
+        reader.readAsDataURL(att.file);
+      }
+    });
+
+    setAttachments(prev => [...prev, ...newAttachments]);
+    
+    // Reset input
+    if (event.target) {
+      event.target.value = '';
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(att => att.id !== id));
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setReply(prev => prev + emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   const handleToggleRead = () => {
@@ -169,10 +311,24 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => toast.info('Refresh coming soon')}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 rounded-full" 
+              onClick={() => syncConversation.mutate(conversation.id)}
+              disabled={syncConversation.isPending}
+              title="Refresh messages"
+            >
+              {syncConversation.isPending ? (
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => toast.info('Tag feature coming soon')}>
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -267,7 +423,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No messages yet
@@ -396,27 +552,84 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                 </div>
               </div>
             ))}
+            {/* Scroll anchor - this element is used to auto-scroll to bottom */}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
       {/* Compose Area */}
       <div className="border-t bg-background p-4">
-        <div className="flex items-start gap-3">
-          {/* Add Button */}
-          <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0 rounded-full text-muted-foreground">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </Button>
+        {/* Attachments Preview */}
+        {attachments.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachments.map(att => (
+              <div
+                key={att.id}
+                className="relative group bg-muted rounded-lg p-2 flex items-center gap-2 max-w-[200px]"
+              >
+                {att.preview ? (
+                  <img
+                    src={att.preview}
+                    alt={att.name}
+                    className="w-10 h-10 object-cover rounded"
+                  />
+                ) : att.type.startsWith('video/') ? (
+                  <Video className="w-10 h-10 text-muted-foreground" />
+                ) : (
+                  <FileIcon className="w-10 h-10 text-muted-foreground" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{att.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatFileSize(att.size)}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 absolute -top-2 -right-2 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => removeAttachment(att.id)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
 
+        {/* Hidden File Inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileSelect}
+          accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
+          multiple
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileSelect}
+          accept="image/*"
+          multiple
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileSelect}
+          accept="video/*"
+          multiple
+        />
+
+        <div className="flex items-start gap-3">
           {/* Message Input */}
           <div className="flex-1 relative">
             <Textarea
               placeholder="Send a message..."
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              className="min-h-[80px] bg-background resize-none text-sm border-2 rounded-lg pr-12"
+              className="min-h-[80px] bg-background resize-none text-sm border-2 rounded-lg pr-24"
               rows={3}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -424,34 +637,91 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   handleSendReply();
                 }
               }}
+              disabled={conversation.is_account_connected === false}
             />
-            {/* Plus Icon inside textarea */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="absolute bottom-2 right-2 h-8 w-8 text-muted-foreground hover:text-foreground"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-            </Button>
+            
+            {/* Action Buttons inside textarea */}
+            <div className="absolute bottom-2 right-2 flex items-center gap-1">
+              {/* Attachment Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                    <FileIcon className="h-4 w-4 mr-2" />
+                    Attach Document
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
+                    <ImageIcon className="h-4 w-4 mr-2" />
+                    Attach Image
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
+                    <Video className="h-4 w-4 mr-2" />
+                    Attach Video
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Emoji Picker */}
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
+                    <Smile className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="end">
+                  <div className="grid grid-cols-8 gap-1">
+                    {['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '👍', '👎', '👏', '🙌', '👐', '🤝', '🙏', '💪', '🎉', '🎊', '🎈', '❤️', '💕', '💖', '💗', '💓', '💞', '💝', '💘', '💙', '💚', '💛', '🧡', '💜', '🖤', '🤍', '🤎', '💯', '✅', '❌', '⭐', '🌟', '✨', '💫', '🔥', '💥', '💢', '💦', '💨', '👀', '🙈', '🙉', '🙊'].map(emoji => (
+                      <button
+                        key={emoji}
+                        onClick={() => insertEmoji(emoji)}
+                        className="p-1 hover:bg-muted rounded text-xl transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           {/* Send Button */}
           <Button 
             size="icon"
             onClick={handleSendReply}
-            disabled={!reply.trim()}
+            disabled={(!reply.trim() && attachments.length === 0) || sendMessage.isPending || conversation.is_account_connected === false}
             className="h-10 w-10 flex-shrink-0 rounded-full"
           >
-            <Send className="h-4 w-4" />
+            {sendMessage.isPending ? (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
 
         {/* LinkedIn Disconnected Warning - Only show if account is disconnected */}
         {conversation.is_account_connected === false && (
-          <div className="mt-3 text-sm text-red-500">
-            Your LinkedIn account is disconnected. Please reconnect it to continue messaging.
+          <div className="mt-3 text-sm text-red-500 flex items-center gap-2">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Your LinkedIn account is disconnected. Please reconnect it to continue messaging.</span>
           </div>
         )}
       </div>

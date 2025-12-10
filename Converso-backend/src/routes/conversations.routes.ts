@@ -3,6 +3,9 @@ import { conversationsService } from '../services/conversations';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { transformConversation, transformConversations } from '../utils/transformers';
+import { syncChatIncremental } from '../unipile/linkedinSync.4actions';
+import { supabaseAdmin } from '../lib/supabase';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -173,21 +176,25 @@ router.delete(
 
 /**
  * PATCH /api/conversations/:id/profile
- * Update lead profile information (name, company, location)
+ * Update lead profile information (name, email, mobile, company, location)
  */
 router.patch(
   '/:id/profile',
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { sender_name, company_name, location } = req.body;
+    const { sender_name, sender_email, mobile, company_name, location } = req.body;
 
     const updates: {
       sender_name?: string;
+      sender_email?: string;
+      mobile?: string;
       company_name?: string;
       location?: string;
     } = {};
 
     if (sender_name !== undefined) updates.sender_name = sender_name;
+    if (sender_email !== undefined) updates.sender_email = sender_email;
+    if (mobile !== undefined) updates.mobile = mobile;
     if (company_name !== undefined) updates.company_name = company_name;
     if (location !== undefined) updates.location = location;
 
@@ -197,6 +204,68 @@ router.patch(
 
     await conversationsService.updateLeadProfile(id, updates);
     res.json({ message: 'Lead profile updated successfully' });
+  })
+);
+
+/**
+ * POST /api/conversations/:id/sync
+ * Sync/refresh messages for a LinkedIn conversation from Unipile
+ */
+router.post(
+  '/:id/sync',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    logger.info(`[Conversation Sync] Starting sync for conversation ${id}`);
+
+    // Get the conversation to find chat_id and account info
+    const { data: conversation, error: convError } = await supabaseAdmin
+      .from('conversations')
+      .select('id, chat_id, received_on_account_id, conversation_type')
+      .eq('id', id)
+      .single();
+
+    if (convError || !conversation) {
+      logger.error(`[Conversation Sync] Conversation not found: ${id}`);
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    if (conversation.conversation_type !== 'linkedin') {
+      return res.status(400).json({ error: 'Only LinkedIn conversations can be synced' });
+    }
+
+    if (!conversation.chat_id) {
+      return res.status(400).json({ error: 'Conversation missing chat_id' });
+    }
+
+    // Get the unipile account ID from connected_accounts
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('unipile_account_id')
+      .eq('id', conversation.received_on_account_id)
+      .single();
+
+    if (accountError || !account?.unipile_account_id) {
+      logger.error(`[Conversation Sync] Connected account not found for ${conversation.received_on_account_id}`);
+      return res.status(400).json({ error: 'Connected account not found or missing Unipile account ID' });
+    }
+
+    try {
+      // Sync messages for this chat
+      const result = await syncChatIncremental(
+        account.unipile_account_id,
+        conversation.chat_id
+      );
+
+      logger.info(`[Conversation Sync] Sync completed for conversation ${id}`, result);
+      res.json({ 
+        message: 'Messages synced successfully',
+        ...result
+      });
+    } catch (err: any) {
+      logger.error(`[Conversation Sync] Failed to sync conversation ${id}`, err);
+      return res.status(500).json({ error: err.message || 'Failed to sync messages' });
+    }
   })
 );
 

@@ -93,11 +93,23 @@ export const conversationsApi = {
     conversationId: string,
     updates: {
       sender_name?: string;
+      sender_email?: string;
+      mobile?: string;
       company_name?: string;
       location?: string;
     }
   ): Promise<void> {
     await apiClient.patch(`/api/conversations/${conversationId}/profile`, updates);
+  },
+
+  /**
+   * Sync/refresh messages for a LinkedIn conversation from Unipile
+   */
+  async sync(conversationId: string): Promise<{ message: string; messagesCount?: number }> {
+    return apiClient.post<{ message: string; messagesCount?: number }>(
+      `/api/conversations/${conversationId}/sync`,
+      {}
+    );
   },
 };
 

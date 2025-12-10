@@ -28,6 +28,10 @@ export interface Conversation {
   email_folder?: string | null;
   company_name?: string | null;
   location?: string | null;
+  // LinkedIn-specific fields
+  chat_id?: string | null;
+  sender_attendee_id?: string | null;
+  sender_profile_picture_url?: string | null;
   // Email-specific fields (only for conversation_type = 'email')
   email_body?: string | null; // Full email content stored directly in conversation
   has_full_body?: boolean; // Whether full email body has been fetched
@@ -44,6 +48,7 @@ export interface Conversation {
     oauth_provider?: 'google' | 'microsoft' | 'linkedin' | null;
     oauth_access_token?: string | null;
     oauth_refresh_token?: string | null;
+    unipile_account_id?: string | null;
   };
 }
 
