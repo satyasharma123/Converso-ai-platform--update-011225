@@ -58,22 +58,15 @@ export function useSendLinkedInMessage() {
         payload
       );
     },
-    onSuccess: (data, variables) => {
-      // Invalidate ALL messages and conversations queries
-      queryClient.invalidateQueries({ 
-        queryKey: ['messages'] 
-      });
-      queryClient.invalidateQueries({ 
-        queryKey: ['conversations'] 
-      });
-
-      // Force immediate refetch for real-time update
-      queryClient.refetchQueries({ 
-        queryKey: ['messages'] 
-      });
-      queryClient.refetchQueries({ 
-        queryKey: ['conversations'] 
-      });
+    onSuccess: (data) => {
+      if (data?.message?.conversation_id) {
+        queryClient.invalidateQueries({
+          queryKey: ['messages', data.message.conversation_id],
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['messages'] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
 
       toast.success('Message sent successfully');
     },

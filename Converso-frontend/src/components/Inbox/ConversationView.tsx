@@ -153,6 +153,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
       setReply('');
       setAttachments([]);
+      toggleRead.mutate({ conversationId: conversation.id, isRead: true });
     } catch (error) {
       // Error is handled by the mutation
       console.error('Failed to send message:', error);

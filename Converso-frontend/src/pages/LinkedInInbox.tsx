@@ -1,7 +1,7 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Tag, Send, Archive, RefreshCcw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -155,6 +155,21 @@ export default function LinkedInInbox() {
 
   const selectedConv = normalizedConversations.find((c) => c.id === selectedConversation);
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
+  const dedupedMessagesForSelected = useMemo(() => {
+    const seen = new Set<string>();
+    const unique: typeof messagesForSelected = [];
+    for (const msg of messagesForSelected) {
+      const key = (msg as any).linkedin_message_id || (msg as any).id;
+      if (key && seen.has(key)) {
+        continue;
+      }
+      if (key) {
+        seen.add(key);
+      }
+      unique.push(msg);
+    }
+    return unique;
+  }, [messagesForSelected]);
 
   const mockLead = selectedConv ? {
     name: (selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown',
@@ -166,7 +181,7 @@ export default function LinkedInInbox() {
     stage: selectedConv.status,
     engagementScore: 85,
     lastResponseTime: "2 hours ago",
-    messageCount: messagesForSelected.length,
+    messageCount: dedupedMessagesForSelected.length,
   } : null;
 
   return (
@@ -319,7 +334,7 @@ export default function LinkedInInbox() {
                     chat_id: (selectedConv as any).chat_id,
                     unipile_account_id: selectedConv.received_account?.unipile_account_id,
                   }} 
-                  messages={messagesForSelected.map(msg => {
+                  messages={dedupedMessagesForSelected.map(msg => {
                     const isFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead ?? true;
                     // Use conversation sender name for lead messages, otherwise use message sender name
                     const senderName = isFromLead 
