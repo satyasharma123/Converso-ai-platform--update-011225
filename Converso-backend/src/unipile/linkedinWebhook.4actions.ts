@@ -239,6 +239,30 @@ async function ensureConversationExists(
     .single();
 
   if (existingConvo) {
+    if (
+      payloadAttendee &&
+      (!existingConvo.sender_name || existingConvo.sender_name === 'LinkedIn Contact')
+    ) {
+      const updates: Record<string, any> = {
+        sender_name: payloadAttendee.attendee_name || existingConvo.sender_name,
+      };
+      if (payloadAttendee.attendee_profile_url) {
+        updates.sender_linkedin_url = payloadAttendee.attendee_profile_url;
+      } else if (payloadAttendee.attendee_specifics?.member_urn) {
+        updates.sender_linkedin_url = `https://www.linkedin.com/in/${
+          payloadAttendee.attendee_specifics.member_urn.split(':').pop() || ''
+        }`;
+      }
+      await supabaseAdmin
+        .from('conversations')
+        .update(updates)
+        .eq('id', conversationId);
+      return {
+        conversationId,
+        senderName: updates.sender_name || existingConvo.sender_name || 'LinkedIn Contact',
+        senderLinkedinUrl: updates.sender_linkedin_url || existingConvo.sender_linkedin_url || null,
+      };
+    }
     // Conversation exists - return cached sender data
     return {
       conversationId,
