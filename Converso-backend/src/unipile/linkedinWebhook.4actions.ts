@@ -220,7 +220,12 @@ async function ensureConversationExists(
   connectedAccountId: string,
   workspaceId: string | null,
   payloadAttendee?: EventAttendee
-): Promise<{ conversationId: string; senderName: string; senderLinkedinUrl: string | null }> {
+): Promise<{
+  conversationId: string;
+  senderName: string;
+  senderLinkedinUrl: string | null;
+  senderAttendeeId: string | null;
+}> {
   const conversationId = deterministicId(`chat-${chatId}`);
 
   // Check if conversation already exists
@@ -260,6 +265,7 @@ async function ensureConversationExists(
       conversationId,
       senderName: existingConvo.sender_name || 'LinkedIn Contact',
       senderLinkedinUrl: existingConvo.sender_linkedin_url || null,
+      senderAttendeeId: existingConvo.sender_attendee_id || null,
     };
   }
 
@@ -344,6 +350,7 @@ async function ensureConversationExists(
       conversationId,
       senderName,
       senderLinkedinUrl,
+      senderAttendeeId: payloadAttendeeId || null,
     };
   } catch (err) {
     logger.error(`[Webhook] Failed to create/enrich conversation for chat ${chatId}`, err);
@@ -373,6 +380,7 @@ async function ensureConversationExists(
       conversationId,
       senderName,
       senderLinkedinUrl,
+      senderAttendeeId: payloadAttendeeId || null,
     };
   }
 }
@@ -386,6 +394,7 @@ async function syncChatMessages(
   conversationId: string,
   conversationSenderName: string,
   conversationSenderLinkedinUrl: string | null,
+  conversationSenderAttendeeId: string | null,
   fromTimestamp?: string
 ): Promise<number> {
   try {
@@ -416,22 +425,37 @@ async function syncChatMessages(
 
     let syncedCount = 0;
 
+    // Track whether new lead replies were detected
+    let hasLeadMessages = false;
+
     // Process each message
     for (const message of messages) {
       try {
-        // Determine sender info
-        let senderName: string;
-        let senderLinkedinUrl: string | null = null;
-        let senderAttendeeId: string | null = message.sender_attendee_id || message.sender_id || null;
+        const senderAttendeeId: string | null = message.sender_attendee_id || message.sender_id || null;
+        const hasLeadAttendee = Boolean(conversationSenderAttendeeId && senderAttendeeId);
+        const attendeeMatchesLead =
+          hasLeadAttendee && conversationSenderAttendeeId === senderAttendeeId;
 
-        if (message.is_sender) {
-          // Message from self (account owner)
-          senderName = 'You';
+        let isFromLead: boolean;
+        if (hasLeadAttendee) {
+          isFromLead = attendeeMatchesLead;
+        } else if (typeof message.is_sender === 'boolean') {
+          isFromLead = !message.is_sender;
         } else {
-          // Message from lead - use conversation's sender data
-          senderName = conversationSenderName;
-          senderLinkedinUrl = conversationSenderLinkedinUrl;
+          // Default to treating as lead when unsure to avoid missing unread indicators
+          isFromLead = true;
         }
+
+        if (isFromLead) {
+          hasLeadMessages = true;
+        }
+
+        // Determine sender info
+        let senderName = isFromLead ? conversationSenderName : 'You';
+        if (!senderName) {
+          senderName = 'LinkedIn Contact';
+        }
+        const senderLinkedinUrl = isFromLead ? conversationSenderLinkedinUrl : null;
 
         // Ensure sender_name is never null
         if (!senderName) {
@@ -453,7 +477,7 @@ async function syncChatMessages(
             sender_linkedin_url: senderLinkedinUrl,
             content: message.text || message.body_text || '',
             created_at: createdAt,
-            is_from_lead: !message.is_sender,
+            is_from_lead: isFromLead,
             attachments: message.attachments || null,
             reactions: message.reactions || null,
             provider: 'linkedin',
@@ -475,8 +499,6 @@ async function syncChatMessages(
     if (messages.length > 0) {
       const latestTimestamp =
         messages.map(safeTimestamp).filter(Boolean).sort().pop() || new Date().toISOString();
-
-      const hasLeadMessages = messages.some((msg) => !msg.is_sender);
 
       const updatePayload: Record<string, any> = {
         last_message_at: latestTimestamp,
@@ -599,7 +621,12 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
           ) || event.attendees?.[0];
 
         // Ensure conversation exists and get sender info
-        const { conversationId, senderName, senderLinkedinUrl } = await ensureConversationExists(
+        const {
+          conversationId,
+          senderName,
+          senderLinkedinUrl,
+          senderAttendeeId,
+        } = await ensureConversationExists(
           chatId,
           accountId,
           connectedAccountId,
@@ -614,6 +641,7 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
           conversationId,
           senderName,
           senderLinkedinUrl,
+          senderAttendeeId || null,
           event.last_message_timestamp || event.timestamp
         );
 

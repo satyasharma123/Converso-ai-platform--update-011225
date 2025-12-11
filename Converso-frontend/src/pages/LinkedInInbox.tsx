@@ -159,13 +159,23 @@ export default function LinkedInInbox() {
     const seen = new Set<string>();
     const unique: typeof messagesForSelected = [];
     for (const msg of messagesForSelected) {
-      const key = (msg as any).linkedin_message_id || (msg as any).id;
-      if (key && seen.has(key)) {
+      const rawKey =
+        (msg as any).linkedin_message_id ||
+        (msg as any).linkedinMessageId ||
+        (msg as any).id ||
+        null;
+
+      const fallbackKey = [
+        (msg as any).content ?? '',
+        (msg as any).created_at || (msg as any).timestamp || '',
+        String((msg as any).is_from_lead ?? (msg as any).isFromLead ?? ''),
+      ].join('|');
+
+      const key = rawKey || fallbackKey;
+      if (seen.has(key)) {
         continue;
       }
-      if (key) {
-        seen.add(key);
-      }
+      seen.add(key);
       unique.push(msg);
     }
     return unique;

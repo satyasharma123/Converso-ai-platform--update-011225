@@ -22,7 +22,7 @@ interface SendLinkedInMessageResponse {
     content: string;
     created_at: string;
     is_from_lead: boolean;
-  };
+  } | null;
 }
 
 /**

@@ -71,11 +71,13 @@ export function transformMessage(msg: Message): any {
     isFromLead: msg.is_from_lead,
     createdAt: msg.created_at,
     timestamp: msg.created_at,
+    linkedinMessageId: msg.linkedin_message_id || null,
     // Keep snake_case for compatibility
     conversation_id: msg.conversation_id,
     sender_id: msg.sender_id,
     is_from_lead: msg.is_from_lead,
     created_at: msg.created_at,
+    linkedin_message_id: msg.linkedin_message_id || null,
   };
 }
 

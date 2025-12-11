@@ -5,6 +5,8 @@ import { deterministicId } from '../unipile/linkedinConversationMapper';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import axios from 'axios';
+import { syncChatIncremental } from '../unipile/linkedinSync.4actions';
+import { sendSseEvent } from '../utils/sse';
 const FormData = require('form-data');
 
 const router = Router();
@@ -92,37 +94,71 @@ router.post('/send-message', async (req, res) => {
       sendResp?.date ||
       new Date().toISOString();
 
-    const msgRecord = mapMessage(
-      {
-        id: sendResp?.id || `local-${Date.now()}`,
-        chat_id,
-        text,
-        body_text: null,
-        timestamp: createdAt,
-        is_sender: true,
-        sender_attendee_id: sendResp?.sender_attendee_id || null,
-        attachments: sendResp?.attachments || attachments || [],
-        reactions: sendResp?.reactions || [],
-      },
-      conversationId,
-      senderName,
-      senderLinkedinUrl
-    );
+    let responseMessage: any = null;
 
-    // Upsert message locally
-    const { error: msgError } = await supabaseAdmin
-      .from('messages')
-      .upsert(msgRecord, { onConflict: 'linkedin_message_id' });
-    if (msgError) {
-      logger.error('[LinkedIn] Failed to upsert sent message', msgError);
+    if (sendResp?.id) {
+      const msgRecord = mapMessage(
+        {
+          id: sendResp.id,
+          chat_id,
+          text,
+          body_text: null,
+          timestamp: createdAt,
+          is_sender: true,
+          sender_attendee_id: sendResp?.sender_attendee_id || null,
+          attachments: sendResp?.attachments || attachments || [],
+          reactions: sendResp?.reactions || [],
+        },
+        conversationId,
+        senderName,
+        senderLinkedinUrl
+      );
+
+      const { error: msgError } = await supabaseAdmin
+        .from('messages')
+        .upsert(msgRecord, { onConflict: 'linkedin_message_id' });
+      if (msgError) {
+        logger.error('[LinkedIn] Failed to upsert sent message', msgError);
+      } else {
+        responseMessage = msgRecord;
+      }
+    } else {
+      logger.warn('[LinkedIn] Send response missing message id - deferring to sync step');
     }
 
-    // NOTE: We intentionally do NOT update the conversation here.
-    // The conversation data (sender_name, etc.) should only be set by the sync process
-    // to avoid overwriting with incorrect data.
-    // The frontend polling will pick up changes automatically.
+    // Always run a quick incremental sync so we have the definitive message from Unipile
+    try {
+      await syncChatIncremental(account_id, chat_id, createdAt);
+    } catch (syncError) {
+      logger.error('[LinkedIn] Incremental sync after send failed', syncError);
+    }
 
-    return res.json({ status: 'ok', message: msgRecord });
+    if (!responseMessage) {
+      const { data: latestMessage } = await supabaseAdmin
+        .from('messages')
+        .select(
+          'id, conversation_id, content, created_at, is_from_lead, sender_name, sender_linkedin_url, linkedin_message_id'
+        )
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestMessage) {
+        responseMessage = latestMessage;
+      }
+    }
+
+    if (responseMessage) {
+      sendSseEvent('linkedin_message', {
+        chat_id,
+        account_id,
+        conversation_id: conversationId,
+        timestamp: responseMessage.created_at || createdAt,
+      });
+    }
+
+    return res.json({ status: 'ok', message: responseMessage });
   } catch (err: any) {
     logger.error('[LinkedIn] send-message failed', {
       error: err.message,

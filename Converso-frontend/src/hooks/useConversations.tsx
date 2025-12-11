@@ -85,12 +85,43 @@ export function useToggleRead() {
     mutationFn: async ({ conversationId, isRead }: { conversationId: string; isRead: boolean }) => {
       return conversationsApi.toggleRead(conversationId, isRead);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    onMutate: async ({ conversationId, isRead }) => {
+      await queryClient.cancelQueries({ queryKey: ['conversations'] });
+
+      const queries = queryClient.getQueryCache().findAll({ queryKey: ['conversations'] });
+      const previousData = queries.map((query) => ({
+        queryKey: query.queryKey,
+        data: query.state.data,
+      }));
+
+      queries.forEach(({ queryKey }) => {
+        queryClient.setQueryData(queryKey, (oldData: any) => {
+          if (!Array.isArray(oldData)) {
+            return oldData;
+          }
+          return oldData.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  is_read: isRead,
+                  isRead,
+                }
+              : conversation
+          );
+        });
+      });
+
+      return { previousData };
+    },
+    onError: (error, _variables, context) => {
+      context?.previousData?.forEach(({ queryKey, data }) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      console.error('Error toggling read status:', error);
       // No toast notification for read/unread changes
     },
-    onError: (error) => {
-      console.error('Error toggling read status:', error);
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
       // No toast notification for read/unread changes
     },
   });
