@@ -121,14 +121,6 @@ function safeTimestamp(msg: Message): string | null {
 // In-memory cache for attendee details (to avoid repeated API calls)
 const attendeeCache = new Map<string, ChatAttendee>();
 
-const INCOMING_MESSAGE_EVENT_TYPES = new Set([
-  'message.created',
-  'message.received',
-  'message_received',
-  'message.new',
-  'message_new',
-]);
-
 /**
  * Get or fetch attendee details
  */
@@ -394,7 +386,6 @@ async function syncChatMessages(
   conversationId: string,
   conversationSenderName: string,
   conversationSenderLinkedinUrl: string | null,
-  markUnread: boolean,
   fromTimestamp?: string
 ): Promise<number> {
   try {
@@ -485,11 +476,13 @@ async function syncChatMessages(
       const latestTimestamp =
         messages.map(safeTimestamp).filter(Boolean).sort().pop() || new Date().toISOString();
 
+      const hasLeadMessages = messages.some((msg) => !msg.is_sender);
+
       const updatePayload: Record<string, any> = {
         last_message_at: latestTimestamp,
       };
 
-      if (markUnread) {
+      if (hasLeadMessages) {
         updatePayload.is_read = false;
       }
 
@@ -498,7 +491,7 @@ async function syncChatMessages(
         .update(updatePayload)
         .eq('id', conversationId);
 
-      if (markUnread) {
+      if (hasLeadMessages) {
         logger.info(`[Webhook] Marked conversation ${conversationId} as unread (new messages synced)`);
       }
     }
@@ -615,15 +608,12 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
         );
 
         // Sync messages (incremental if timestamp provided)
-        const shouldMarkUnread = INCOMING_MESSAGE_EVENT_TYPES.has(eventType);
-
         const syncedCount = await syncChatMessages(
           chatId,
           accountId,
           conversationId,
           senderName,
           senderLinkedinUrl,
-          shouldMarkUnread,
           event.last_message_timestamp || event.timestamp
         );
 
