@@ -250,15 +250,25 @@ export function useSyncConversation() {
     mutationFn: async (conversationId: string) => {
       return conversationsApi.sync(conversationId);
     },
-    onSuccess: () => {
-      // Invalidate both conversations and messages queries to refresh data
+    onMutate: async (conversationId: string) => {
+      toast.info('Sync requested. Fetching latest messages in the background.');
+      return { conversationId };
+    },
+    onSuccess: (_data, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['messages'] });
+      }
       toast.success('Messages synced successfully');
     },
-    onError: (error: any) => {
+    onError: (error: any, _conversationId, context) => {
       console.error('Error syncing conversation:', error);
       toast.error(error?.message || 'Failed to sync messages');
+      if (context?.conversationId) {
+        queryClient.invalidateQueries({ queryKey: ['messages', context.conversationId] });
+      }
     },
   });
 }

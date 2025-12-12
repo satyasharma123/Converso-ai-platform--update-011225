@@ -25,6 +25,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ConnectedAccount } from "@backend/src/types";
 
 export default function Settings() {
   const { user, userRole } = useAuth();
@@ -39,6 +40,14 @@ export default function Settings() {
   const updateWorkspace = useUpdateWorkspace();
   const { data: connectedAccounts = [], isLoading: accountsLoading, refetch: refetchAccounts } = useConnectedAccounts();
   const queryClient = useQueryClient();
+  const connectedAccountsQueryKey = ['connected_accounts', user?.id] as const;
+
+  const updateConnectedAccountsCache = (updater: (accounts: ConnectedAccount[]) => ConnectedAccount[]) => {
+    queryClient.setQueryData<ConnectedAccount[]>(connectedAccountsQueryKey, (old) => {
+      const base = Array.isArray(old) ? old : [];
+      return updater(base);
+    });
+  };
   const [accountToDelete, setAccountToDelete] = useState<{ id: string; email?: string; name?: string; type?: string } | null>(null);
   
   useEffect(() => {
@@ -217,6 +226,26 @@ export default function Settings() {
 
     setIsAddingAccount(true);
 
+    const optimisticId = `temp-linkedin-${Date.now()}`;
+    const optimisticAccount: ConnectedAccount & { __optimistic?: boolean; status?: string; connection_status?: string } = {
+      id: optimisticId,
+      account_name: newLinkedInAccount.name.trim(),
+      account_email: null,
+      account_type: 'linkedin',
+      is_active: true,
+      user_id: user.id,
+      workspace_id: workspace.id,
+      created_at: new Date().toISOString(),
+    };
+    optimisticAccount.__optimistic = true;
+    optimisticAccount.status = 'connecting';
+    optimisticAccount.connection_status = 'connecting';
+    updateConnectedAccountsCache((accounts) => [...accounts, optimisticAccount]);
+
+    const rollbackOptimistic = () => {
+      updateConnectedAccountsCache((accounts) => accounts.filter(acc => acc.id !== optimisticId));
+    };
+
     try {
       // Use proxy in dev (relative /api), or absolute if provided
       const backendUrl = import.meta.env.VITE_API_URL;
@@ -254,6 +283,7 @@ export default function Settings() {
       setNewLinkedInAccount({ name: "", type: "linkedin" });
     } catch (error: any) {
       toast.error(error.message || "Failed to connect LinkedIn account");
+      rollbackOptimistic();
     } finally {
       // Note: when popup flow finishes, we also clear loader there; keep a guard here.
       setTimeout(() => setIsAddingAccount(false), 500);
@@ -319,23 +349,28 @@ export default function Settings() {
   const confirmDeleteAccount = async () => {
     if (!accountToDelete) return;
 
+    const pendingRemoval = accountToDelete;
+    setAccountToDelete(null);
     setIsDeleting(true);
+
+    const previousAccounts = queryClient.getQueryData<ConnectedAccount[]>(connectedAccountsQueryKey);
+    updateConnectedAccountsCache((accounts) => accounts.filter(acc => acc.id !== pendingRemoval.id));
+
     try {
-      // If this is a LinkedIn account, use LinkedIn disconnect
-      if (accountToDelete.type === 'linkedin') {
-        await disconnectLinkedInAccount(accountToDelete.id);
-        await refetchAccounts();
+      if (pendingRemoval.type === 'linkedin') {
+        await disconnectLinkedInAccount(pendingRemoval.id);
       } else {
-        await connectedAccountsApi.delete(accountToDelete.id);
+        await connectedAccountsApi.delete(pendingRemoval.id);
       }
-      
-      // Invalidate and refetch connected accounts
-      await queryClient.invalidateQueries({ queryKey: ['connected_accounts'] });
+
+      await queryClient.invalidateQueries({ queryKey: connectedAccountsQueryKey });
       await refetchAccounts();
-      
+
       toast.success("Account disconnected successfully");
-      setAccountToDelete(null);
     } catch (error: any) {
+      if (previousAccounts) {
+        queryClient.setQueryData(connectedAccountsQueryKey, previousAccounts);
+      }
       toast.error(error.message || "Failed to disconnect account");
     } finally {
       setIsDeleting(false);
@@ -609,6 +644,7 @@ export default function Settings() {
                           {/* Account Rows */}
                           {linkedInAccounts.map(account => {
                             const accountData = account as any;
+                            const isOptimisticAccount = Boolean(accountData.__optimistic);
                             const isConnected = accountData.status === 'connected' || accountData.connection_status === 'connected';
                             const hasError = accountData.status === 'error' || accountData.connection_status === 'error' || accountData.error;
                             const isReconnecting = reconnectingAccountId === account.id;
@@ -643,7 +679,15 @@ export default function Settings() {
 
                                 {/* Status */}
                                 <div className="flex items-center gap-2">
-                                  {hasError ? (
+                                  {isOptimisticAccount ? (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 gap-1"
+                                    >
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      Connecting...
+                                    </Badge>
+                                  ) : hasError ? (
                                     <Badge 
                                       variant="secondary" 
                                       className="bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-800 gap-1"
@@ -672,24 +716,24 @@ export default function Settings() {
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                   <div className="flex items-center gap-1">
                                     <Link className="h-3 w-3" />
-                                    <span>{sendingLimits.connections}/day</span>
+                                    <span>{isOptimisticAccount ? '...' : `${sendingLimits.connections}/day`}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <Mail className="h-3 w-3" />
-                                    <span>{sendingLimits.messages}/day</span>
+                                    <span>{isOptimisticAccount ? '...' : `${sendingLimits.messages}/day`}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                       <rect x="3" y="4" width="18" height="16" rx="2" />
                                       <line x1="3" y1="10" x2="21" y2="10" />
                                     </svg>
-                                    <span>{sendingLimits.invitations}/day</span>
+                                    <span>{isOptimisticAccount ? '...' : `${sendingLimits.invitations}/day`}</span>
                                   </div>
                                 </div>
 
                                 {/* Actions */}
                                 <div className="flex items-center gap-2 justify-end">
-                                  {hasError && (
+                                  {hasError && !isOptimisticAccount && (
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -711,37 +755,41 @@ export default function Settings() {
                                     </Button>
                                   )}
                                   
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreVertical className="h-4 w-4" />
-                                        <span className="sr-only">Open menu</span>
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() => handleRemoveAccount({
-                                          id: account.id,
-                                          name: account.account_name,
-                                          type: 'linkedin'
-                                        })}
-                                        className="text-destructive focus:text-destructive"
-                                      >
-                                        Disconnect
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
-                                      >
-                                        Reconnect
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        disabled
-                                        className="text-muted-foreground"
-                                      >
-                                        Configure proxy
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                  {isOptimisticAccount ? (
+                                    <span className="text-xs text-muted-foreground">Awaiting confirmation…</span>
+                                  ) : (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                          <MoreVertical className="h-4 w-4" />
+                                          <span className="sr-only">Open menu</span>
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() => handleRemoveAccount({
+                                            id: account.id,
+                                            name: account.account_name,
+                                            type: 'linkedin'
+                                          })}
+                                          className="text-destructive focus:text-destructive"
+                                        >
+                                          Disconnect
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
+                                        >
+                                          Reconnect
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled
+                                          className="text-muted-foreground"
+                                        >
+                                          Configure proxy
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  )}
                                 </div>
                               </div>
                             );
