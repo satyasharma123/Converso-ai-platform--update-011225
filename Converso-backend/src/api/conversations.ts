@@ -1,32 +1,65 @@
 import { supabase, supabaseAdmin } from '../lib/supabase';
+import { logger } from '../utils/logger';
 import type { Conversation } from '../types';
 
 /**
  * API module for conversation-related database queries
  */
 
+const SUPABASE_TIMEOUT_MS = 4000;
+
+async function withTimeout<T>(promise: Promise<T>, description: string): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Timed out while ${description} after ${SUPABASE_TIMEOUT_MS}ms`));
+    }, SUPABASE_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
+}
+
 /**
  * Get workspace ID for a user
  */
 async function getUserWorkspaceId(userId: string): Promise<string | null> {
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('workspace_id')
-    .eq('id', userId)
-    .single();
+  try {
+    const { data: profile, error } = await withTimeout(
+      supabaseAdmin
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', userId)
+        .single(),
+      'fetching user workspace'
+    );
 
-  if (error || !profile?.workspace_id) {
-    // Fallback: get first workspace
-    const { data: workspace } = await supabaseAdmin
-      .from('workspaces')
-      .select('id')
-      .limit(1)
-      .single();
-    
-    return workspace?.id || null;
+    if (!error && profile?.workspace_id) {
+      return profile.workspace_id;
+    }
+  } catch (err) {
+    logger.warn('[Conversations] Failed to fetch user workspace, falling back to default', {
+      error: err instanceof Error ? err.message : err,
+      userId,
+    });
   }
 
-  return profile.workspace_id;
+  try {
+    const { data: workspace } = await withTimeout(
+      supabaseAdmin.from('workspaces').select('id').limit(1).single(),
+      'fetching default workspace'
+    );
+
+    return workspace?.id || null;
+  } catch (err) {
+    logger.error('[Conversations] Failed to determine fallback workspace', {
+      error: err instanceof Error ? err.message : err,
+    });
+    return null;
+  }
 }
 
 export async function getConversations(
