@@ -170,6 +170,44 @@ async function getAttendeePicture(
   }
 }
 
+async function resolveWorkspaceId(
+  workspaceId?: string | null,
+  userId?: string | null
+): Promise<string | null> {
+  if (workspaceId) {
+    return workspaceId;
+  }
+
+  if (userId) {
+    try {
+      const { data } = await supabaseAdmin
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', userId)
+        .single();
+
+      if (data?.workspace_id) {
+        return data.workspace_id;
+      }
+    } catch (err) {
+      logger.warn(`[Webhook] Failed to resolve workspace for user ${userId}`, err);
+    }
+  }
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('workspaces')
+      .select('id')
+      .limit(1)
+      .single();
+
+    return data?.id || null;
+  } catch (err) {
+    logger.warn('[Webhook] Failed to resolve default workspace', err);
+    return null;
+  }
+}
+
 async function provisionConnectedAccount(unipileAccountId: string) {
   try {
     const { data: templateAccount } = await supabaseAdmin
@@ -184,6 +222,11 @@ async function provisionConnectedAccount(unipileAccountId: string) {
       return null;
     }
 
+    const resolvedWorkspaceId = await resolveWorkspaceId(
+      templateAccount.workspace_id || null,
+      templateAccount.user_id
+    );
+
     const { data: newAccount, error } = await supabaseAdmin
       .from('connected_accounts')
       .insert({
@@ -192,10 +235,10 @@ async function provisionConnectedAccount(unipileAccountId: string) {
         account_type: 'linkedin',
         is_active: true,
         user_id: templateAccount.user_id,
-        workspace_id: templateAccount.workspace_id || null,
+        workspace_id: resolvedWorkspaceId,
         unipile_account_id: unipileAccountId,
       })
-      .select('id, workspace_id')
+      .select('id, workspace_id, user_id')
       .single();
 
     if (error || !newAccount) {
@@ -219,7 +262,8 @@ async function ensureConversationExists(
   unipileAccountId: string,
   connectedAccountId: string,
   workspaceId: string | null,
-  payloadAttendee?: EventAttendee
+  payloadAttendee?: EventAttendee,
+  accountUserId?: string | null
 ): Promise<{
   conversationId: string;
   senderName: string;
@@ -235,7 +279,19 @@ async function ensureConversationExists(
     .eq('id', conversationId)
     .single();
 
+  const resolvedWorkspaceId = await resolveWorkspaceId(
+    existingConvo?.workspace_id || workspaceId,
+    accountUserId || null
+  );
+
   if (existingConvo) {
+    if (!existingConvo.workspace_id && resolvedWorkspaceId) {
+      await supabaseAdmin
+        .from('conversations')
+        .update({ workspace_id: resolvedWorkspaceId })
+        .eq('id', conversationId);
+    }
+
     if (
       payloadAttendee &&
       (!existingConvo.sender_name || existingConvo.sender_name === 'LinkedIn Contact')
@@ -258,6 +314,7 @@ async function ensureConversationExists(
         conversationId,
         senderName: updates.sender_name || existingConvo.sender_name || 'LinkedIn Contact',
         senderLinkedinUrl: updates.sender_linkedin_url || existingConvo.sender_linkedin_url || null,
+        senderAttendeeId: existingConvo.sender_attendee_id || null,
       };
     }
     // Conversation exists - return cached sender data
@@ -329,7 +386,7 @@ async function ensureConversationExists(
         provider: 'linkedin',
         chat_id: chatId,
         received_on_account_id: connectedAccountId,
-        workspace_id: workspaceId,
+        workspace_id: resolvedWorkspaceId,
         sender_attendee_id: payloadAttendeeId || null,
         sender_name: senderName,
         sender_linkedin_url: senderLinkedinUrl,
@@ -363,7 +420,7 @@ async function ensureConversationExists(
         provider: 'linkedin',
         chat_id: chatId,
         received_on_account_id: connectedAccountId,
-        workspace_id: workspaceId,
+        workspace_id: resolvedWorkspaceId,
         sender_attendee_id: payloadAttendeeId || null,
         sender_name: senderName,
         sender_linkedin_url: senderLinkedinUrl,
@@ -559,10 +616,11 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
     // Find the connected account
     let connectedAccountId: string | null = null;
     let workspaceId: string | null = null;
+    let connectedAccountUserId: string | null = null;
 
     const { data: account, error: accountError } = await supabaseAdmin
       .from('connected_accounts')
-      .select('id, workspace_id')
+      .select('id, workspace_id, user_id')
       .eq('account_type', 'linkedin')
       .eq('unipile_account_id', accountId)
       .single();
@@ -580,14 +638,31 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
 
         if (fallbackConversation?.received_on_account_id) {
           connectedAccountId = fallbackConversation.received_on_account_id;
-          workspaceId = fallbackConversation.workspace_id || null;
-          logger.info(`[Webhook] Fallback connected account ${connectedAccountId} resolved via conversation chat_id=${chatId}`);
+
+          const { data: fallbackAccount } = await supabaseAdmin
+            .from('connected_accounts')
+            .select('workspace_id, user_id')
+            .eq('id', connectedAccountId)
+            .single();
+
+          connectedAccountUserId = fallbackAccount?.user_id || null;
+          const fallbackWorkspace =
+            fallbackConversation.workspace_id || fallbackAccount?.workspace_id || null;
+          workspaceId = await resolveWorkspaceId(fallbackWorkspace, connectedAccountUserId);
+
+          logger.info(
+            `[Webhook] Fallback connected account ${connectedAccountId} resolved via conversation chat_id=${chatId}`
+          );
         } else {
           logger.warn(`[Webhook] Fallback failed: conversation with chat_id ${chatId} not found or missing received_on_account_id`);
           const provisioned = await provisionConnectedAccount(accountId);
           if (provisioned) {
             connectedAccountId = provisioned.id;
-            workspaceId = provisioned.workspace_id || null;
+            connectedAccountUserId = provisioned.user_id || null;
+            workspaceId = await resolveWorkspaceId(
+              provisioned.workspace_id || null,
+              connectedAccountUserId
+            );
           } else {
             return res.status(404).json({ error: 'Connected account not found' });
           }
@@ -596,14 +671,16 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
         const provisioned = await provisionConnectedAccount(accountId);
         if (provisioned) {
           connectedAccountId = provisioned.id;
-          workspaceId = provisioned.workspace_id || null;
+          connectedAccountUserId = provisioned.user_id || null;
+          workspaceId = await resolveWorkspaceId(provisioned.workspace_id || null, connectedAccountUserId);
         } else {
           return res.status(404).json({ error: 'Connected account not found' });
         }
       }
     } else {
       connectedAccountId = account.id;
-      workspaceId = account.workspace_id || null;
+      connectedAccountUserId = account.user_id || null;
+      workspaceId = await resolveWorkspaceId(account.workspace_id || null, connectedAccountUserId);
     }
 
     // Handle different event types
@@ -631,7 +708,8 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
           accountId,
           connectedAccountId,
           workspaceId,
-          payloadLeadAttendee
+          payloadLeadAttendee,
+          connectedAccountUserId
         );
 
         // Sync messages (incremental if timestamp provided)
