@@ -449,7 +449,10 @@ export default function EmailInbox() {
       !isEmailBodyError &&
       !fetchedEmail
     ) {
-      return null;
+      return {
+        ...selectedConv,
+        email_body: selectedConv.preview || '',
+      };
     }
 
     return selectedConv;
