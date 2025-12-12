@@ -116,7 +116,15 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
     toast.success(`Status updated to ${newStatus}`);
   };
 
+  const isAccountDisconnected = conversation.is_account_connected === false;
+  const isSending = sendMessage.isPending;
+  const inputDisabled = isAccountDisconnected || isSending;
+
   const handleSendReply = async () => {
+    if (isSending) {
+      return;
+    }
+
     if (!reply.trim() && attachments.length === 0) {
       toast.error('Please enter a message or attach a file');
       return;
@@ -638,14 +646,14 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   handleSendReply();
                 }
               }}
-              disabled={conversation.is_account_connected === false}
+              disabled={inputDisabled}
             />
             
             {/* Action Buttons inside textarea */}
             <div className="absolute bottom-2 right-2 flex items-center gap-1">
               {/* Attachment Dropdown */}
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                <DropdownMenuTrigger asChild disabled={inputDisabled}>
                   <Button 
                     variant="ghost" 
                     size="icon" 
@@ -672,7 +680,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
               {/* Emoji Picker */}
               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                <PopoverTrigger asChild>
+                <PopoverTrigger asChild disabled={inputDisabled}>
                   <Button 
                     variant="ghost" 
                     size="icon" 
@@ -702,7 +710,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
           <Button 
             size="icon"
             onClick={handleSendReply}
-            disabled={(!reply.trim() && attachments.length === 0) || sendMessage.isPending || conversation.is_account_connected === false}
+            disabled={(!reply.trim() && attachments.length === 0) || inputDisabled}
             className="h-10 w-10 flex-shrink-0 rounded-full"
           >
             {sendMessage.isPending ? (
