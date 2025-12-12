@@ -1,4 +1,4 @@
-import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch, X, Paperclip, Video, AtSign } from "lucide-react";
+import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch, X, Paperclip, Video, AtSign, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AssignmentDropdown } from "./AssignmentDropdown";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { formatTimeAgo } from "@/utils/timeFormat";
 import { useToggleRead, useAssignConversation, useUpdateConversationStage, useSyncConversation } from "@/hooks/useConversations";
@@ -25,6 +25,10 @@ interface Message {
   isFromLead: boolean;
   reactions?: any[];
   attachments?: any[];
+  deliveryStatus?: 'sending' | 'sent' | 'delivered';
+  tempId?: string;
+  serverId?: string | null;
+  isOptimistic?: boolean;
 }
 
 interface ConversationViewProps {
@@ -65,13 +69,31 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   const videoInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
+
+  const combinedMessages = useMemo(() => {
+    const confirmedIds = new Set(
+      pendingMessages
+        .map((msg) => msg.serverId)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    const filteredMessages = messages.filter((msg) => !confirmedIds.has(msg.id));
+    const allMessages = [...filteredMessages, ...pendingMessages];
+
+    return allMessages.sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      return aTime - bTime;
+    });
+  }, [messages, pendingMessages]);
 
   // Auto-scroll to bottom when conversation changes or new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
     }
-  }, [conversation.id, messages.length]);
+  }, [conversation.id, combinedMessages.length]);
 
   // Hooks for data and mutations
   const { data: teamMembers = [] } = useTeamMembers();
@@ -82,6 +104,38 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   const sendMessage = useSendLinkedInMessage();
   const syncConversation = useSyncConversation();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setPendingMessages((prev) =>
+      prev
+        .map((msg) => {
+          if (msg.serverId) {
+            return msg;
+          }
+
+          const match = messages.find(
+            (serverMsg) =>
+              !serverMsg.isFromLead &&
+              serverMsg.content === msg.content &&
+              Math.abs(
+                new Date(serverMsg.timestamp).getTime() - new Date(msg.timestamp).getTime()
+              ) < 15000
+          );
+
+          if (match) {
+            return { ...msg, serverId: match.id };
+          }
+
+          return msg;
+        })
+        .filter((msg) => {
+          if (!msg.serverId) {
+            return true;
+          }
+          return !messages.some((serverMsg) => serverMsg.id === msg.serverId);
+        })
+    );
+  }, [messages]);
 
   useEffect(() => {
     if (!conversation?.id) return;
@@ -130,14 +184,6 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       return;
     }
 
-    // Debug: Log conversation data
-    console.log('🔍 Conversation data for message sending:', {
-      chat_id: conversation.chat_id,
-      unipile_account_id: conversation.unipile_account_id,
-      conversation_id: conversation.id,
-      full_conversation: conversation
-    });
-
     if (!conversation.chat_id || !conversation.unipile_account_id) {
       toast.error(`Cannot send message: Missing ${!conversation.chat_id ? 'chat_id' : 'unipile_account_id'}`);
       console.error('❌ Missing required fields:', {
@@ -147,8 +193,28 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       return;
     }
 
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      tempId,
+      senderName: 'You',
+      content: reply.trim(),
+      timestamp: new Date().toISOString(),
+      isFromLead: false,
+      senderProfilePictureUrl: null,
+      senderLinkedinUrl: null,
+      attachments: attachments.length > 0 ? attachments.map(att => ({
+        name: att.name,
+        type: att.type,
+        url: att.preview,
+      })) : [],
+      deliveryStatus: 'sending',
+      isOptimistic: true,
+    };
+    setPendingMessages(prev => [...prev, optimisticMessage]);
+
     try {
-      await sendMessage.mutateAsync({
+      const response = await sendMessage.mutateAsync({
         chat_id: conversation.chat_id,
         account_id: conversation.unipile_account_id,
         text: reply.trim() || undefined,
@@ -162,9 +228,22 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       setReply('');
       setAttachments([]);
       toggleRead.mutate({ conversationId: conversation.id, isRead: true });
+
+      setPendingMessages(prev =>
+        prev.map(msg =>
+          msg.tempId === tempId
+            ? {
+                ...msg,
+                deliveryStatus: 'sent',
+                serverId: response?.message?.id || null,
+              }
+            : msg
+        )
+      );
     } catch (error) {
       // Error is handled by the mutation
       console.error('Failed to send message:', error);
+      setPendingMessages(prev => prev.filter(msg => msg.tempId !== tempId));
     }
   };
 
@@ -433,17 +512,17 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
       {/* Messages Area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-        {messages.length === 0 ? (
+        {combinedMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No messages yet
           </div>
         ) : (
           <div className="max-w-4xl mx-auto space-y-6">
             {/* Date Separator */}
-            {messages.length > 0 && messages[0].timestamp && (
+            {combinedMessages.length > 0 && combinedMessages[0].timestamp && (
               <div className="flex justify-center">
                 <span className="text-xs text-muted-foreground bg-background px-3 py-1 rounded-full border">
-                  {new Date(messages[0].timestamp).toLocaleDateString('en-US', { 
+                  {new Date(combinedMessages[0].timestamp).toLocaleDateString('en-US', { 
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric' 
@@ -452,7 +531,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
               </div>
             )}
 
-            {messages.map((message) => (
+            {combinedMessages.map((message) => (
               <div
                 key={message.id}
                 className="flex items-start gap-3"
@@ -480,7 +559,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                       message.isFromLead 
                         ? 'bg-gray-100 text-foreground' 
                         : 'bg-gray-800 text-white'
-                    }`}
+                    } ${message.deliveryStatus === 'sending' ? 'opacity-80' : ''}`}
                   >
                     {/* Name and Timestamp inside bubble */}
                     <div className="flex items-center justify-between gap-4 mb-2 min-w-[200px]">
@@ -543,19 +622,21 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                     </div>
                   )}
 
-                  {/* Delivered Status */}
+                  {/* Delivery Status */}
                   {!message.isFromLead && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">Delivered</span>
-                      <div className="h-5 w-5 rounded-full bg-muted overflow-hidden flex-shrink-0">
-                        {message.senderProfilePictureUrl && (
-                          <img
-                            src={message.senderProfilePictureUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        )}
-                      </div>
+                    <div className="flex items-center justify-end gap-1 mt-2 text-xs text-muted-foreground">
+                      {message.deliveryStatus === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {message.deliveryStatus === 'sent' && <Check className="h-3.5 w-3.5" />}
+                      {(message.deliveryStatus === 'delivered' || !message.deliveryStatus) && (
+                        <CheckCheck className="h-3.5 w-3.5" />
+                      )}
+                      <span>
+                        {message.deliveryStatus === 'sending'
+                          ? 'Sending'
+                          : message.deliveryStatus === 'sent'
+                            ? 'Sent'
+                            : 'Delivered'}
+                      </span>
                     </div>
                   )}
                 </div>

@@ -67,8 +67,6 @@ export function useSendLinkedInMessage() {
         queryClient.invalidateQueries({ queryKey: ['messages'] });
       }
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
-
-      toast.success('Message sent successfully');
     },
     onError: (error: any) => {
       console.error('Failed to send LinkedIn message:', error);
@@ -139,8 +137,6 @@ export function useSendLinkedInMessageWithFiles() {
       queryClient.refetchQueries({ 
         queryKey: ['conversations'] 
       });
-
-      toast.success('Message sent successfully');
     },
     onError: (error: any) => {
       console.error('Failed to send LinkedIn message:', error);

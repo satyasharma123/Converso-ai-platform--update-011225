@@ -345,19 +345,34 @@ export default function LinkedInInbox() {
                     unipile_account_id: selectedConv.received_account?.unipile_account_id,
                   }} 
                   messages={dedupedMessagesForSelected.map(msg => {
-                    const isFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead ?? true;
-                    // Use conversation sender name for lead messages, otherwise use message sender name
+                    const rawIsFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead;
+                    const fallbackSender = (msg as any).senderName || (msg as any).sender_name;
+                    const isFromLead = typeof rawIsFromLead === 'boolean'
+                      ? rawIsFromLead
+                      : (fallbackSender ? fallbackSender.toLowerCase() !== 'you' : true);
+
                     const senderName = isFromLead 
                       ? ((selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown')
-                      : ((msg as any).senderName || (msg as any).sender_name || 'You');
+                      : 'You';
+
+                    const deliveryStatus = isFromLead
+                      ? undefined
+                      : ((msg as any).deliveryStatus as 'sending' | 'sent' | 'delivered') ?? 'delivered';
                     
                     return {
                       ...msg,
                       senderName,
-                      senderProfilePictureUrl: (msg as any).senderProfilePictureUrl || (msg as any).sender_profile_picture_url || (selectedConv as any).sender_profile_picture_url,
-                      senderLinkedinUrl: (msg as any).senderLinkedinUrl || (msg as any).sender_linkedin_url || (selectedConv as any).sender_linkedin_url,
+                      senderProfilePictureUrl:
+                        (msg as any).senderProfilePictureUrl ||
+                        (msg as any).sender_profile_picture_url ||
+                        (selectedConv as any).sender_profile_picture_url,
+                      senderLinkedinUrl:
+                        (msg as any).senderLinkedinUrl ||
+                        (msg as any).sender_linkedin_url ||
+                        (selectedConv as any).sender_linkedin_url,
                       timestamp: (msg as any).timestamp || (msg as any).created_at || '',
                       isFromLead,
+                      deliveryStatus,
                     };
                   })}
                 />
