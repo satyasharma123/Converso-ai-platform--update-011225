@@ -51,9 +51,9 @@ export async function getConversations(
     `)
     .order('last_message_at', { ascending: false });
 
-  // Filter by workspace if available
+  // Filter by workspace if available, but include legacy records missing workspace_id
   if (workspaceId) {
-    query = query.eq('workspace_id', workspaceId);
+    query = query.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
   }
 
   // Filter by type if specified
