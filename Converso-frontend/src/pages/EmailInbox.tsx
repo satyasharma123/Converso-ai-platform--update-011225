@@ -417,7 +417,29 @@ export default function EmailInbox() {
     data: fetchedEmail,
     isFetching: isFetchingEmailBody,
     isError: isEmailBodyError,
+    refetch: refetchEmailBody,
   } = useEmailWithBody(shouldFetchFullBody ? selectedConv?.id ?? null : null);
+
+  const [bodyLoadTimedOut, setBodyLoadTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!isFetchingEmailBody || !shouldFetchFullBody || !selectedConv?.id) {
+      setBodyLoadTimedOut(false);
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setBodyLoadTimedOut(true);
+    }, 8000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isFetchingEmailBody, shouldFetchFullBody, selectedConv?.id]);
 
   const conversationForView = useMemo(() => {
     if (!selectedConv) return null;
@@ -460,9 +482,9 @@ export default function EmailInbox() {
 
   const isEmailBodyLoading =
     shouldFetchFullBody &&
-    !selectedConv?.email_body &&
     !fetchedEmail &&
-    isFetchingEmailBody;
+    isFetchingEmailBody &&
+    !bodyLoadTimedOut;
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
   // Calculate engagement score based on message count, response time, and activity
@@ -840,10 +862,35 @@ export default function EmailInbox() {
                     Loading email body…
                   </div>
                 )}
+                {bodyLoadTimedOut && (
+                  <div className="absolute top-4 right-4 rounded-md bg-yellow-50 border border-yellow-200 px-3 py-2 text-xs text-yellow-700 shadow flex items-center gap-3">
+                    <span>Still fetching the full email…</span>
+                    <button
+                      onClick={() => {
+                        setBodyLoadTimedOut(false);
+                        refetchEmailBody();
+                      }}
+                      className="text-yellow-800 font-semibold underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : isEmailBodyLoading ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
+            ) : (isEmailBodyLoading || bodyLoadTimedOut) ? (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <p className="text-sm">Loading email content…</p>
+                {bodyLoadTimedOut && (
+                  <button
+                    onClick={() => {
+                      setBodyLoadTimedOut(false);
+                      refetchEmailBody();
+                    }}
+                    className="text-xs underline text-primary"
+                  >
+                    Retry now
+                  </button>
+                )}
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">

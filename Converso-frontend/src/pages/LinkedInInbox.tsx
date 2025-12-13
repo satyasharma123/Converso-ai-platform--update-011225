@@ -100,14 +100,78 @@ export default function LinkedInInbox() {
   const handleManualRefresh = useCallback(async () => {
     setIsManualRefreshing(true);
     try {
+      // Get workspace ID
+      const workspaceId = userProfile?.workspace_id || (user as any)?.workspace_id;
+      if (!workspaceId) {
+        toast.error('Workspace not found');
+        return;
+      }
+
+      // Get all LinkedIn accounts for this workspace (prefer workspace-based endpoint)
+      const base = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+      // Try workspace-based list first
+      let linkedInAccounts: any[] = [];
+      try {
+        const wsRes = await fetch(`${base}/api/linkedin/accounts?workspace_id=${workspaceId}`);
+        const wsData = await wsRes.json();
+        linkedInAccounts = (wsData.accounts || []).filter((acc: any) => acc.account_type === 'linkedin' && acc.is_active);
+      } catch (err) {
+        console.error('Workspace accounts fetch failed, falling back to user-based', err);
+      }
+
+      // Fallback to user-based connected-accounts if workspace query returned nothing
+      if (linkedInAccounts.length === 0) {
+        const accountsRes = await fetch(`${base}/api/connected-accounts?userId=${user?.id}`);
+        const accountsData = await accountsRes.json();
+        linkedInAccounts = (accountsData.data || []).filter((acc: any) => acc.account_type === 'linkedin' && acc.is_active);
+      }
+
+      if (linkedInAccounts.length === 0) {
+        toast.error('No LinkedIn accounts connected');
+        return;
+      }
+
+      toast.info('Starting LinkedIn sync...');
+
+      // Trigger sync for each LinkedIn account
+      let successCount = 0;
+      for (const account of linkedInAccounts) {
+        try {
+          const syncRes = await fetch(`${base}/api/linkedin/accounts/${account.id}/initial-sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          
+          if (syncRes.ok) {
+            successCount++;
+          } else {
+            const errorData = await syncRes.json();
+            console.error('Sync failed for account', account.id, errorData);
+          }
+        } catch (err) {
+          console.error('Sync error for account', account.id, err);
+        }
+      }
+
+      // Refresh data
       await queryClient.invalidateQueries({ queryKey: ['conversations'] });
       if (selectedConversation) {
         await queryClient.invalidateQueries({ queryKey: ['messages', selectedConversation] });
       }
+
+      if (successCount > 0) {
+        toast.success(`Synced ${successCount} LinkedIn account(s)`);
+      } else {
+        toast.error('Sync failed. Check console for details.');
+      }
+    } catch (err) {
+      console.error('Manual refresh error', err);
+      toast.error('Failed to sync LinkedIn accounts');
     } finally {
       setIsManualRefreshing(false);
     }
-  }, [queryClient, selectedConversation]);
+  }, [queryClient, selectedConversation, user, userProfile]);
 
   // Calculate unread count
   const unreadCount = normalizedConversations.filter(conv => !conv.isRead).length;

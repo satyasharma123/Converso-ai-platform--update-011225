@@ -1,7 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
+import { UNIPILE_BASE_URL as CONFIG_BASE_URL } from '../config/unipile';
 
-const UNIPILE_BASE_URL = process.env.UNIPILE_BASE_URL || process.env.UNIPILE_API_URL;
+const envBase = process.env.UNIPILE_BASE_URL || process.env.UNIPILE_API_URL;
+const UNIPILE_BASE_URL = envBase || CONFIG_BASE_URL;
 const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY || process.env.UNIPILE_ACCESS_TOKEN;
 
 if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY) {
@@ -15,8 +17,15 @@ const MIN_GAP_MS = 300;
 const requestTimestamps: number[] = [];
 let lastRequestAt = 0;
 
+// Ensure base URL includes /api/v1
+const normalizedBase = (() => {
+  if (!UNIPILE_BASE_URL) return '';
+  const trimmed = UNIPILE_BASE_URL.replace(/\/+$/, '');
+  return trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+})();
+
 const api: AxiosInstance = axios.create({
-  baseURL: UNIPILE_BASE_URL?.replace(/\/+$/, ''),
+  baseURL: normalizedBase,
   headers: {
     'Content-Type': 'application/json',
     'x-api-key': UNIPILE_API_KEY || '',

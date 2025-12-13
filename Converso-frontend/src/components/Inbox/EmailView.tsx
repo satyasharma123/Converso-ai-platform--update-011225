@@ -130,50 +130,138 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   };
 
   // Helper function to clean HTML email body - removes excessive top spacing and malicious tags
-  const cleanEmailHtml = (html: string): string => {
-    if (!html) return html;
-    
-    // CRITICAL: Remove tags that can affect the entire page layout/styling
-    let cleaned = html
-      // Remove <html>, <head>, <body> tags (but keep their content)
-      .replace(/<\/?html[^>]*>/gi, '')
-      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-      .replace(/<\/?body[^>]*>/gi, '')
-      // Remove ALL <style> tags and their content (prevents CSS injection)
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      // Remove <script> tags (security)
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      // Remove <link> tags (prevents external CSS)
-      .replace(/<link[^>]*>/gi, '')
-      // Remove <meta> tags
-      .replace(/<meta[^>]*>/gi, '')
-      // Remove <base> tags
-      .replace(/<base[^>]*>/gi, '')
-      // Remove on* event handlers (onclick, onload, etc.) - security
-      .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '')
-      .replace(/\s+on\w+\s*=\s*[^\s>]*/gi, '')
-      // Remove javascript: protocol from links
-      .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-      // Remove data: protocol for security (except images)
-      .replace(/href\s*=\s*["']data:[^"']*["']/gi, 'href="#"')
-      // Remove common spacer patterns at the start of HTML emails
-      .replace(/^[\s\n]*<div[^>]*style="[^"]*height:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
-      .replace(/^[\s\n]*<div[^>]*style="[^"]*padding-top:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
-      .replace(/^[\s\n]*<div[^>]*style="[^"]*margin-top:\s*\d+px[^"]*"[^>]*><\/div>/gi, '')
-      // Remove spacer images (1-10px height)
-      .replace(/^[\s\n]*<img[^>]*height=["']?[1-9]["']?[^>]*>/gi, '')
-      .replace(/^[\s\n]*<img[^>]*height=["']?10["']?[^>]*>/gi, '')
-      // Remove empty table rows with height at start
-      .replace(/^[\s\n]*<tr[^>]*><td[^>]*height=["']?\d+["']?[^>]*>(\s|&nbsp;)*<\/td><\/tr>/gi, '')
-      // Remove leading whitespace and newlines
-      .replace(/^[\s\n]+/, '')
-      // Remove empty paragraphs at start
-      .replace(/^<p[^>]*>(\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, '')
-      // Remove multiple consecutive empty divs at start
-      .replace(/^(<div[^>]*>\s*<\/div>\s*)+/gi, '');
-    
-    return cleaned;
-  };
+const EMAIL_BODY_STYLES = `
+:where(.email-body-root) {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  color: #111827;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  word-break: break-word;
+}
+:where(.email-body-root) p {
+  margin: 0 0 1rem 0;
+}
+:where(.email-body-root) img {
+  max-width: 100%;
+  height: auto;
+  border: none;
+}
+:where(.email-body-root) table {
+  border-collapse: collapse;
+  width: 100%;
+}
+:where(.email-body-root) table td,
+:where(.email-body-root) table th {
+  vertical-align: top;
+}
+:where(.email-body-root) blockquote {
+  border-left: 3px solid #e5e7eb;
+  margin: 1rem 0;
+  padding-left: 1rem;
+  color: #4b5563;
+}
+:where(.email-body-root) a {
+  color: #2563eb;
+  text-decoration: none;
+}
+:where(.email-body-root) a:hover {
+  text-decoration: underline;
+}
+:where(.email-body-root) hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5rem 0;
+}
+:where(.email-body-root) pre {
+  white-space: pre-wrap;
+  background: #f9fafb;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+}
+`;
+
+const sanitizeEmailHtml = (html: string): string => {
+  if (!html) return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  doc.querySelectorAll('script, iframe, object, embed, base, meta[http-equiv="refresh"]').forEach((el) =>
+    el.remove()
+  );
+
+  doc.querySelectorAll('link[rel="stylesheet"]').forEach((el) => el.remove());
+
+  doc.querySelectorAll<HTMLElement>('*').forEach((node) => {
+    Array.from(node.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value?.toLowerCase() || '';
+      if (name.startsWith('on') || value.startsWith('javascript:')) {
+        node.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  const bodyContent = doc.body?.innerHTML || doc.documentElement?.innerHTML || html;
+  return `<div class="email-body-root">${bodyContent}</div>`;
+};
+
+const escapeHtml = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const formatPlainTextAsHtml = (text: string) => {
+  if (!text) return '';
+  const paragraphs = text.split(/\n{2,}/g);
+  return paragraphs
+    .map((paragraph) => {
+      const trimmed = paragraph.trim();
+      if (!trimmed) return '';
+      const withBreaks = escapeHtml(trimmed).replace(/\n/g, '<br />');
+      return `<p>${withBreaks}</p>`;
+    })
+    .join('');
+};
+
+const EmailBodyContent = ({
+  html,
+  plainText,
+}: {
+  html?: string | null;
+  plainText?: string | null;
+}) => {
+  const hasHtml = html && isActualHtml(html);
+  const sanitizedHtml = hasHtml ? sanitizeEmailHtml(html) : null;
+  const fallbackHtml = !sanitizedHtml && plainText ? formatPlainTextAsHtml(plainText) : null;
+
+  if (sanitizedHtml) {
+    return (
+      <div className="mt-10 email-body-wrapper">
+        <style>{EMAIL_BODY_STYLES}</style>
+        <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
+      </div>
+    );
+  }
+
+  if (fallbackHtml) {
+    return (
+      <div className="mt-10 email-body-wrapper">
+        <style>{EMAIL_BODY_STYLES}</style>
+        <div
+          className="email-body-root"
+          dangerouslySetInnerHTML={{ __html: fallbackHtml }}
+        />
+      </div>
+    );
+  }
+
+  return null;
+};
 
   // Mark as read after 5 seconds
   useEffect(() => {
@@ -967,26 +1055,7 @@ useEffect(() => {
                   </div>
                 </div>
                 
-                {conversation.email_body ? (
-                  <div className="mt-16">
-                    {isActualHtml(conversation.email_body) ? (
-                      <div 
-                        className="email-body-content"
-                        dangerouslySetInnerHTML={{ __html: cleanEmailHtml(conversation.email_body) }}
-                      />
-                    ) : (
-                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
-                        {conversation.email_body}
-                      </div>
-                    )}
-                  </div>
-                ) : conversation.preview ? (
-                  <div className="mt-16">
-                    <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
-                      {conversation.preview}
-                    </div>
-                  </div>
-                ) : null}
+                <EmailBodyContent html={conversation.email_body || undefined} plainText={conversation.preview || undefined} />
               </div>
             )}
             
@@ -1018,26 +1087,10 @@ useEffect(() => {
                       </div>
                     </div>
                     
-                    {message.email_body ? (
-                      <div className="mt-16">
-                        {isActualHtml(message.email_body) ? (
-                          <div 
-                            className="email-body-content"
-                            dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
-                          />
-                        ) : (
-                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
-                            {message.email_body}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="mt-16">
-                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words">
-                          {message.content}
-                        </div>
-                      </div>
-                    )}
+                    <EmailBodyContent
+                      html={message.email_body || undefined}
+                      plainText={message.content || undefined}
+                    />
                   </div>
                 )}
 
@@ -1052,22 +1105,12 @@ useEffect(() => {
                       &gt; wrote:
                     </p>
                     
-                    {message.email_body ? (
-                      isActualHtml(message.email_body) ? (
-                        <div 
-                          className="email-body-content opacity-80 mt-4"
-                          dangerouslySetInnerHTML={{ __html: cleanEmailHtml(message.email_body) }}
-                        />
-                      ) : (
-                        <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80 mt-4">
-                          {message.email_body}
-                        </div>
-                      )
-                    ) : (
-                      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed break-words opacity-80 mt-4">
-                        {message.content}
-                      </div>
-                    )}
+                    <div className="opacity-80 mt-4">
+                      <EmailBodyContent
+                        html={message.email_body || undefined}
+                        plainText={message.content || undefined}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
