@@ -5,7 +5,9 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { KanbanBoard } from "@/components/Pipeline/KanbanBoard";
 import { PipelineFilters } from "@/components/Pipeline/PipelineFilters";
+import { LeadDetailsModal } from "@/components/Pipeline/LeadDetailsModal";
 import { useState, useEffect } from "react";
+import type { Conversation } from "@/hooks/useConversations";
 
 const STORAGE_KEY = 'sales-pipeline-filters';
 
@@ -14,6 +16,8 @@ export default function SalesPipeline() {
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
+  const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Load filters from localStorage on mount
   const [filters, setFilters] = useState(() => {
@@ -63,6 +67,11 @@ export default function SalesPipeline() {
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
+  const handleLeadClick = (conversation: Conversation) => {
+    setSelectedLead(conversation);
+    setIsModalOpen(true);
+  };
+
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-80px)] overflow-x-hidden overflow-y-hidden">
@@ -80,9 +89,16 @@ export default function SalesPipeline() {
 
         {/* Scrollable Kanban Area */}
         <div className="flex-1 overflow-x-hidden overflow-y-hidden pt-6">
-          <KanbanBoard filters={filters} />
+          <KanbanBoard filters={filters} onLeadClick={handleLeadClick} selectedLeadId={selectedLead?.id} />
         </div>
       </div>
+
+      {/* Lead Details Modal */}
+      <LeadDetailsModal 
+        conversation={selectedLead}
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+      />
     </AppLayout>
   );
 }

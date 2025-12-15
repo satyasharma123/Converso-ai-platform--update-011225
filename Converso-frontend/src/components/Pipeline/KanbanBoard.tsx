@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { Conversation, useUpdateConversationStage } from "@/hooks/useConversations";
 import { useConversations } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
 import { KanbanColumn } from "./KanbanColumn";
-import { LeadDetailsDialog } from "./LeadDetailsDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
@@ -19,14 +17,13 @@ interface KanbanBoardProps {
     dateFrom?: Date;
     dateTo?: Date;
   };
+  onLeadClick?: (conversation: Conversation) => void;
 }
 
-export function KanbanBoard({ filters }: KanbanBoardProps) {
+export function KanbanBoard({ filters, onLeadClick }: KanbanBoardProps) {
   const { data: allConversations = [], isLoading, error: conversationsError } = useConversations();
   const { data: pipelineStages = [], isLoading: isLoadingStages, error: stagesError } = usePipelineStages();
   const { userRole, user } = useAuth();
-  const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
   const updateStage = useUpdateConversationStage();
 
   // Filter out conversations without a stage assigned
@@ -34,8 +31,9 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
   const conversations = allConversations.filter(conv => conv.custom_stage_id !== null && conv.custom_stage_id !== undefined);
 
   const handleLeadClick = (conversation: Conversation) => {
-    setSelectedLead(conversation);
-    setDialogOpen(true);
+    if (onLeadClick) {
+      onLeadClick(conversation);
+    }
   };
 
   // Show loading state
@@ -229,12 +227,6 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
           </div>
         </div>
       )}
-
-      <LeadDetailsDialog 
-        conversation={selectedLead}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
     </>
   );
 }

@@ -9,6 +9,7 @@ interface LeadTileProps {
   onDragStart: (e: React.DragEvent, conversationId: string) => void;
   canDrag: boolean;
   onClick?: () => void;
+  isSelected?: boolean;
 }
 
 // Format date as "Dec 15" or "15 Dec"

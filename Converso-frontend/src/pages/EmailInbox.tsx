@@ -4,6 +4,7 @@ import { EmailView } from "@/components/Inbox/EmailView";
 import { EmailSidebar } from "@/components/Inbox/EmailSidebar";
 import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,6 +30,7 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { cn } from "@/lib/utils";
 
 export default function EmailInbox() {
+  const location = useLocation();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +41,16 @@ export default function EmailInbox() {
   const [isSyncing, setIsSyncing] = useState(false);
   
   const { user, userRole } = useAuth();
+  
+  // Handle navigation from Sales Pipeline
+  useEffect(() => {
+    if (location.state?.selectedConversationId) {
+      setSelectedConversation(location.state.selectedConversationId);
+      setIsProfileOpen(true);
+      // Clear the state after using it
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: conversations = [], isLoading, error: conversationsError } = useConversations('email');

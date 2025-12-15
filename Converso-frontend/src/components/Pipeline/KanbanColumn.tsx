@@ -25,10 +25,10 @@ export function KanbanColumn({
   return (
     <div className="flex-shrink-0 w-80 h-full flex flex-col">
       <Card className="h-full flex flex-col overflow-hidden">
-        <div className="p-3 border-b bg-muted/30 flex-shrink-0">
+        <div className="p-3 border-b bg-gray-100 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-xs">{stage.label}</h3>
-            <Badge variant="secondary" className="text-xs">
+            <h3 className="font-semibold text-xs text-gray-800">{stage.label}</h3>
+            <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-700 border-0 hover:bg-gray-300">
               {conversations.length}
             </Badge>
           </div>

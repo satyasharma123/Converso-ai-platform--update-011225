@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/Layout/AppLayout";
 import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Tag, Send, Archive, RefreshCcw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
 import { useConversations, useToggleRead } from "@/hooks/useConversations";
@@ -18,6 +20,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function LinkedInInbox() {
+  const location = useLocation();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,8 +29,18 @@ export default function LinkedInInbox() {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   
   const { user, userRole } = useAuth();
+  
+  // Handle navigation from Sales Pipeline
+  useEffect(() => {
+    if (location.state?.selectedConversationId) {
+      setSelectedConversation(location.state.selectedConversationId);
+      // Clear the state after using it
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
+  const { data: pipelineStages = [] } = usePipelineStages();
   const { data: conversations = [], isLoading } = useConversations('linkedin');
   const toggleRead = useToggleRead();
   const queryClient = useQueryClient();
@@ -323,15 +336,20 @@ export default function LinkedInInbox() {
 
   const mockLead = selectedConv ? {
     name: (selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown',
-    email: (selectedConv as any).senderEmail || (selectedConv as any).sender_email || '',
+    email: (selectedConv as any).senderEmail || (selectedConv as any).sender_email,
+    mobile: (selectedConv as any).mobile,
     profilePictureUrl: (selectedConv as any).sender_profile_picture_url,
     linkedinUrl: (selectedConv as any).sender_linkedin_url,
-    company: "TechCorp Inc",
-    dealSize: "$50k",
-    stage: selectedConv.status,
-    engagementScore: 85,
-    lastResponseTime: "2 hours ago",
-    messageCount: dedupedMessagesForSelected.length,
+    company: (selectedConv as any).company_name || "TechCorp Inc",
+    location: (selectedConv as any).location,
+    stage: pipelineStages.find(s => s.id === (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id)?.name,
+    stageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
+    score: 50,
+    source: 'LinkedIn',
+    channel: 'LinkedIn',
+    lastMessageAt: (selectedConv as any).last_message_at,
+    assignedTo: teamMembers.find(m => m.id === (selectedConv as any).assignedTo || (selectedConv as any).assigned_to)?.full_name,
+    assignedToId: (selectedConv as any).assignedTo || (selectedConv as any).assigned_to,
   } : null;
 
   return (

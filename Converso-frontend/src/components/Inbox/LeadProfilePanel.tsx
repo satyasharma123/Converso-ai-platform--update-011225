@@ -428,10 +428,9 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
 
           {/* Activity Card */}
           <div className="rounded-lg border px-3 py-2.5">
-            <h4 className="text-xs font-semibold mb-2">Activity</h4>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Last Message</span>
-              <span className="text-xs">{lastMessageTime || "N/A"}</span>
+              <span className="text-xs font-medium">{lastMessageTime || "N/A"}</span>
             </div>
           </div>
 
