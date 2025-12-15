@@ -58,7 +58,8 @@ export function mapConversation(
   attendee: UnipileAttendee | null,
   pictureUrl: string | null,
   lastMessageAt: string | null,
-  options: ConversationOptions = {}
+  options: ConversationOptions = {},
+  preview: string | null = null
 ): ConversationRecord {
   const id = deterministicId(`chat-${chat.id}`);
   const senderName =
@@ -81,7 +82,7 @@ export function mapConversation(
     sender_profile_picture_url: pictureUrl || null,
     provider_member_urn: attendee?.specifics?.member_urn || attendee?.provider_id || null,
     subject: chat.title || null,
-    preview: null,
+    preview: preview,
     last_message_at: lastMessageAt,
     is_read: true,
     received_on_account_id: options.accountId || null,

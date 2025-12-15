@@ -42,6 +42,11 @@ export default function LinkedInInbox() {
   const normalizedConversations = conversations.map((conv: any) => {
     const rawIsRead = conv.isRead ?? conv.is_read;
     const isRead = rawIsRead === undefined ? true : parseBoolean(rawIsRead);
+    const unreadCount =
+      conv.unreadCount ??
+      conv.unread_count ??
+      // Fallback: treat unread conversations as having at least one unread
+      (isRead ? 0 : 1);
 
     return {
       ...conv,
@@ -49,6 +54,7 @@ export default function LinkedInInbox() {
       senderEmail: conv.senderEmail || conv.sender_email,
       type: conv.type || conv.conversation_type,
       isRead,
+      unreadCount,
     };
   });
 
@@ -56,6 +62,53 @@ export default function LinkedInInbox() {
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
   // Live updates via SSE for new LinkedIn messages
+  const bumpUnread = useCallback(
+    (conversationId: string) => {
+      queryClient.setQueriesData(
+        { queryKey: ['conversations'] },
+        (oldData: any) => {
+          if (!Array.isArray(oldData)) return oldData;
+          return oldData.map((conv: any) => {
+            if (conv.id !== conversationId) return conv;
+            const currentUnread =
+              conv.unreadCount ??
+              conv.unread_count ??
+              (conv.isRead ?? conv.is_read ? 0 : 0);
+            return {
+              ...conv,
+              is_read: false,
+              isRead: false,
+              unreadCount: (currentUnread || 0) + 1,
+            };
+          });
+        }
+      );
+    },
+    [queryClient]
+  );
+
+  const markReadLocally = useCallback(
+    (conversationId: string) => {
+      queryClient.setQueriesData(
+        { queryKey: ['conversations'] },
+        (oldData: any) => {
+          if (!Array.isArray(oldData)) return oldData;
+          return oldData.map((conv: any) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  is_read: true,
+                  isRead: true,
+                  unreadCount: 0,
+                }
+              : conv
+          );
+        }
+      );
+    },
+    [queryClient]
+  );
+
   useEffect(() => {
     const base = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     const es = new EventSource(`${base}/api/events/stream`);
@@ -63,45 +116,68 @@ export default function LinkedInInbox() {
     const handler = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        console.log('[SSE] Received linkedin_message event:', data);
+        
         if (data?.conversation_id) {
+          bumpUnread(data.conversation_id);
+          
+          // Invalidate all conversations queries (any type/user key)
+          queryClient.invalidateQueries({
+            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'conversations',
+          });
+          
+          // Invalidate messages for this conversation
           queryClient.invalidateQueries({ queryKey: ['messages', data.conversation_id] });
         }
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.error('[SSE] Failed to parse event:', err);
       }
     };
 
     es.addEventListener('linkedin_message', handler);
 
-    es.onerror = () => {
-      // connection errors: allow browser to retry automatically
+    es.onopen = () => {
+      console.log('[SSE] Connection established');
+    };
+
+    es.onerror = (err) => {
+      console.error('[SSE] Connection error:', err);
     };
 
     return () => {
       es.removeEventListener('linkedin_message', handler);
       es.close();
     };
-  }, [queryClient]);
+  }, [bumpUnread, queryClient]);
 
   // Handle conversation click - select and mark as read if unread
-  const handleConversationClick = useCallback((conversationId: string) => {
-    setSelectedConversation(conversationId);
-    
-    // Find the conversation and mark as read if it's unread
-    const conv = normalizedConversations.find(c => c.id === conversationId);
-    if (conv) {
-      if (!conv.isRead) {
-        toggleRead.mutate({ conversationId, isRead: true });
+  const handleConversationClick = useCallback(
+    async (conversationId: string) => {
+      setSelectedConversation(conversationId);
+
+      // Find the conversation and mark as read if it's unread
+      const conv = normalizedConversations.find((c) => c.id === conversationId);
+      if (conv) {
+        if (!conv.isRead) {
+          markReadLocally(conversationId);
+          toggleRead.mutate({ conversationId, isRead: true });
+        } else {
+          // Ensure local unread counter clears even if backend already thinks it's read
+          markReadLocally(conversationId);
+        }
       }
-    }
-  }, [normalizedConversations, toggleRead]);
+
+      // Force-refresh messages for the selected conversation (WhatsApp-style)
+      await queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+    },
+    [markReadLocally, normalizedConversations, queryClient, toggleRead]
+  );
 
   const handleManualRefresh = useCallback(async () => {
     setIsManualRefreshing(true);
     try {
       // Get workspace ID
-      const workspaceId = userProfile?.workspace_id || (user as any)?.workspace_id;
+      const workspaceId = (userProfile as any)?.workspace_id || (user as any)?.workspace_id;
       if (!workspaceId) {
         toast.error('Workspace not found');
         return;

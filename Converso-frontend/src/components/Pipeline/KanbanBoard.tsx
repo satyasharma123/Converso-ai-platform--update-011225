@@ -16,16 +16,22 @@ interface KanbanBoardProps {
     channelType: string;
     search: string;
     selectedStages: string[];
+    dateFrom?: Date;
+    dateTo?: Date;
   };
 }
 
 export function KanbanBoard({ filters }: KanbanBoardProps) {
-  const { data: conversations = [], isLoading, error: conversationsError } = useConversations();
+  const { data: allConversations = [], isLoading, error: conversationsError } = useConversations();
   const { data: pipelineStages = [], isLoading: isLoadingStages, error: stagesError } = usePipelineStages();
   const { userRole, user } = useAuth();
   const [selectedLead, setSelectedLead] = useState<Conversation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const updateStage = useUpdateConversationStage();
+
+  // Filter out conversations without a stage assigned
+  // Only show conversations that have been explicitly assigned to a pipeline stage
+  const conversations = allConversations.filter(conv => conv.custom_stage_id !== null && conv.custom_stage_id !== undefined);
 
   const handleLeadClick = (conversation: Conversation) => {
     setSelectedLead(conversation);
@@ -145,6 +151,40 @@ export function KanbanBoard({ filters }: KanbanBoardProps) {
       } else {
         filtered = filtered.filter(conv => conv.assigned_to === filters.assignedTo);
       }
+    }
+
+    // Date range filter - filter by stage_assigned_at
+    if (filters.dateFrom || filters.dateTo) {
+      filtered = filtered.filter(conv => {
+        // Use stage_assigned_at if available, otherwise fall back to last_message_at
+        const dateToCheck = (conv as any).stage_assigned_at || conv.last_message_at;
+        if (!dateToCheck) return false;
+        
+        const convDate = new Date(dateToCheck);
+        convDate.setHours(0, 0, 0, 0); // Normalize to start of day
+        
+        if (filters.dateFrom && filters.dateTo) {
+          const fromDate = new Date(filters.dateFrom);
+          const toDate = new Date(filters.dateTo);
+          fromDate.setHours(0, 0, 0, 0);
+          toDate.setHours(23, 59, 59, 999); // End of day
+          return convDate >= fromDate && convDate <= toDate;
+        }
+        
+        if (filters.dateFrom) {
+          const fromDate = new Date(filters.dateFrom);
+          fromDate.setHours(0, 0, 0, 0);
+          return convDate >= fromDate;
+        }
+        
+        if (filters.dateTo) {
+          const toDate = new Date(filters.dateTo);
+          toDate.setHours(23, 59, 59, 999);
+          return convDate <= toDate;
+        }
+        
+        return true;
+      });
     }
     
     return filtered;

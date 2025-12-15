@@ -24,6 +24,7 @@ export interface Conversation {
   is_favorite?: boolean | null;
   assigned_to?: string;
   custom_stage_id?: string;
+  stage_assigned_at?: string | null;
   received_on_account_id?: string;
   email_folder?: string | null;
   company_name?: string | null;

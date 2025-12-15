@@ -21,6 +21,7 @@ import unipileWebhookRoutes from './unipile.webhook.routes';
 import emailSyncRoutes from './emailSync.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
 import testRoutes from './test.routes';
+import testWebhookRoutes from './test.webhook.routes';
 import eventsRoutes from './events.routes';
 
 const router = Router();
@@ -53,6 +54,7 @@ router.use('/events', eventsRoutes);
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {
   router.use('/test', testRoutes);
+  router.use('/test', testWebhookRoutes);
 }
 
 export default router;

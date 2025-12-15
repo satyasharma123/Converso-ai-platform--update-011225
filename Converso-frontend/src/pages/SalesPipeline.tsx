@@ -7,18 +7,48 @@ import { KanbanBoard } from "@/components/Pipeline/KanbanBoard";
 import { PipelineFilters } from "@/components/Pipeline/PipelineFilters";
 import { useState, useEffect } from "react";
 
+const STORAGE_KEY = 'sales-pipeline-filters';
+
 export default function SalesPipeline() {
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
   
-  const [filters, setFilters] = useState({
-    assignedTo: "all",
-    channelType: "all",
-    search: "",
-    selectedStages: [] as string[],
+  // Load filters from localStorage on mount
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Convert date strings back to Date objects
+        return {
+          ...parsed,
+          dateFrom: parsed.dateFrom ? new Date(parsed.dateFrom) : undefined,
+          dateTo: parsed.dateTo ? new Date(parsed.dateTo) : undefined,
+        };
+      }
+    } catch (error) {
+      console.error('Error loading filters from localStorage:', error);
+    }
+    return {
+      assignedTo: "all",
+      channelType: "all",
+      search: "",
+      selectedStages: [] as string[],
+      dateFrom: undefined as Date | undefined,
+      dateTo: undefined as Date | undefined,
+    };
   });
+
+  // Save filters to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    } catch (error) {
+      console.error('Error saving filters to localStorage:', error);
+    }
+  }, [filters]);
 
   // Initialize selectedStages with all stages once they're loaded
   useEffect(() => {

@@ -3,10 +3,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Filter, ChevronDown } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Search, Filter, ChevronDown, Calendar as CalendarIcon, X } from "lucide-react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
+import { format } from "date-fns";
 
 interface PipelineFiltersProps {
   filters: {
@@ -14,6 +16,8 @@ interface PipelineFiltersProps {
     channelType: string;
     search: string;
     selectedStages: string[];
+    dateFrom?: Date;
+    dateTo?: Date;
   };
   onFiltersChange: (filters: any) => void;
 }
@@ -49,6 +53,28 @@ export function PipelineFilters({ filters, onFiltersChange }: PipelineFiltersPro
     }
     return `${filters.selectedStages.length} Stages`;
   };
+
+  const getDateRangeLabel = () => {
+    if (!filters.dateFrom && !filters.dateTo) {
+      return "Date Range";
+    }
+    if (filters.dateFrom && filters.dateTo) {
+      return `${format(filters.dateFrom, "MMM d")} - ${format(filters.dateTo, "MMM d")}`;
+    }
+    if (filters.dateFrom) {
+      return `From ${format(filters.dateFrom, "MMM d")}`;
+    }
+    if (filters.dateTo) {
+      return `To ${format(filters.dateTo, "MMM d")}`;
+    }
+    return "Date Range";
+  };
+
+  const clearDateFilter = () => {
+    onFiltersChange({ ...filters, dateFrom: undefined, dateTo: undefined });
+  };
+
+  const hasDateFilter = filters.dateFrom || filters.dateTo;
 
   return (
     <div className="flex items-center gap-3">
@@ -146,6 +172,78 @@ export function PipelineFilters({ filters, onFiltersChange }: PipelineFiltersPro
                     </label>
                   </div>
                 ))}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Date Range Filter */}
+        <Popover>
+          <div className="relative">
+            <PopoverTrigger asChild>
+              <Button 
+                variant="outline" 
+                className={`h-8 text-xs w-[160px] justify-between ${hasDateFilter ? 'border-primary pr-8' : ''}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  <span>{getDateRangeLabel()}</span>
+                </div>
+                {!hasDateFilter && <ChevronDown className="h-3.5 w-3.5 opacity-50" />}
+              </Button>
+            </PopoverTrigger>
+            {hasDateFilter && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  clearDateFilter();
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 hover:bg-accent rounded p-0.5"
+              >
+                <X className="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
+              </button>
+            )}
+          </div>
+          <PopoverContent className="w-auto p-0" align="start">
+            <div className="p-3">
+              <div className="flex items-center justify-between pb-2 border-b mb-3">
+                <span className="text-xs font-medium">Filter by Date Range</span>
+                {hasDateFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearDateFilter}
+                    className="h-6 px-2 text-xs"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground font-medium">From Date</label>
+                  <Calendar
+                    mode="single"
+                    selected={filters.dateFrom}
+                    onSelect={(date) => onFiltersChange({ ...filters, dateFrom: date })}
+                    disabled={(date) => filters.dateTo ? date > filters.dateTo : false}
+                    initialFocus
+                    className="scale-90 origin-top-left"
+                  />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground font-medium">To Date</label>
+                  <Calendar
+                    mode="single"
+                    selected={filters.dateTo}
+                    onSelect={(date) => onFiltersChange({ ...filters, dateTo: date })}
+                    disabled={(date) => filters.dateFrom ? date < filters.dateFrom : false}
+                    className="scale-90 origin-top-left"
+                  />
+                </div>
               </div>
             </div>
           </PopoverContent>

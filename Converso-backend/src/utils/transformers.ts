@@ -22,6 +22,7 @@ export function transformConversation(conv: Conversation): any {
     lastMessageAt: canonicalTimestamp,
     type: conv.conversation_type,
     conversationType: conv.conversation_type,
+    conversation_type: conv.conversation_type, // Keep snake_case for compatibility
     status: conv.status,
     isRead: conv.is_read,
     is_read: conv.is_read, // Keep both for compatibility
@@ -31,6 +32,8 @@ export function transformConversation(conv: Conversation): any {
     assigned_to: conv.assigned_to, // Keep both
     customStageId: conv.custom_stage_id,
     custom_stage_id: conv.custom_stage_id, // Keep both for compatibility
+    stageAssignedAt: conv.stage_assigned_at,
+    stage_assigned_at: conv.stage_assigned_at, // Keep both for compatibility
     receivedAccount: conv.received_account,
     received_account: conv.received_account, // Keep both
     receivedOnAccountId: conv.received_on_account_id,

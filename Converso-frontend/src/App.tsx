@@ -12,7 +12,6 @@ import LinkedInInbox from "./pages/LinkedInInbox";
 import Team from "./pages/Team";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
-import ConversationsInbox from "./pages/ConversationsInbox";
 import SalesPipeline from "./pages/SalesPipeline";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -42,7 +41,6 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/inbox/email" element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
             <Route path="/inbox/linkedin" element={<ProtectedRoute><LinkedInInbox /></ProtectedRoute>} />
-            <Route path="/inbox/conversations" element={<ProtectedRoute><ConversationsInbox /></ProtectedRoute>} />
             <Route path="/pipeline" element={<ProtectedRoute><SalesPipeline /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute requiredRole="admin"><Team /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

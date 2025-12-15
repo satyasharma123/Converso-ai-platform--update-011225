@@ -96,7 +96,8 @@ export async function getConversations(
 
   // SDRs only see their assigned conversations
   if (userRole === 'sdr') {
-    query = query.eq('assigned_to', userId);
+    // SDRs should see their assigned conversations AND any unassigned conversations
+    query = query.or(`assigned_to.eq.${userId},assigned_to.is.null`);
   }
 
   const { data, error } = await query;

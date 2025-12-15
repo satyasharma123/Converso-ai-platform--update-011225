@@ -19,7 +19,6 @@ import { useConversations } from "@/hooks/useConversations";
 const communicationItems = [
   { title: "Email Inbox", url: "/inbox/email", icon: Mail },
   { title: "LinkedIn Inbox", url: "/inbox/linkedin", icon: Linkedin },
-  { title: "All Conversations", url: "/inbox/conversations", icon: Inbox },
 ];
 
 const salesItemsAdmin = [

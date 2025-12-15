@@ -487,14 +487,37 @@ export async function syncLinkedInMessagesForAccount(
           }
         }
 
-        // Mark conversation as fully synced
+        // Extract preview from the latest message
+        const latestMessage = messages
+          .map((msg) => ({ msg, ts: safeTimestamp(msg) }))
+          .filter((entry) => entry.ts)
+          .sort((a, b) => (a.ts! < b.ts! ? 1 : -1)) // Sort descending (latest first)
+          .shift(); // Get the first (latest) message
+
+        const previewText = (() => {
+          if (!latestMessage?.msg) return null;
+          const m = latestMessage.msg;
+          return (
+            m.text ||
+            m.body_text ||
+            null
+          );
+        })();
+
+        // Mark conversation as fully synced and update preview
         await supabaseAdmin
           .from('conversations')
-          .update({ initial_sync_done: true })
+          .update({ 
+            initial_sync_done: true,
+            preview: previewText ? String(previewText).trim().substring(0, 500) : null
+          })
           .eq('id', convo.id);
 
         conversationsCount++;
-        logger.info(`[Action 4] Successfully synced ${messages.length} messages for chat ${convo.chat_id}`);
+        logger.info(`[Action 4] Successfully synced ${messages.length} messages for chat ${convo.chat_id}`, {
+          hasPreview: !!previewText,
+          previewLength: previewText ? String(previewText).length : 0
+        });
       } catch (err: any) {
         logger.error(`[Action 4] Failed to sync messages for chat ${convo.chat_id}`, err);
         
@@ -689,7 +712,7 @@ export async function syncChatIncremental(
       }
     }
 
-    // Update conversation's last_message_at
+    // Update conversation's last_message_at and mark as unread if new lead messages
     if (messages.length > 0) {
       const latestTimestamp = messages
         .map(safeTimestamp)
@@ -697,10 +720,20 @@ export async function syncChatIncremental(
         .sort()
         .pop();
 
+      const hasNewLeadMessages = messages.some(msg => !msg.is_sender);
+      
+      const updatePayload: any = {};
       if (latestTimestamp) {
+        updatePayload.last_message_at = latestTimestamp;
+      }
+      if (hasNewLeadMessages) {
+        updatePayload.is_read = false;
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
         await supabaseAdmin
           .from('conversations')
-          .update({ last_message_at: latestTimestamp })
+          .update(updatePayload)
           .eq('id', existingConvo.id);
       }
     }

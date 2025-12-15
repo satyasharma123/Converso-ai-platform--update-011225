@@ -17,9 +17,9 @@ export function useConversations(type?: 'email' | 'linkedin') {
       return conversationsApi.list(type);
     },
     enabled: !!user,
-    refetchInterval: 8000, // Poll every 8 seconds for new messages/conversations
+    refetchInterval: 5000, // Poll every 5 seconds for new messages/conversations
     refetchOnWindowFocus: true, // Refetch when user focuses window
-    staleTime: 5000, // Data is fresh for 5 seconds
+    staleTime: 2000, // Data is fresh for 2 seconds
   });
 }
 

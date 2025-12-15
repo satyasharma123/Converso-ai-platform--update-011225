@@ -124,6 +124,10 @@ export function LinkedInConversationList({
         {conversations.map((conversation) => {
           // Determine if email is unread (show dot if unread)
           const isUnread = !(conversation.isRead ?? (conversation as any).is_read ?? false);
+          const unreadCount =
+            (conversation as any).unreadCount ??
+            (conversation as any).unread_count ??
+            (isUnread ? 1 : 0);
           const ts = conversation.timestamp || (conversation as any).last_message_at || '';
           const initials = (conversation.senderName || 'U')
             .split(' ')
@@ -169,7 +173,9 @@ export function LinkedInConversationList({
                 </div>
                 {isUnread && (
                   <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center border-2 border-background">
-                    <span className="text-[9px] font-bold text-white">1</span>
+                    <span className="text-[9px] font-bold text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
                   </div>
                 )}
               </div>

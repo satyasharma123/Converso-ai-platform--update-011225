@@ -258,6 +258,16 @@ router.post(
       );
 
       logger.info(`[Conversation Sync] Sync completed for conversation ${id}`, result);
+      
+      // Send SSE event to notify frontend
+      const { sendSseEvent } = await import('../utils/sse');
+      sendSseEvent('linkedin_message', {
+        conversation_id: id,
+        chat_id: conversation.chat_id,
+        account_id: account.unipile_account_id,
+        timestamp: new Date().toISOString(),
+      });
+      
       res.json({ 
         message: 'Messages synced successfully',
         ...result
