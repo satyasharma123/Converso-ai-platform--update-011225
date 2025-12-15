@@ -74,6 +74,7 @@ export async function getConversations(
     .from('conversations')
     .select(`
       *,
+      unread_count,
       received_account:connected_accounts(
         account_name,
         account_email,

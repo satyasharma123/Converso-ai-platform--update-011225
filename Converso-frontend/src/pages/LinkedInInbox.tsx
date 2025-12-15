@@ -55,10 +55,13 @@ export default function LinkedInInbox() {
   const normalizedConversations = conversations.map((conv: any) => {
     const rawIsRead = conv.isRead ?? conv.is_read;
     const isRead = rawIsRead === undefined ? true : parseBoolean(rawIsRead);
+    
+    // Use backend-calculated unread_count (from database trigger)
+    // This gives us the actual count of unread messages from leads
     const unreadCount =
       conv.unreadCount ??
       conv.unread_count ??
-      // Fallback: treat unread conversations as having at least one unread
+      // Fallback: if no count available and conversation is unread, show 1
       (isRead ? 0 : 1);
 
     return {
@@ -76,12 +79,14 @@ export default function LinkedInInbox() {
 
   // Live updates via SSE for new LinkedIn messages
   const bumpUnread = useCallback(
-    (conversationId: string) => {
+    (conversationId: string, timestamp?: string) => {
       queryClient.setQueriesData(
         { queryKey: ['conversations'] },
         (oldData: any) => {
           if (!Array.isArray(oldData)) return oldData;
-          return oldData.map((conv: any) => {
+          
+          // Update the conversation with new unread count and timestamp
+          const updatedData = oldData.map((conv: any) => {
             if (conv.id !== conversationId) return conv;
             const currentUnread =
               conv.unreadCount ??
@@ -91,8 +96,21 @@ export default function LinkedInInbox() {
               ...conv,
               is_read: false,
               isRead: false,
+              // Increment the unread count optimistically
+              // The actual count will be updated when the query refetches from backend
               unreadCount: (currentUnread || 0) + 1,
+              unread_count: (currentUnread || 0) + 1,
+              // Update last_message_at to current time for proper sorting
+              last_message_at: timestamp || new Date().toISOString(),
+              lastMessageAt: timestamp || new Date().toISOString(),
             };
+          });
+          
+          // Sort by last_message_at descending (newest first)
+          return updatedData.sort((a: any, b: any) => {
+            const aTime = new Date(a.last_message_at || a.lastMessageAt || 0).getTime();
+            const bTime = new Date(b.last_message_at || b.lastMessageAt || 0).getTime();
+            return bTime - aTime; // Descending order
           });
         }
       );
@@ -132,9 +150,38 @@ export default function LinkedInInbox() {
         console.log('[SSE] Received linkedin_message event:', data);
         
         if (data?.conversation_id) {
-          bumpUnread(data.conversation_id);
+          // Only bump unread count if the message is from the lead (not from you)
+          // This prevents the badge from appearing when you send a reply
+          if (data.is_from_lead !== false) {
+            // If is_from_lead is true or undefined (for backwards compatibility), bump unread
+            bumpUnread(data.conversation_id, data.timestamp);
+          } else {
+            // Even if it's your own message, update the timestamp to move conversation to top
+            queryClient.setQueriesData(
+              { queryKey: ['conversations'] },
+              (oldData: any) => {
+                if (!Array.isArray(oldData)) return oldData;
+                
+                const updatedData = oldData.map((conv: any) => {
+                  if (conv.id !== data.conversation_id) return conv;
+                  return {
+                    ...conv,
+                    last_message_at: data.timestamp || new Date().toISOString(),
+                    lastMessageAt: data.timestamp || new Date().toISOString(),
+                  };
+                });
+                
+                // Sort by last_message_at descending (newest first)
+                return updatedData.sort((a: any, b: any) => {
+                  const aTime = new Date(a.last_message_at || a.lastMessageAt || 0).getTime();
+                  const bTime = new Date(b.last_message_at || b.lastMessageAt || 0).getTime();
+                  return bTime - aTime;
+                });
+              }
+            );
+          }
           
-          // Invalidate all conversations queries (any type/user key)
+          // Always invalidate queries to refresh the conversation list and messages
           queryClient.invalidateQueries({
             predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'conversations',
           });
@@ -265,7 +312,7 @@ export default function LinkedInInbox() {
   // Calculate unread count
   const unreadCount = normalizedConversations.filter(conv => !conv.isRead).length;
 
-  // Apply filters
+  // Apply filters and sort by last_message_at
   const filteredConversations = normalizedConversations
     .filter(conv => {
       // SDR role filtering is handled by backend service
@@ -286,6 +333,12 @@ export default function LinkedInInbox() {
         true;
       
       return matchesAccount && matchesSearch && matchesTab;
+    })
+    .sort((a, b) => {
+      // Sort by last_message_at descending (newest first)
+      const aTime = new Date(a.last_message_at || a.lastMessageAt || 0).getTime();
+      const bTime = new Date(b.last_message_at || b.lastMessageAt || 0).getTime();
+      return bTime - aTime;
     })
     .map(conv => ({
       ...conv,

@@ -261,11 +261,22 @@ router.post(
       
       // Send SSE event to notify frontend
       const { sendSseEvent } = await import('../utils/sse');
+      
+      // Get the latest message to check if it's from lead
+      const { data: latestMsg } = await supabaseAdmin
+        .from('messages')
+        .select('is_from_lead')
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
       sendSseEvent('linkedin_message', {
         conversation_id: id,
         chat_id: conversation.chat_id,
         account_id: account.unipile_account_id,
         timestamp: new Date().toISOString(),
+        is_from_lead: latestMsg?.is_from_lead ?? true, // Default to true for safety
       });
       
       res.json({ 

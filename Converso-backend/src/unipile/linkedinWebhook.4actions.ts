@@ -725,11 +725,21 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
 
         logger.info(`[Webhook] Synced ${syncedCount} messages for chat ${chatId}`);
         if (syncedCount > 0) {
+          // Get the latest message to check if it's from lead
+          const { data: latestMsg } = await supabaseAdmin
+            .from('messages')
+            .select('is_from_lead')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
           sendSseEvent('linkedin_message', {
             chat_id: chatId,
             account_id: accountId,
             conversation_id: conversationId,
             timestamp: event.timestamp || new Date().toISOString(),
+            is_from_lead: latestMsg?.is_from_lead ?? true, // Default to true for safety
           });
         }
         break;
