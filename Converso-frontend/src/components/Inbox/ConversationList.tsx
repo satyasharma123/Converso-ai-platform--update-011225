@@ -1,4 +1,4 @@
-import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive } from "lucide-react";
+import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ReceivedAccountBadge } from "./ReceivedAccountBadge";
 import { formatTimeAgo } from "@/utils/timeFormat";
-import { useToggleRead, useAssignConversation, useUpdateConversationStage } from "@/hooks/useConversations";
+import { useToggleRead, useAssignConversation, useUpdateConversationStage, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
@@ -39,6 +39,7 @@ interface ConversationListProps {
   onConversationClick: (id: string) => void;
   selectedId?: string;
   onToggleSelect?: (id: string) => void;
+  showCheckboxes?: boolean;
 }
 
 export function ConversationList({
@@ -46,10 +47,13 @@ export function ConversationList({
   onConversationClick,
   selectedId,
   onToggleSelect,
+  showCheckboxes = false,
 }: ConversationListProps) {
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
+  const toggleFavorite = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
 
@@ -74,13 +78,13 @@ export function ConversationList({
   };
 
   // Helper function to get SDR first name, truncated if needed
-  const getSdrDisplayName = (assignedToId?: string): string | null => {
-    if (!assignedToId) return null;
+  const getSdrDisplayName = (assignedToId?: string): string => {
+    if (!assignedToId) return '';
     const member = teamMembers.find(m => m.id === assignedToId);
     if (!member) {
-      // If member not found, return "Unknown" instead of ID
+      // If member not found, return empty string
       console.warn('Team member not found for ID:', assignedToId);
-      return 'Unknown';
+      return '';
     }
     
     // Extract first name (before first space)
@@ -112,6 +116,29 @@ export function ConversationList({
 
   const handleArchive = (conversationId: string) => {
     toast.info('Archive feature coming soon');
+  };
+
+  const handleToggleFavorite = (conversation: Conversation) => {
+    const isFavorite = (conversation as any).is_favorite ?? (conversation as any).isFavorite ?? false;
+    toggleFavorite.mutate({ 
+      conversationId: conversation.id, 
+      isFavorite: !isFavorite 
+    });
+  };
+
+  const handleDelete = (conversationId: string) => {
+    const confirmed = window.confirm('Delete this email thread? This cannot be undone.');
+    if (!confirmed) return;
+    
+    deleteConversation.mutate(conversationId, {
+      onSuccess: () => {
+        toast.success('Email deleted successfully');
+      },
+      onError: (error) => {
+        console.error('Error deleting conversation:', error);
+        toast.error('Failed to delete email');
+      }
+    });
   };
 
   if (conversations.length === 0) {
@@ -146,24 +173,26 @@ export function ConversationList({
               selectedId === conversation.id && "bg-accent/20 border-l-2 border-l-primary"
             )}
           >
-            {/* Checkbox */}
-            <Checkbox 
-              className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" 
-              checked={conversation.selected}
-              onCheckedChange={() => onToggleSelect?.(conversation.id)}
-              onClick={(e) => e.stopPropagation()}
-            />
+            {/* Checkbox - only show when showCheckboxes is true */}
+            {showCheckboxes && (
+              <Checkbox 
+                className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" 
+                checked={conversation.selected}
+                onCheckedChange={() => onToggleSelect?.(conversation.id)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
             
             {/* Main Content */}
             <div 
-              className="flex-1 min-w-0 space-y-1"
+              className="flex-1 min-w-0 space-y-2"
               onClick={() => onConversationClick(conversation.id)}
             >
               {/* First Row: Sender Name + Time + Unread Dot */}
               <div className="flex items-center justify-between gap-2">
                 <span className={cn(
-                  "text-[13px] truncate flex-1",
-                  isUnread ? "font-semibold text-foreground" : "font-normal text-foreground"
+                  "text-xs truncate flex-1",
+                  isUnread ? "font-medium text-foreground" : "font-normal text-foreground"
                 )}>
                   {conversation.senderName}
                 </span>
@@ -180,41 +209,37 @@ export function ConversationList({
               {/* Second Row: Subject */}
               {conversation.subject && (
                 <p className={cn(
-                  "text-[13px] truncate leading-tight",
-                  isUnread ? "font-medium text-foreground" : "text-muted-foreground"
+                  "text-xs truncate",
+                  isUnread ? "font-normal text-foreground" : "text-muted-foreground"
                 )}>
                   {conversation.subject}
                 </p>
               )}
 
               {/* Third Row: Preview (2 lines max) */}
-              <p className="text-[12px] text-muted-foreground leading-snug line-clamp-2">
+              <p className="text-xs text-muted-foreground line-clamp-2">
                 {stripHtml(conversation.preview)}
               </p>
 
               {/* Fourth Row: Account Badge + SDR Badge */}
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center justify-between gap-2 pt-3">
+                <div className="flex items-center gap-1 text-[11px] text-gray-400 min-w-0">
                   {conversation.receivedAccount && (
-                    <ReceivedAccountBadge
-                      accountName={conversation.receivedAccount.account_name}
-                      accountEmail={conversation.receivedAccount.account_email}
-                      accountType={conversation.receivedAccount.account_type}
-                    />
+                    <>
+                      <span className="truncate max-w-[100px]">
+                        {conversation.receivedAccount.account_name}
+                      </span>
+                      {(() => {
+                        const assignedId = conversation.assignedTo || (conversation as any).assigned_to;
+                        const sdrName = getSdrDisplayName(assignedId);
+                        return sdrName ? <span>•</span> : null;
+                      })()}
+                    </>
                   )}
-                </div>
-                <div className="flex-shrink-0">
                   {(() => {
                     const assignedId = conversation.assignedTo || (conversation as any).assigned_to;
-                    return assignedId ? (
-                      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                        {getSdrDisplayName(assignedId)}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-orange-500 text-orange-500">
-                        Unassigned
-                      </Badge>
-                    );
+                    const sdrName = getSdrDisplayName(assignedId);
+                    return sdrName ? <span className="truncate">{sdrName}</span> : null;
                   })()}
                 </div>
               </div>
@@ -293,6 +318,28 @@ export function ConversationList({
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleArchive(conversation.id); }}>
                 <Archive className="h-4 w-4 mr-2" />
                 Archive
+              </DropdownMenuItem>
+
+              {/* Favorite/Unfavorite */}
+              {((conversation as any).is_favorite ?? (conversation as any).isFavorite) ? (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleFavorite(conversation); }}>
+                  <StarOff className="h-4 w-4 mr-2" />
+                  Remove Favorite
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleFavorite(conversation); }}>
+                  <Star className="h-4 w-4 mr-2" />
+                  Mark as Favorite
+                </DropdownMenuItem>
+              )}
+
+              {/* Delete */}
+              <DropdownMenuItem 
+                onClick={(e) => { e.stopPropagation(); handleDelete(conversation.id); }}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

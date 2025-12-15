@@ -6,7 +6,7 @@ import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw } from "lucide-react";
+import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +39,7 @@ export default function EmailInbox() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showCheckboxes, setShowCheckboxes] = useState(false);
   
   const { user, userRole } = useAuth();
   
@@ -773,27 +774,57 @@ export default function EmailInbox() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Checkbox 
-                      className="h-3.5 w-3.5" 
-                      checked={selectedConversations.length === filteredConversations.length && filteredConversations.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
-                    <span className="text-xs">Select all</span>
-                  </div>
+                  {!showCheckboxes ? (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-xs px-2"
+                      onClick={() => setShowCheckboxes(true)}
+                    >
+                      Select
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <Checkbox 
+                          className="h-3.5 w-3.5" 
+                          checked={selectedConversations.length === filteredConversations.length && filteredConversations.length > 0}
+                          onCheckedChange={handleSelectAll}
+                        />
+                        <span className="text-xs">Select all</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 hover:bg-muted"
+                        onClick={() => {
+                          setSelectedConversations([]);
+                          setShowCheckboxes(false);
+                        }}
+                        title="Cancel selection"
+                      >
+                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  )}
                   
-                  <BulkActions 
-                    selectedCount={selectedConversations.length}
-                    onMarkRead={handleBulkMarkRead}
-                    onMarkUnread={handleBulkMarkUnread}
-                    onAssignSDR={handleBulkAssignSDR}
-                    onChangeStage={handleBulkChangeStage}
-                    onArchive={handleBulkArchive}
-                    onDelete={handleBulkDelete}
-                    onFavorite={() => handleBulkFavorite(true)}
-                    onUnfavorite={() => handleBulkFavorite(false)}
-                    onClearSelection={() => setSelectedConversations([])}
-                  />
+                  {showCheckboxes && (
+                    <BulkActions 
+                      selectedCount={selectedConversations.length}
+                      onMarkRead={handleBulkMarkRead}
+                      onMarkUnread={handleBulkMarkUnread}
+                      onAssignSDR={handleBulkAssignSDR}
+                      onChangeStage={handleBulkChangeStage}
+                      onArchive={handleBulkArchive}
+                      onDelete={handleBulkDelete}
+                      onFavorite={() => handleBulkFavorite(true)}
+                      onUnfavorite={() => handleBulkFavorite(false)}
+                      onClearSelection={() => {
+                        setSelectedConversations([]);
+                        setShowCheckboxes(false);
+                      }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -836,6 +867,7 @@ export default function EmailInbox() {
                     onConversationClick={setSelectedConversation}
                     selectedId={selectedConversation || undefined}
                     onToggleSelect={handleToggleSelect}
+                    showCheckboxes={showCheckboxes}
                   />
                 )}
               </div>
