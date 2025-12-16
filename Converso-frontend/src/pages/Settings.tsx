@@ -82,6 +82,7 @@ export default function Settings() {
   const [newLinkedInAccount, setNewLinkedInAccount] = useState({ name: "", type: "linkedin" as "email" | "linkedin" });
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [reconnectingAccountId, setReconnectingAccountId] = useState<string | null>(null);
+  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
 
   // Initialize form values from data
   useEffect(() => {
@@ -343,6 +344,20 @@ export default function Settings() {
     } catch (error: any) {
       toast.error(error.message || "Failed to reconnect LinkedIn account");
       setReconnectingAccountId(null);
+    }
+  };
+
+  const handleSyncAccount = async (accountId: string, accountName: string) => {
+    setSyncingAccountId(accountId);
+    toast.info(`Starting sync for ${accountName}...`);
+
+    try {
+      await initialSyncLinkedIn(accountId);
+      toast.success(`Sync completed for ${accountName}`);
+    } catch (error: any) {
+      toast.error(error.message || `Failed to sync ${accountName}`);
+    } finally {
+      setSyncingAccountId(null);
     }
   };
 
@@ -648,6 +663,7 @@ export default function Settings() {
                             const isConnected = accountData.status === 'connected' || accountData.connection_status === 'connected';
                             const hasError = accountData.status === 'error' || accountData.connection_status === 'error' || accountData.error;
                             const isReconnecting = reconnectingAccountId === account.id;
+                            const isSyncing = syncingAccountId === account.id;
                             
                             // Get initials for avatar
                             const nameParts = account.account_name.split(' ');
@@ -758,37 +774,67 @@ export default function Settings() {
                                   {isOptimisticAccount ? (
                                     <span className="text-xs text-muted-foreground">Awaiting confirmation…</span>
                                   ) : (
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                          <MoreVertical className="h-4 w-4" />
-                                          <span className="sr-only">Open menu</span>
+                                    <>
+                                      {!hasError && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleSyncAccount(account.id, account.account_name)}
+                                          disabled={isSyncing}
+                                          className="gap-1"
+                                        >
+                                          {isSyncing ? (
+                                            <>
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                              Syncing...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <RefreshCw className="h-3 w-3" />
+                                              Sync
+                                            </>
+                                          )}
                                         </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem
-                                          onClick={() => handleRemoveAccount({
-                                            id: account.id,
-                                            name: account.account_name,
-                                            type: 'linkedin'
-                                          })}
-                                          className="text-destructive focus:text-destructive"
-                                        >
-                                          Disconnect
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
-                                        >
-                                          Reconnect
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          disabled
-                                          className="text-muted-foreground"
-                                        >
-                                          Configure proxy
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
+                                      )}
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                            <MoreVertical className="h-4 w-4" />
+                                            <span className="sr-only">Open menu</span>
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={() => handleSyncAccount(account.id, account.account_name)}
+                                            disabled={isSyncing}
+                                          >
+                                            <RefreshCw className="h-4 w-4 mr-2" />
+                                            Sync
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() => handleRemoveAccount({
+                                              id: account.id,
+                                              name: account.account_name,
+                                              type: 'linkedin'
+                                            })}
+                                            className="text-destructive focus:text-destructive"
+                                          >
+                                            Disconnect
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() => handleReconnectLinkedIn(account.id, account.account_name)}
+                                          >
+                                            Reconnect
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            disabled
+                                            className="text-muted-foreground"
+                                          >
+                                            Configure proxy
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </>
                                   )}
                                 </div>
                               </div>
