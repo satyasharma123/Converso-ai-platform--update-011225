@@ -1,4 +1,4 @@
-import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch, X, Paperclip, Video, AtSign, Loader2 } from "lucide-react";
+import { Send, MoreVertical, UserCheck, Archive, Link as LinkIcon, Image as ImageIcon, File as FileIcon, Smile, Tag, Trash, Check, CheckCheck, UserPlus, GitBranch, X, Paperclip, Video, AtSign, Loader2, Star, StarOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { formatTimeAgo } from "@/utils/timeFormat";
-import { useToggleRead, useAssignConversation, useUpdateConversationStage, useSyncConversation } from "@/hooks/useConversations";
+import { useToggleRead, useAssignConversation, useUpdateConversationStage, useSyncConversation, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
@@ -46,6 +46,8 @@ interface ConversationViewProps {
     customStageId?: string | null;
     chat_id?: string | null;
     unipile_account_id?: string | null;
+    is_favorite?: boolean;
+    isFavorite?: boolean;
   };
   messages: Message[];
 }
@@ -103,6 +105,8 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   const updateStage = useUpdateConversationStage();
   const sendMessage = useSendLinkedInMessage();
   const syncConversation = useSyncConversation();
+  const toggleFavorite = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -339,6 +343,24 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
     );
   };
 
+  const handleToggleFavorite = () => {
+    const isFavorite = Boolean((conversation as any).is_favorite ?? (conversation as any).isFavorite);
+    toggleFavorite.mutate({
+      conversationId: conversation.id,
+      isFavorite: !isFavorite
+    });
+  };
+
+  const handleDelete = () => {
+    if (window.confirm('Delete this conversation? This cannot be undone.')) {
+      deleteConversation.mutate(conversation.id, {
+        onSuccess: () => {
+          toast.success('Conversation deleted successfully');
+        }
+      });
+    }
+  };
+
   const formatTimeStamp = (timestamp: string): string => {
     try {
       const date = new Date(timestamp);
@@ -418,21 +440,6 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                 </svg>
               )}
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => toast.info('Tag feature coming soon')}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => toast.info('Send feature coming soon')}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => toast.info('Archive feature coming soon')}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -500,9 +507,26 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
 
+                {((conversation as any).is_favorite ?? (conversation as any).isFavorite) ? (
+                  <DropdownMenuItem onClick={handleToggleFavorite}>
+                    <StarOff className="h-4 w-4 mr-2" />
+                    Remove Favorite
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={handleToggleFavorite}>
+                    <Star className="h-4 w-4 mr-2" />
+                    Mark as Favorite
+                  </DropdownMenuItem>
+                )}
+
                 <DropdownMenuItem onClick={() => toast.info('Archive feature coming soon')}>
                   <Archive className="h-4 w-4 mr-2" />
                   Archive
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

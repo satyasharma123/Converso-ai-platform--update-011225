@@ -9,6 +9,7 @@ import { Search, Filter, RefreshCcw, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
@@ -24,7 +25,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -42,10 +42,27 @@ export default function LinkedInInbox() {
   const [activeTab, setActiveTab] = useState('all');
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [stageFilter, setStageFilter] = useState<string>('all');
-  const [sdrFilter, setSdrFilter] = useState<string>('all');
+  const [filterState, setFilterState] = useState<{ sdr: string; stage: string }>({
+    sdr: 'all',
+    stage: 'all',
+  });
   
   const { user, userRole } = useAuth();
+
+  const activeFilterCount =
+    (filterState.sdr !== 'all' ? 1 : 0) +
+    (filterState.stage !== 'all' ? 1 : 0);
+
+  const handleFilterChange = (key: 'sdr' | 'stage', value: string) => {
+    setFilterState((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilterState({ sdr: 'all', stage: 'all' });
+  };
   
   // Handle navigation from Sales Pipeline
   useEffect(() => {
@@ -371,11 +388,14 @@ export default function LinkedInInbox() {
       
       // Stage filter
       const convStageId = (conv as any).customStageId || (conv as any).custom_stage_id;
-      const matchesStage = stageFilter === 'all' || convStageId === stageFilter;
+      const matchesStage = filterState.stage === 'all' || convStageId === filterState.stage;
       
       // SDR filter
       const convSdrId = (conv as any).assignedTo || (conv as any).assigned_to;
-      const matchesSDR = sdrFilter === 'all' || convSdrId === sdrFilter;
+      const matchesSDR = 
+        filterState.sdr === 'all' ? true :
+        filterState.sdr === 'unassigned' ? !convSdrId :
+        convSdrId === filterState.sdr;
       
       return matchesAccount && matchesSearch && matchesTab && matchesStage && matchesSDR;
     })
@@ -584,66 +604,58 @@ export default function LinkedInInbox() {
               </Button>
               <Popover open={filterOpen} onOpenChange={setFilterOpen}>
                 <PopoverTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className={`h-8 w-8 ${(stageFilter !== 'all' || sdrFilter !== 'all') ? 'bg-primary/10 border-primary' : ''}`}
-                  >
+                  <Button variant="outline" size="icon" className="h-8 w-8 flex-shrink-0 relative overflow-visible">
                     <Filter className="h-3.5 w-3.5" />
+                    {activeFilterCount > 0 && (
+                      <Badge className="absolute -top-1.5 -right-1.5 text-[10px] px-1.5 py-0.5 min-w-[18px] h-[18px] flex items-center justify-center leading-none">
+                        {activeFilterCount}
+                      </Badge>
+                    )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-72" align="end">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-sm">Filters</h4>
-                      {(stageFilter !== 'all' || sdrFilter !== 'all') && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => {
-                            setStageFilter('all');
-                            setSdrFilter('all');
-                          }}
-                        >
-                          Clear all
-                        </Button>
-                      )}
-                    </div>
+                <PopoverContent className="w-64 space-y-4" align="end">
+                  <div>
+                    <p className="text-[11px] font-medium mb-1 text-muted-foreground">SDR</p>
+                    <Select value={filterState.sdr} onValueChange={(value) => handleFilterChange('sdr', value)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="All SDRs" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem className="text-xs" value="all">All Accounts</SelectItem>
+                        <SelectItem className="text-xs" value="unassigned">Unassigned</SelectItem>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id} className="text-xs">
+                            {member.full_name || member.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Stage</Label>
-                      <Select value={stageFilter} onValueChange={setStageFilter}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="All Stages" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all" className="text-xs">All Stages</SelectItem>
-                          {pipelineStages.map(stage => (
-                            <SelectItem key={stage.id} value={stage.id} className="text-xs">
-                              {stage.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div>
+                    <p className="text-[11px] font-medium mb-1 text-muted-foreground">Stage</p>
+                    <Select value={filterState.stage} onValueChange={(value) => handleFilterChange('stage', value)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="All Stages" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem className="text-xs" value="all">All stages</SelectItem>
+                        {pipelineStages.map(stage => (
+                          <SelectItem key={stage.id} value={stage.id} className="text-xs">
+                            {stage.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Assigned SDR</Label>
-                      <Select value={sdrFilter} onValueChange={setSdrFilter}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="All SDRs" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all" className="text-xs">All SDRs</SelectItem>
-                          {teamMembers.map(member => (
-                            <SelectItem key={member.id} value={member.id} className="text-xs">
-                              {member.full_name || member.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <Button variant="ghost" size="sm" className="text-xs" onClick={clearFilters}>
+                      Clear
+                    </Button>
+                    <Button size="sm" className="text-xs" onClick={() => setFilterOpen(false)}>
+                      Apply
+                    </Button>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -720,6 +732,8 @@ export default function LinkedInInbox() {
                     customStageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
                     chat_id: (selectedConv as any).chat_id,
                     unipile_account_id: selectedConv.received_account?.unipile_account_id,
+                    is_favorite: (selectedConv as any).is_favorite,
+                    isFavorite: (selectedConv as any).isFavorite,
                   }} 
                   messages={dedupedMessagesForSelected.map(msg => {
                     const rawIsFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead;
