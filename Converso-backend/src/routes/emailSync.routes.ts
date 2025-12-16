@@ -8,6 +8,8 @@ import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { getSyncStatus, upsertSyncStatus } from '../api/syncStatus';
 import { initEmailSync, fetchAndStoreEmailBody } from '../services/emailSync';
+import { sendGmailEmail } from '../services/gmailIntegration';
+import { sendOutlookEmail } from '../services/outlookIntegration';
 import { downloadGmailAttachment } from '../services/gmailIntegration';
 import { downloadOutlookAttachment } from '../services/outlookIntegration';
 import { supabaseAdmin } from '../lib/supabase';
@@ -260,7 +262,8 @@ router.get(
 
 /**
  * GET /api/emails/:id
- * Get email with full body (fetches from Gmail if not stored)
+ * Get email with full body (lazy loads from provider if not cached)
+ * Supports metadata-only sync architecture
  */
 router.get(
   '/:id',
@@ -268,7 +271,7 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
 
-    // Get conversation
+    // Get conversation (email-only, never LinkedIn)
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .select(`
@@ -276,37 +279,42 @@ router.get(
         received_account:connected_accounts(*)
       `)
       .eq('id', id)
+      .eq('conversation_type', 'email') // Safety: email-only
       .single();
 
     if (convError || !conversation) {
       return res.status(404).json({ error: 'Email not found' });
     }
 
-    // If body is already stored in conversation, return it
-    if (conversation.has_full_body && conversation.email_body) {
+    // If body already fetched (lazy-loaded previously), return from cache
+    if (conversation.email_body_fetched_at && conversation.email_body_html) {
+      logger.info(`[Cache Hit] Returning cached body for ${id}`);
       return res.json({ 
         data: {
           ...conversation,
-          email_body: conversation.email_body, // Return email_body from conversation
+          email_body: conversation.email_body_html, // Use new field, fallback to old for compatibility
         }
       });
     }
     
-    // Fallback to preview if email_body not available but has_full_body is true
-    if (conversation.has_full_body && !conversation.email_body) {
+    // Backward compatibility: check old has_full_body field
+    if (conversation.has_full_body && conversation.email_body) {
+      logger.info(`[Cache Hit - Legacy] Returning legacy cached body for ${id}`);
       return res.json({ 
         data: {
           ...conversation,
-          email_body: conversation.preview || '',
+          email_body: conversation.email_body,
         }
       });
     }
 
-    // Fetch body from email API if not stored (supports both Gmail and Outlook)
+    // LAZY LOAD: Fetch body from provider (first time opening this email)
     const messageId = conversation.gmail_message_id || (conversation as any).outlook_message_id;
     if (messageId && conversation.received_account) {
       try {
-        const body = await fetchAndStoreEmailBody(
+        logger.info(`[Lazy Load] Fetching body for ${id} (messageId: ${messageId})`);
+        
+        const bodyResult = await fetchAndStoreEmailBody(
           id,
           messageId,
           conversation.received_account as any
@@ -315,15 +323,23 @@ router.get(
         return res.json({ 
           data: {
             ...conversation,
-            email_body: body, // Return as email_body (not body)
+            email_body: bodyResult.html, // Return HTML body
+            email_body_html: bodyResult.html,
+            email_body_text: bodyResult.text,
+            email_attachments: bodyResult.attachments,
             has_full_body: true,
           }
         });
       } catch (error: any) {
-        logger.error('Error fetching email body:', error);
-        return res.status(500).json({ 
-          error: 'Failed to fetch email body',
-          details: error.message 
+        logger.error('[Lazy Load] Error fetching email body:', error);
+        
+        // Return preview if body fetch fails
+        return res.json({
+          data: {
+            ...conversation,
+            email_body: conversation.preview || '',
+            body_fetch_error: error.message,
+          }
         });
       }
     }
@@ -413,6 +429,259 @@ router.get(
     } catch (downloadError: any) {
       logger.error('Attachment download error:', downloadError);
       res.status(500).json({ error: downloadError.message || 'Failed to download attachment' });
+    }
+  })
+);
+
+/**
+ * POST /api/emails/send
+ * Send an email (reply, reply all, or forward)
+ */
+router.post(
+  '/send',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const {
+      conversationId,
+      to,
+      cc,
+      bcc,
+      subject,
+      body,
+      replyType, // 'reply' | 'replyAll' | 'forward'
+    } = req.body;
+
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    if (!conversationId) {
+      return res.status(400).json({ error: 'conversationId is required' });
+    }
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'to, subject, and body are required' });
+    }
+
+    try {
+      // Get conversation to find the account it was received on
+      const { data: conversation, error: convError } = await supabaseAdmin
+        .from('conversations')
+        .select(`
+          id,
+          gmail_message_id,
+          outlook_message_id,
+          gmail_thread_id,
+          outlook_conversation_id,
+          received_account:connected_accounts(*)
+        `)
+        .eq('id', conversationId)
+        .single();
+
+      if (convError || !conversation || !conversation.received_account) {
+        return res.status(404).json({ error: 'Conversation or email account not found' });
+      }
+
+      const account = conversation.received_account as any;
+      const isGmail = account.oauth_provider === 'google';
+      const isOutlook = account.oauth_provider === 'microsoft';
+
+      if (!isGmail && !isOutlook) {
+        return res.status(400).json({ error: 'Unsupported email provider' });
+      }
+
+      // Parse recipients (can be comma-separated strings or arrays)
+      const parseRecipients = (recipients: string | string[] | undefined): string[] => {
+        if (!recipients) return [];
+        if (Array.isArray(recipients)) return recipients;
+        return recipients.split(',').map(r => r.trim()).filter(Boolean);
+      };
+
+      const toRecipients = parseRecipients(to);
+      const ccRecipients = parseRecipients(cc);
+      const bccRecipients = parseRecipients(bcc);
+
+      // Prepare email parameters
+      const emailParams = {
+        to: toRecipients,
+        cc: ccRecipients.length > 0 ? ccRecipients : undefined,
+        bcc: bccRecipients.length > 0 ? bccRecipients : undefined,
+        subject,
+        body,
+      };
+
+      let result: { messageId: string; threadId?: string; conversationId?: string };
+
+      try {
+        if (isGmail) {
+          // Add threading information for replies
+          const threadId = replyType !== 'forward' ? conversation.gmail_thread_id : undefined;
+          const inReplyTo = replyType !== 'forward' ? conversation.gmail_message_id : undefined;
+
+          result = await sendGmailEmail(account, {
+            ...emailParams,
+            threadId,
+            inReplyTo,
+            references: inReplyTo, // For proper email threading
+          });
+        } else {
+          // Outlook
+          const conversationIdOutlook = replyType !== 'forward' ? conversation.outlook_conversation_id : undefined;
+          const inReplyTo = replyType !== 'forward' ? conversation.outlook_message_id : undefined;
+
+          result = await sendOutlookEmail(account, {
+            ...emailParams,
+            conversationId: conversationIdOutlook,
+            inReplyTo,
+          });
+        }
+      } catch (sendError: any) {
+        // Check if it's an authentication error
+        const isAuthError = sendError.message?.includes('401') || 
+                           sendError.message?.includes('invalid authentication') ||
+                           sendError.message?.includes('token') ||
+                           sendError.message?.includes('credentials');
+
+        if (isAuthError && account.oauth_refresh_token) {
+          logger.info(`[Email Send] Token expired, attempting refresh for ${account.account_email}`);
+          
+          try {
+            // Attempt to refresh token
+            let newTokens: any;
+            if (isGmail) {
+              const { refreshGmailToken } = await import('../services/gmailIntegration');
+              newTokens = await refreshGmailToken(account.oauth_refresh_token);
+            } else {
+              const { refreshOutlookToken } = await import('../services/outlookIntegration');
+              newTokens = await refreshOutlookToken(account.oauth_refresh_token);
+            }
+
+            // Update account with new tokens
+            const expiresAt = new Date();
+            expiresAt.setSeconds(expiresAt.getSeconds() + (newTokens.expires_in || 3600));
+
+            await supabaseAdmin
+              .from('connected_accounts')
+              .update({
+                oauth_access_token: newTokens.access_token,
+                oauth_refresh_token: newTokens.refresh_token || account.oauth_refresh_token,
+                oauth_token_expires_at: expiresAt.toISOString(),
+              })
+              .eq('id', account.id);
+
+            logger.info(`[Email Send] Token refreshed successfully, retrying send`);
+
+            // Retry sending with new token
+            const updatedAccount = {
+              ...account,
+              oauth_access_token: newTokens.access_token,
+            };
+
+            if (isGmail) {
+              const threadId = replyType !== 'forward' ? conversation.gmail_thread_id : undefined;
+              const inReplyTo = replyType !== 'forward' ? conversation.gmail_message_id : undefined;
+
+              result = await sendGmailEmail(updatedAccount, {
+                ...emailParams,
+                threadId,
+                inReplyTo,
+                references: inReplyTo,
+              });
+            } else {
+              const conversationIdOutlook = replyType !== 'forward' ? conversation.outlook_conversation_id : undefined;
+              const inReplyTo = replyType !== 'forward' ? conversation.outlook_message_id : undefined;
+
+              result = await sendOutlookEmail(updatedAccount, {
+                ...emailParams,
+                conversationId: conversationIdOutlook,
+                inReplyTo,
+              });
+            }
+          } catch (refreshError: any) {
+            logger.error('[Email Send] Token refresh failed:', refreshError);
+            throw new Error(`Authentication expired. Please reconnect your ${isGmail ? 'Gmail' : 'Outlook'} account in Settings.`);
+          }
+        } else {
+          // Not an auth error, or no refresh token available
+          throw sendError;
+        }
+      }
+
+      // Store the sent message in the messages table for history
+      // NOTE: For emails, we do NOT update last_message_at or is_read
+      // Emails work differently from LinkedIn chat:
+      // - Inbox stays sorted by email_timestamp (when received)
+      // - Sent emails go to "Sent" folder in email provider
+      // - Original email conversation remains unchanged in inbox
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name, workspace_id')
+        .eq('id', userId)
+        .single();
+
+      await supabaseAdmin
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: userId,
+          sender_name: profile?.full_name || 'You',
+          content: body,
+          is_from_lead: false,
+          email_body: body,
+        });
+
+      // Create a "Sent" folder conversation entry (EMAIL ONLY - not LinkedIn)
+      // This makes the sent email appear in the Sent folder view
+      const sentTimestamp = new Date().toISOString();
+      const sentConversationData: any = {
+        conversation_type: 'email', // ← CRITICAL: Only for emails
+        sender_name: profile?.full_name || 'You',
+        sender_email: account.account_email || 'unknown',
+        subject: replyType === "forward" 
+          ? `Fwd: ${conversation.subject || "No Subject"}`
+          : `Re: ${conversation.subject || "No Subject"}`,
+        preview: body.replace(/<[^>]+>/g, '').substring(0, 200), // Strip HTML for preview
+        email_timestamp: sentTimestamp,
+        last_message_at: sentTimestamp,
+        received_on_account_id: account.id,
+        workspace_id: profile?.workspace_id || conversation.workspace_id,
+        email_folder: 'sent', // ← KEY: Makes it appear in Sent folder
+        is_read: true, // Sent emails are always "read"
+        status: 'new',
+        email_body_html: body,
+        email_body_text: body.replace(/<[^>]+>/g, ''),
+        email_body_fetched_at: sentTimestamp,
+        // ⚠️ IMPORTANT: Do NOT add gmail_message_id, gmail_thread_id, outlook_message_id, etc.
+        // Sent folder conversations are LOCAL COPIES only - they don't need provider IDs
+        // Adding provider IDs can cause conflicts with received emails that have the same IDs
+      };
+
+      // Store sent email in conversations table (for Sent folder)
+      // This is a LOCAL COPY for display - completely independent from inbox conversations
+      await supabaseAdmin
+        .from('conversations')
+        .insert(sentConversationData);
+
+      // ⚠️ IMPORTANT: DO NOT update last_message_at for emails!
+      // This is email behavior (not LinkedIn chat):
+      // - Inbox remains sorted by received time (email_timestamp)
+      // - Sent emails don't move the conversation to top
+      // - The sent email lives in the email provider's "Sent" folder
+
+      logger.info(`[Email Send] Successfully sent ${replyType} via ${isGmail ? 'Gmail' : 'Outlook'} and stored in Sent folder`);
+
+      res.json({
+        success: true,
+        messageId: result.messageId,
+        threadId: result.threadId || result.conversationId,
+      });
+    } catch (error: any) {
+      logger.error('[Email Send] Error:', error);
+      res.status(500).json({
+        error: `Failed to send email: ${error.message}`,
+      });
     }
   })
 );

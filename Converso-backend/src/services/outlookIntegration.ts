@@ -40,19 +40,23 @@ interface OutlookMessageMetadata {
 }
 
 export interface OutlookEmailBodyResult {
-  body: string;
+  body: string; // Kept for backward compatibility  
+  htmlBody: string; // Explicit HTML content
+  textBody: string; // Explicit text content
   attachments: EmailAttachment[];
 }
 
 /**
- * Fetch email metadata from Outlook for a specific folder (last 90 days only)
+ * Fetch email metadata from Outlook for a specific folder
  * Returns only metadata, not full body for performance
+ * Supports incremental sync via sinceDate parameter
  */
 export async function fetchOutlookEmailMetadata(
   account: ConnectedAccount,
   daysBack: number = 90,
   skipToken?: string,
-  folder: string = 'inbox'
+  folder: string = 'inbox',
+  sinceDate?: Date // For incremental sync - fetch emails since this date
 ): Promise<{
   messages: OutlookMessageMetadata[];
   nextSkipToken?: string;
@@ -62,10 +66,14 @@ export async function fetchOutlookEmailMetadata(
   }
 
   try {
-    // Calculate date threshold (90 days ago)
-    const dateThreshold = new Date();
-    dateThreshold.setDate(dateThreshold.getDate() - daysBack);
-    const filterDate = dateThreshold.toISOString();
+    // Use sinceDate for incremental sync, or daysBack for initial sync
+    const filterDate = sinceDate 
+      ? sinceDate.toISOString()
+      : (() => {
+          const dateThreshold = new Date();
+          dateThreshold.setDate(dateThreshold.getDate() - daysBack);
+          return dateThreshold.toISOString();
+        })();
 
     // Build Microsoft Graph API URL based on folder
     let baseUrl = 'https://graph.microsoft.com/v1.0/me';
@@ -182,13 +190,15 @@ export async function fetchOutlookEmailBody(
   }
 
   try {
-    // Fetch body with both HTML and text formats
+    // Fetch body with HTML format explicitly requested
+    // Prefer-Outlook-Format: text ensures we get HTML body content
     const response = await fetch(
       `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview,hasAttachments&$expand=attachments($select=id,name,contentType,size,isInline,contentId)`,
       {
         headers: {
           Authorization: `Bearer ${account.oauth_access_token}`,
           'Content-Type': 'application/json',
+          'Prefer': 'outlook.body-content-type="html"',
         },
       }
     );
@@ -221,7 +231,7 @@ export async function fetchOutlookEmailBody(
 
     const message: any = await response.json();
     
-    // Extract body content - prefer HTML, fallback to text, then bodyPreview
+    // Extract attachments metadata
     const attachments: EmailAttachment[] = (message?.attachments || []).map((attachment: any) => ({
       id: attachment.id,
       filename: attachment.name,
@@ -232,15 +242,47 @@ export async function fetchOutlookEmailBody(
       provider: 'outlook',
     }));
 
-    let bodyContent = '';
-    if (message?.body?.content) {
-      bodyContent = message.body.content;
-    } else if (message?.bodyPreview) {
-      bodyContent = message.bodyPreview;
+    // Extract body content - Microsoft Graph returns body in this structure:
+    // { contentType: 'html' | 'text', content: '...' }
+    let htmlBody = '';
+    let textBody = '';
+    
+    if (message?.body) {
+      const bodyObj = message.body;
+      const contentType = bodyObj.contentType?.toLowerCase();
+      const content = bodyObj.content || '';
+      
+      // Store in appropriate field based on contentType
+      if (contentType === 'html') {
+        htmlBody = content;
+      } else if (contentType === 'text') {
+        textBody = content;
+      } else if (content) {
+        // Unknown type - try to detect
+        if (content.includes('<html') || content.includes('</')) {
+          htmlBody = content;
+        } else {
+          textBody = content;
+        }
+      }
+    }
+    
+    // NEVER use bodyPreview when fetching full body - it's just a snippet!
+    // Only use bodyPreview as absolute last resort if API returned empty body
+    if (!htmlBody && !textBody && message?.bodyPreview) {
+      logger.warn(`[Outlook] No body content found for ${messageId}, falling back to preview (unexpected)`);
+      textBody = message.bodyPreview;
     }
 
+    // Final body priority: HTML > Text
+    const finalBody = htmlBody || textBody;
+
+    logger.info(`[Outlook] Fetched email body for ${messageId}: type=${message?.body?.contentType}, HTML=${htmlBody.length}b, Text=${textBody.length}b`);
+
     return {
-      body: bodyContent,
+      body: finalBody, // Backward compatibility
+      htmlBody,
+      textBody,
       attachments,
     };
   } catch (error: any) {
@@ -313,5 +355,134 @@ export async function refreshOutlookToken(refreshToken: string): Promise<{
 }> {
   const outlookOAuth = require('../utils/outlookOAuth');
   return await outlookOAuth.refreshAccessToken(refreshToken);
+}
+
+/**
+ * Send an email via Microsoft Graph API (Outlook)
+ * Supports reply, reply all, and forward
+ */
+export async function sendOutlookEmail(
+  account: ConnectedAccount,
+  params: {
+    to: string | string[];
+    cc?: string | string[];
+    bcc?: string | string[];
+    subject: string;
+    body: string;
+    conversationId?: string; // For threading (Outlook uses conversationId)
+    inReplyTo?: string; // Message ID being replied to
+  }
+): Promise<{ messageId: string; conversationId: string }> {
+  if (!account.oauth_access_token) {
+    throw new Error('OAuth access token not found for this account');
+  }
+
+  try {
+    // Convert string arrays to proper format
+    const toRecipients = (Array.isArray(params.to) ? params.to : [params.to])
+      .filter(Boolean)
+      .map(email => ({
+        emailAddress: { address: email.trim() }
+      }));
+
+    const ccRecipients = params.cc
+      ? (Array.isArray(params.cc) ? params.cc : [params.cc])
+          .filter(Boolean)
+          .map(email => ({
+            emailAddress: { address: email.trim() }
+          }))
+      : [];
+
+    const bccRecipients = params.bcc
+      ? (Array.isArray(params.bcc) ? params.bcc : [params.bcc])
+          .filter(Boolean)
+          .map(email => ({
+            emailAddress: { address: email.trim() }
+          }))
+      : [];
+
+    // Build email message
+    const message: any = {
+      subject: params.subject,
+      body: {
+        contentType: 'HTML',
+        content: params.body,
+      },
+      toRecipients,
+    };
+
+    if (ccRecipients.length > 0) {
+      message.ccRecipients = ccRecipients;
+    }
+
+    if (bccRecipients.length > 0) {
+      message.bccRecipients = bccRecipients;
+    }
+
+    // If replying to a message, add Internet Message Headers for threading
+    if (params.inReplyTo) {
+      message.internetMessageHeaders = [
+        {
+          name: 'In-Reply-To',
+          value: params.inReplyTo,
+        },
+      ];
+    }
+
+    // Use Microsoft Graph API to send email
+    const graphEndpoint = params.inReplyTo
+      ? `https://graph.microsoft.com/v1.0/me/messages/${params.inReplyTo}/reply`
+      : 'https://graph.microsoft.com/v1.0/me/sendMail';
+
+    const requestBody = params.inReplyTo
+      ? {
+          message, // For reply, send as 'message' key
+          comment: '', // Optional comment for reply
+        }
+      : {
+          message, // For new email
+          saveToSentItems: true,
+        };
+
+    const response = await fetch(graphEndpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${account.oauth_access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('[Outlook] Send email error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      throw new Error(`Outlook API error: ${response.status} - ${errorText}`);
+    }
+
+    // For sendMail endpoint, response is 202 Accepted with no body
+    // For reply endpoint, response contains the message data
+    let responseData: any = {};
+    if (response.status !== 202) {
+      try {
+        responseData = await response.json();
+      } catch {
+        // No JSON body - that's fine for 202 Accepted
+      }
+    }
+
+    logger.info('[Outlook] Email sent successfully');
+
+    return {
+      messageId: responseData.id || 'sent',
+      conversationId: responseData.conversationId || params.conversationId || 'unknown',
+    };
+  } catch (error: any) {
+    logger.error('Error sending Outlook email:', error);
+    throw new Error(`Failed to send email via Outlook: ${error.message}`);
+  }
 }
 

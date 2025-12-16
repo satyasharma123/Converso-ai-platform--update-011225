@@ -30,7 +30,9 @@ interface GmailMessageMetadata {
 }
 
 export interface GmailEmailBodyResult {
-  body: string;
+  body: string; // Kept for backward compatibility
+  htmlBody: string; // Explicit HTML content
+  textBody: string; // Explicit text content
   attachments: EmailAttachment[];
 }
 
@@ -53,14 +55,16 @@ function getDaysAgoTimestamp(days: number): number {
 }
 
 /**
- * Fetch email metadata from Gmail for a specific folder (last 90 days only)
+ * Fetch email metadata from Gmail for a specific folder
  * Returns only metadata, not full body for performance
+ * Supports incremental sync via sinceDate parameter
  */
 export async function fetchGmailEmailMetadata(
   account: ConnectedAccount,
   daysBack: number = 90,
   pageToken?: string,
-  folder: string = 'inbox'
+  folder: string = 'inbox',
+  sinceDate?: Date // For incremental sync - fetch emails since this date
 ): Promise<{
   messages: GmailMessageMetadata[];
   nextPageToken?: string;
@@ -72,8 +76,10 @@ export async function fetchGmailEmailMetadata(
   try {
     const gmail = getGmailClient(account.oauth_access_token);
     
-    // Calculate timestamp for 90 days ago
-    const afterTimestamp = getDaysAgoTimestamp(daysBack);
+    // Use sinceDate for incremental sync, or daysBack for initial sync
+    const afterTimestamp = sinceDate 
+      ? Math.floor(sinceDate.getTime() / 1000)
+      : getDaysAgoTimestamp(daysBack);
     
     // Build query based on folder
     let query = `after:${afterTimestamp}`;
@@ -170,11 +176,13 @@ export async function fetchGmailEmailBody(
       return { body: '', attachments: [] };
     }
 
-    let body = '';
+    let htmlBody = '';
+    let textBody = '';
     const attachments: EmailAttachment[] = [];
 
-    const extractBodyFromParts = (parts: any[]): string => {
-      let extractedBody = '';
+    const extractBodyFromParts = (parts: any[]): { html: string; text: string } => {
+      let extractedHtml = '';
+      let extractedText = '';
 
       for (const part of parts) {
         const headers = part.headers || [];
@@ -203,37 +211,55 @@ export async function fetchGmailEmailBody(
           continue;
         }
 
+        // Recursively extract from nested parts
         if (part.parts && part.parts.length > 0) {
           const nestedBody = extractBodyFromParts(part.parts);
-          if (nestedBody) {
-            extractedBody = nestedBody;
-            break;
-          }
+          if (nestedBody.html) extractedHtml = nestedBody.html;
+          if (nestedBody.text) extractedText = nestedBody.text;
         }
 
+        // Extract body content - PREFER HTML OVER TEXT
         if (part.body?.data) {
           const partBody = Buffer.from(part.body.data, 'base64').toString('utf-8');
-          if (mimeType === 'text/html' || (mimeType === 'text/plain' && !extractedBody)) {
-            extractedBody = partBody;
+          
+          if (mimeType === 'text/html') {
+            extractedHtml = partBody; // HTML takes priority
+          } else if (mimeType === 'text/plain' && !extractedText) {
+            extractedText = partBody; // Only use text if we don't have it yet
           }
         }
       }
 
-      return extractedBody;
+      return { html: extractedHtml, text: extractedText };
     };
 
+    // Single-part message (body directly in payload)
     if (payload.body?.data) {
-      body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
-    } else if (payload.parts && payload.parts.length > 0) {
-      body = extractBodyFromParts(payload.parts);
-
-      if (!body && payload.parts[0]?.body?.data) {
-        body = Buffer.from(payload.parts[0].body.data, 'base64').toString('utf-8');
+      const bodyContent = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+      const mimeType = payload.mimeType?.toLowerCase() || '';
+      
+      if (mimeType === 'text/html') {
+        htmlBody = bodyContent;
+      } else {
+        textBody = bodyContent;
       }
+    } 
+    // Multi-part message (body in parts)
+    else if (payload.parts && payload.parts.length > 0) {
+      const extracted = extractBodyFromParts(payload.parts);
+      htmlBody = extracted.html;
+      textBody = extracted.text;
     }
 
+    // Final body priority: HTML > Text
+    const finalBody = htmlBody || textBody;
+
+    logger.info(`[Gmail] Fetched email body for ${messageId}: HTML=${htmlBody.length}b, Text=${textBody.length}b`);
+
     return {
-      body: body || '',
+      body: finalBody, // Backward compatibility
+      htmlBody,
+      textBody,
       attachments,
     };
   } catch (error: any) {
@@ -400,5 +426,92 @@ export async function refreshGmailToken(refreshToken: string): Promise<{
 }> {
   const { refreshAccessToken } = require('../utils/oauth');
   return await refreshAccessToken(refreshToken);
+}
+
+/**
+ * Send an email via Gmail API
+ * Supports reply, reply all, and forward
+ */
+export async function sendGmailEmail(
+  account: ConnectedAccount,
+  params: {
+    to: string | string[];
+    cc?: string | string[];
+    bcc?: string | string[];
+    subject: string;
+    body: string;
+    threadId?: string; // For replies
+    inReplyTo?: string; // Message ID being replied to
+    references?: string; // For threading
+  }
+): Promise<{ messageId: string; threadId: string }> {
+  if (!account.oauth_access_token) {
+    throw new Error('OAuth access token not found for this account');
+  }
+
+  try {
+    const gmail = getGmailClient(account.oauth_access_token);
+
+    // Convert arrays to comma-separated strings
+    const toAddresses = Array.isArray(params.to) ? params.to.join(', ') : params.to;
+    const ccAddresses = params.cc ? (Array.isArray(params.cc) ? params.cc.join(', ') : params.cc) : '';
+    const bccAddresses = params.bcc ? (Array.isArray(params.bcc) ? params.bcc.join(', ') : params.bcc) : '';
+
+    // Build RFC 2822 formatted email
+    const messageParts = [
+      `From: ${account.account_email}`,
+      `To: ${toAddresses}`,
+    ];
+
+    if (ccAddresses) {
+      messageParts.push(`Cc: ${ccAddresses}`);
+    }
+
+    if (bccAddresses) {
+      messageParts.push(`Bcc: ${bccAddresses}`);
+    }
+
+    messageParts.push(`Subject: ${params.subject}`);
+    messageParts.push('MIME-Version: 1.0');
+    messageParts.push('Content-Type: text/html; charset=utf-8');
+
+    // Add threading headers for replies
+    if (params.inReplyTo) {
+      messageParts.push(`In-Reply-To: ${params.inReplyTo}`);
+    }
+
+    if (params.references) {
+      messageParts.push(`References: ${params.references}`);
+    }
+
+    messageParts.push('');
+    messageParts.push(params.body);
+
+    const message = messageParts.join('\r\n');
+    const encodedMessage = Buffer.from(message)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    // Send the email
+    const response = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedMessage,
+        threadId: params.threadId, // Maintains thread for replies
+      },
+    });
+
+    logger.info(`[Gmail] Email sent successfully: ${response.data.id}`);
+
+    return {
+      messageId: response.data.id!,
+      threadId: response.data.threadId!,
+    };
+  } catch (error: any) {
+    logger.error('Error sending Gmail email:', error);
+    throw new Error(`Failed to send email via Gmail: ${error.message}`);
+  }
 }
 

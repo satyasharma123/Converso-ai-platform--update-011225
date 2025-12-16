@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, Reply, Paperclip, MoreVertical, Forward, Maximize2, ReplyAll, Bold, Italic, Underline, List, ListOrdered, Link2, Image, Smile, Highlighter, Palette, X } from "lucide-react";
+import { Send, Reply, Paperclip, MoreVertical, Forward, Maximize2, ReplyAll, Bold, Italic, Underline, List, ListOrdered, Link2, Image, Smile, Highlighter, Palette, X, Download, FileIcon, Trash2 } from "lucide-react";
+import { renderEmailBody, EMAIL_BODY_STYLES } from "@/utils/renderEmailBody";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
-import { useAssignConversation, useUpdateConversationStage, useToggleRead } from "@/hooks/useConversations";
+import { useAssignConversation, useUpdateConversationStage, useToggleRead, useDeleteConversation } from "@/hooks/useConversations";
 import { useSendMessage } from "@/hooks/useMessages";
 import {
   Dialog,
@@ -70,16 +71,32 @@ interface EmailViewProps {
     assigned_to?: string;
     custom_stage_id?: string;
     is_read?: boolean;
-    email_body?: string; // Full email body for emails (stored in conversation)
+    email_body?: string; // Legacy: Full email body for emails (backward compatibility)
+    email_body_html?: string; // NEW: Explicit HTML content
+    email_body_text?: string; // NEW: Explicit text content
     preview?: string; // Email preview/description
+    email_attachments?: EmailAttachment[]; // Received email attachments
+    email_timestamp?: string; // Timestamp when email was received
   };
   messages: Message[];
 }
 
+// Attachment interface for composing (sending)
 interface Attachment {
   id: string;
   file: File;
   preview?: string;
+}
+
+// Email attachment interface (received attachments from provider)
+interface EmailAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  isInline?: boolean;
+  contentId?: string;
+  provider?: 'gmail' | 'outlook';
 }
 
 export function EmailView({ conversation, messages }: EmailViewProps) {
@@ -87,6 +104,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const [showReply, setShowReply] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
+  const [toText, setToText] = useState("");
   const [ccText, setCcText] = useState("");
   const [bccText, setBccText] = useState("");
   const [expandedCompose, setExpandedCompose] = useState(false);
@@ -99,16 +117,24 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkText, setLinkText] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isTypingInRecipients, setIsTypingInRecipients] = useState(false);
   const inlineQuillRef = useRef<ReactQuill | null>(null);
   const dialogQuillRef = useRef<ReactQuill | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const toInputRef = useRef<HTMLInputElement>(null);
+  const ccInputRef = useRef<HTMLInputElement>(null);
+  const bccInputRef = useRef<HTMLInputElement>(null);
+  const blurTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoFocusedRef = useRef<boolean>(false);
   
   const { data: teamMembers } = useTeamMembers();
   const { data: pipelineStages } = usePipelineStages();
   const assignMutation = useAssignConversation();
   const updateStageMutation = useUpdateConversationStage();
   const toggleRead = useToggleRead();
+  const deleteConversation = useDeleteConversation();
   const sendMessage = useSendMessage();
   
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
@@ -129,56 +155,92 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
     return htmlPatterns.some(pattern => pattern.test(content));
   };
 
-  // Helper function to clean HTML email body - removes excessive top spacing and malicious tags
-const EMAIL_BODY_STYLES = `
-:where(.email-body-root) {
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-  color: #111827;
-  font-size: 0.95rem;
-  line-height: 1.65;
-  word-break: break-word;
-}
-:where(.email-body-root) p {
-  margin: 0 0 1rem 0;
-}
-:where(.email-body-root) img {
-  max-width: 100%;
-  height: auto;
-  border: none;
-}
-:where(.email-body-root) table {
-  border-collapse: collapse;
+  // Legacy styles (kept for backward compatibility, but mainly using renderEmailBody.ts now)
+const EMAIL_BODY_STYLES_LEGACY = `
+.email-body-wrapper {
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
 }
-:where(.email-body-root) table td,
-:where(.email-body-root) table th {
+.email-body-root {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  color: #111827 !important;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  word-break: break-word;
+  text-align: left !important;
+  width: 100%;
+  max-width: 100%;
+}
+.email-body-root * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.email-body-root p {
+  margin: 0 0 1rem 0;
+  text-align: left !important;
+}
+.email-body-root img {
+  max-width: 100% !important;
+  height: auto !important;
+  border: none;
+  display: inline-block;
+}
+.email-body-root table {
+  border-collapse: collapse;
+  width: auto !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+.email-body-root table td,
+.email-body-root table th {
   vertical-align: top;
+  text-align: left !important;
+  padding: 4px 8px;
 }
-:where(.email-body-root) blockquote {
+.email-body-root blockquote {
   border-left: 3px solid #e5e7eb;
   margin: 1rem 0;
   padding-left: 1rem;
   color: #4b5563;
 }
-:where(.email-body-root) a {
+.email-body-root a {
   color: #2563eb;
   text-decoration: none;
 }
-:where(.email-body-root) a:hover {
+.email-body-root a:hover {
   text-decoration: underline;
 }
-:where(.email-body-root) hr {
+.email-body-root hr {
   border: 0;
   border-top: 1px solid #e5e7eb;
   margin: 1.5rem 0;
 }
-:where(.email-body-root) pre {
+.email-body-root pre {
   white-space: pre-wrap;
   background: #f9fafb;
   padding: 0.75rem;
   border-radius: 0.5rem;
   font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   font-size: 0.85rem;
+}
+.email-body-root div,
+.email-body-root span {
+  text-align: inherit;
+}
+/* Remove center alignment from email content */
+.email-body-root center {
+  text-align: left !important;
+}
+.email-body-root [align="center"] {
+  text-align: left !important;
+}
+.email-body-root [style*="text-align: center"] {
+  text-align: left !important;
+}
+.email-body-root [style*="text-align:center"] {
+  text-align: left !important;
 }
 `;
 
@@ -187,12 +249,14 @@ const sanitizeEmailHtml = (html: string): string => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
+  // Remove dangerous elements
   doc.querySelectorAll('script, iframe, object, embed, base, meta[http-equiv="refresh"]').forEach((el) =>
     el.remove()
   );
 
   doc.querySelectorAll('link[rel="stylesheet"]').forEach((el) => el.remove());
 
+  // Remove inline event handlers and javascript: URLs
   doc.querySelectorAll<HTMLElement>('*').forEach((node) => {
     Array.from(node.attributes).forEach((attr) => {
       const name = attr.name.toLowerCase();
@@ -201,6 +265,19 @@ const sanitizeEmailHtml = (html: string): string => {
         node.removeAttribute(attr.name);
       }
     });
+    
+    // Force left alignment for center-aligned elements
+    const align = node.getAttribute('align');
+    if (align === 'center') {
+      node.setAttribute('align', 'left');
+    }
+    
+    // Override inline center text-align styles
+    const style = node.getAttribute('style');
+    if (style && (style.includes('text-align: center') || style.includes('text-align:center'))) {
+      const newStyle = style.replace(/text-align\s*:\s*center/gi, 'text-align: left');
+      node.setAttribute('style', newStyle);
+    }
   });
 
   const bodyContent = doc.body?.innerHTML || doc.documentElement?.innerHTML || html;
@@ -217,50 +294,52 @@ const escapeHtml = (text: string) =>
 
 const formatPlainTextAsHtml = (text: string) => {
   if (!text) return '';
-  const paragraphs = text.split(/\n{2,}/g);
-  return paragraphs
-    .map((paragraph) => {
-      const trimmed = paragraph.trim();
+  
+  // Split by double newlines or common email separators
+  const sections = text.split(/\n{2,}|(?=^On .* wrote:$)|(?=^From:)|(?=^Sent:)|(?=^>{2,})/gm);
+  
+  return sections
+    .map((section) => {
+      const trimmed = section.trim();
       if (!trimmed) return '';
+      
+      // Check if this is a quoted/replied section
+      const isQuoted = trimmed.startsWith('>') || /^On .* wrote:/.test(trimmed);
+      
       const withBreaks = escapeHtml(trimmed).replace(/\n/g, '<br />');
+      
+      if (isQuoted) {
+        // Style quoted text differently
+        return `<blockquote style="border-left: 3px solid #e5e7eb; margin: 1rem 0; padding-left: 1rem; color: #6b7280;">${withBreaks}</blockquote>`;
+      }
+      
       return `<p>${withBreaks}</p>`;
     })
+    .filter(Boolean)
     .join('');
 };
 
 const EmailBodyContent = ({
-  html,
-  plainText,
+  htmlBody,
+  textBody,
+  preview,
 }: {
-  html?: string | null;
-  plainText?: string | null;
+  htmlBody?: string | null;
+  textBody?: string | null;
+  preview?: string | null;
 }) => {
-  const hasHtml = html && isActualHtml(html);
-  const sanitizedHtml = hasHtml ? sanitizeEmailHtml(html) : null;
-  const fallbackHtml = !sanitizedHtml && plainText ? formatPlainTextAsHtml(plainText) : null;
+  // Use new rendering utility that handles HTML sanitization and text formatting
+  const renderedHtml = renderEmailBody(htmlBody, textBody, preview);
 
-  if (sanitizedHtml) {
-    return (
-      <div className="mt-10 email-body-wrapper">
-        <style>{EMAIL_BODY_STYLES}</style>
-        <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />
-      </div>
-    );
-  }
-
-  if (fallbackHtml) {
-    return (
-      <div className="mt-10 email-body-wrapper">
-        <style>{EMAIL_BODY_STYLES}</style>
-        <div
-          className="email-body-root"
-          dangerouslySetInnerHTML={{ __html: fallbackHtml }}
-        />
-      </div>
-    );
-  }
-
-  return null;
+  return (
+    <div className="mt-10 email-body-wrapper">
+      <style>{EMAIL_BODY_STYLES}</style>
+      <div 
+        className="email-html-body"
+        dangerouslySetInnerHTML={{ __html: renderedHtml }} 
+      />
+    </div>
+  );
 };
 
   // Mark as read after 5 seconds
@@ -277,36 +356,57 @@ const EmailBodyContent = ({
     return () => clearTimeout(timer);
   }, [conversation.id, conversation.is_read, toggleRead]);
 
+  // Auto-focus editor only once when reply opens (unless user is in recipient fields)
   useEffect(() => {
-    if (!showReply) return;
+    if (!showReply) {
+      hasAutoFocusedRef.current = false;
+      return;
+    }
+    
+    if (hasAutoFocusedRef.current || isTypingInRecipients) return;
+    
     const timeout = setTimeout(() => {
-    (expandedCompose ? dialogQuillRef.current : inlineQuillRef.current)?.getEditor().focus();
+      if (!isTypingInRecipients) {
+        (expandedCompose ? dialogQuillRef.current : inlineQuillRef.current)?.getEditor().focus();
+        hasAutoFocusedRef.current = true;
+      }
     }, 150);
     return () => clearTimeout(timeout);
-  }, [showReply, expandedCompose]);
+  }, [showReply, expandedCompose, isTypingInRecipients]);
 
 useEffect(() => {
-  if (!showReply) return;
+  if (!showReply || isTypingInRecipients) return;
   const editor = getActiveEditor();
   if (!editor) return;
+  // Don't auto-focus, just format
+  const currentSelection = editor.getSelection();
   editor.format("font", fontFamily);
   editor.format("size", fontSize);
-}, [fontFamily, fontSize, expandedCompose, showReply]);
+  // Restore selection without forcing focus
+  if (currentSelection) {
+    editor.setSelection(currentSelection.index, currentSelection.length);
+  }
+}, [fontFamily, fontSize, expandedCompose, showReply, isTypingInRecipients]);
 
 // Set default font size when editor is first created
 useEffect(() => {
-  if (!showReply) return;
+  if (!showReply || isTypingInRecipients) return;
   const timeout = setTimeout(() => {
     const editor = getActiveEditor();
-    if (!editor) return;
-    // Set default font size if no content exists
+    if (!editor || isTypingInRecipients) return;
+    // Set default font size if no content exists - but don't steal focus
     if (!replyContent || replyContent.trim() === '' || replyContent === '<p><br></p>') {
+      const currentSelection = editor.getSelection();
       editor.format("font", fontFamily);
       editor.format("size", fontSize);
+      // Don't force focus, just restore selection if it existed
+      if (currentSelection) {
+        editor.setSelection(currentSelection.index, currentSelection.length);
+      }
     }
   }, 200);
   return () => clearTimeout(timeout);
-}, [showReply, expandedCompose]);
+}, [showReply, expandedCompose, isTypingInRecipients]);
 
   const getInitials = (name: string) => {
     return name
@@ -354,6 +454,52 @@ useEffect(() => {
 
   const handleEditorChange = (content: string) => {
     setReplyContent(content);
+  };
+
+  const handleEditorFocus = () => {
+    // When editor gains focus, user is no longer typing in recipients
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setIsTypingInRecipients(false);
+  };
+
+  const handleRecipientFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setIsTypingInRecipients(true);
+    hasAutoFocusedRef.current = true; // Mark that user has interacted
+    
+    // Force the input to stay focused
+    const input = e.target;
+    setTimeout(() => {
+      if (input) {
+        input.focus();
+      }
+    }, 0);
+  };
+
+  const handleRecipientBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Only blur if not focusing another recipient field
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    const isMovingToAnotherRecipient = 
+      relatedTarget?.tagName === 'INPUT' &&
+      (relatedTarget === toInputRef.current || 
+       relatedTarget === ccInputRef.current || 
+       relatedTarget === bccInputRef.current);
+    
+    if (isMovingToAnotherRecipient) {
+      // Stay in recipient mode
+      return;
+    }
+    
+    // Small delay to allow click events to process
+    blurTimerRef.current = setTimeout(() => {
+      setIsTypingInRecipients(false);
+    }, 300);
   };
 
   const applyFormat = (format: string, value?: any) => {
@@ -475,6 +621,38 @@ useEffect(() => {
     e.target.value = "";
   };
 
+  // Download received email attachment
+  const handleDownloadAttachment = async (attachmentId: string, filename: string) => {
+    try {
+      const response = await fetch(`/api/emails/${conversation.id}/attachments/${attachmentId}/download`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download attachment');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Downloaded ${filename}`);
+    } catch (error: any) {
+      toast.error(`Failed to download attachment: ${error.message}`);
+    }
+  };
+
+  // Format file size for display
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => {
       const attachment = prev.find((a) => a.id === id);
@@ -483,6 +661,58 @@ useEffect(() => {
       }
       return prev.filter((a) => a.id !== id);
     });
+  };
+
+  const buildEmailBodyWithQuotedOriginal = () => {
+    // Get the user's new message
+    const userMessage = replyContent || '';
+
+    // Get the original email content
+    const originalEmailHtml = conversation.email_body_html || conversation.email_body || '';
+    const originalEmailText = conversation.email_body_text || '';
+    
+    // Use HTML if available, otherwise text
+    const originalContent = originalEmailHtml || originalEmailText;
+
+    if (!originalContent) {
+      // No original content to quote
+      return userMessage;
+    }
+
+    // Format the original email timestamp
+    const emailDate = conversation.email_timestamp 
+      ? new Date(conversation.email_timestamp).toLocaleString('en-US', {
+          weekday: 'short',
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        })
+      : '';
+
+    // Build the quoted email header
+    const quotedHeader = replyType === 'forward'
+      ? `<br><br><div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ccc;">
+           <p><strong>---------- Forwarded message ---------</strong><br>
+           From: <strong>${conversation.senderName}</strong> &lt;${conversation.senderEmail}&gt;<br>
+           Date: ${emailDate}<br>
+           Subject: ${conversation.subject || 'No Subject'}</p>
+         </div><br>`
+      : `<br><br><div style="margin-top: 20px; padding-top: 10px; border-left: 3px solid #ccc; padding-left: 10px; color: #666;">
+           <p>On ${emailDate}, <strong>${conversation.senderName}</strong> &lt;${conversation.senderEmail}&gt; wrote:</p>
+         </div>`;
+
+    // Build quoted original content
+    const quotedContent = replyType === 'forward'
+      ? `<div style="margin-left: 0;">${originalContent}</div>`
+      : `<blockquote style="margin: 10px 0; padding-left: 10px; border-left: 3px solid #ccc; color: #666;">
+           ${originalContent}
+         </blockquote>`;
+
+    // Combine user's message with quoted original
+    return `${userMessage}${quotedHeader}${quotedContent}`;
   };
 
   const handleSend = async () => {
@@ -497,31 +727,130 @@ useEffect(() => {
       return;
     }
 
+    // Validate recipients for forward
+    if (replyType === "forward" && !toText.trim()) {
+      toast.error("Please add at least one recipient");
+      return;
+    }
+
     try {
-      await sendMessage.mutateAsync({
-        conversationId: conversation.id,
-        content: replyContent || plainText,
+      // Get authentication from localStorage
+      const supabaseKey = 'sb-wahvinwuyefmkmgmjspo-auth-token';
+      const sessionStr = localStorage.getItem(supabaseKey);
+      let token: string | null = null;
+      let userId: string | null = null;
+      
+      if (sessionStr) {
+        try {
+          const parsed = JSON.parse(sessionStr);
+          token = parsed?.access_token || null;
+          userId = parsed?.user?.id || null;
+        } catch {
+          toast.error("Authentication error. Please refresh and try again.");
+          return;
+        }
+      }
+
+      if (!userId) {
+        toast.error("User not authenticated. Please log in again.");
+        return;
+      }
+
+      // Prepare headers with authentication
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-user-id': userId,
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      // Build complete email body with quoted original
+      const fullEmailBody = buildEmailBodyWithQuotedOriginal();
+
+      // Call the actual email sending API
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE_URL}/api/emails/send`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          to: toText,
+          cc: ccText || undefined,
+          bcc: bccText || undefined,
+          subject: replyType === "forward" 
+            ? `Fwd: ${conversation.subject || "No Subject"}`
+            : `Re: ${conversation.subject || "No Subject"}`,
+          body: fullEmailBody,
+          replyType,
+        }),
       });
 
-      toast.success("Reply sent");
+      if (!response.ok) {
+        let errorMessage = 'Failed to send email';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      
+      toast.success(`${replyType === "forward" ? "Email forwarded" : "Reply sent"} successfully`);
       setReplyContent("");
       setAttachments([]);
       setShowReply(false);
       setShowCc(false);
       setShowBcc(false);
+      setToText("");
       setCcText("");
       setBccText("");
       setExpandedCompose(false);
       inlineQuillRef.current?.getEditor()?.setText("");
       dialogQuillRef.current?.getEditor()?.setText("");
-    } catch (error) {
-      console.error("Error sending reply:", error);
-      toast.error("Failed to send reply");
+      
+      // Refresh the conversation to show the sent message
+      // The parent component should handle this via query invalidation
+    } catch (error: any) {
+      console.error("Error sending email:", error);
+      toast.error(error.message || "Failed to send email");
     }
   };
 
   const handleReplyClick = (type: "reply" | "replyAll" | "forward") => {
     setReplyType(type);
+    hasAutoFocusedRef.current = false; // Reset auto-focus flag for new compose
+    
+    // Set recipients based on reply type
+    if (type === "forward") {
+      // Forward: blank To, Cc, Bcc
+      setToText("");
+      setCcText("");
+      setBccText("");
+      setShowCc(false);
+      setShowBcc(false);
+    } else if (type === "reply") {
+      // Reply: To = sender only
+      setToText(conversation.senderEmail);
+      setCcText("");
+      setBccText("");
+      setShowCc(false);
+      setShowBcc(false);
+    } else if (type === "replyAll") {
+      // Reply All: To = sender, show Cc
+      setToText(conversation.senderEmail);
+      // TODO: Parse original Cc recipients from email headers if available
+      setCcText("");
+      setBccText("");
+      setShowCc(true);
+      setShowBcc(false);
+    }
+    
     setShowReply(true);
   };
 
@@ -547,8 +876,21 @@ useEffect(() => {
         <div className="px-6 py-3 border-b bg-muted/30 space-y-2">
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-2 flex-1">
-              <span className="text-muted-foreground font-medium">To:</span>
-              <span className="text-foreground">{conversation.senderEmail}</span>
+              <span className="text-muted-foreground font-medium w-8">To:</span>
+              {replyType === "forward" ? (
+                <Input
+                  ref={toInputRef}
+                  value={toText}
+                  onChange={(e) => setToText(e.target.value)}
+                  placeholder="Add recipients"
+                  className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-0 flex-1"
+                  onFocus={handleRecipientFocus}
+                  onBlur={handleRecipientBlur}
+                  autoComplete="off"
+                />
+              ) : (
+                <span className="text-foreground">{toText}</span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {!showCc && (
@@ -576,24 +918,32 @@ useEffect(() => {
           
           {showCc && (
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground font-medium">Cc:</span>
+              <span className="text-muted-foreground font-medium w-8">Cc:</span>
               <Input
+                ref={ccInputRef}
                 value={ccText}
                 onChange={(e) => setCcText(e.target.value)}
                 placeholder="Add recipients"
-                className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-0"
+                className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-0 flex-1"
+                onFocus={handleRecipientFocus}
+                onBlur={handleRecipientBlur}
+                autoComplete="off"
               />
             </div>
           )}
           
           {showBcc && (
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground font-medium">Bcc:</span>
+              <span className="text-muted-foreground font-medium w-8">Bcc:</span>
               <Input
+                ref={bccInputRef}
                 value={bccText}
                 onChange={(e) => setBccText(e.target.value)}
                 placeholder="Add recipients"
-                className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-0"
+                className="h-7 text-xs border-0 bg-transparent focus-visible:ring-0 px-0 flex-1"
+                onFocus={handleRecipientFocus}
+                onBlur={handleRecipientBlur}
+                autoComplete="off"
               />
             </div>
           )}
@@ -603,7 +953,8 @@ useEffect(() => {
           <div
             className={cn(
               "rounded-lg bg-transparent ring-0 focus-within:ring-0",
-              isExpanded ? "min-h-[360px]" : "min-h-[200px]"
+              isExpanded ? "min-h-[360px]" : "min-h-[200px]",
+              isTypingInRecipients && "pointer-events-none opacity-50"
             )}
           >
             <ReactQuill
@@ -617,7 +968,7 @@ useEffect(() => {
                 // Set default font and size when editor is created
                 setTimeout(() => {
                   const editor = instance.getEditor();
-                  if (editor) {
+                  if (editor && !isTypingInRecipients) {
                     editor.format("font", fontFamily);
                     editor.format("size", fontSize);
                   }
@@ -626,11 +977,13 @@ useEffect(() => {
               theme="snow"
               value={replyContent}
               onChange={handleEditorChange}
+              onFocus={handleEditorFocus}
               modules={quillModules}
               formats={QUILL_FORMATS}
               placeholder="Type your reply..."
               className="email-quill h-full"
               style={{ minHeight: isExpanded ? 340 : 160 }}
+              readOnly={isTypingInRecipients}
             />
           </div>
 
@@ -916,6 +1269,10 @@ useEffect(() => {
                 setShowCc(false);
                 setShowBcc(false);
                 setExpandedCompose(false);
+                setToText("");
+                setCcText("");
+                setBccText("");
+                setReplyContent("");
               }}
               className="h-7 text-xs px-3"
             >
@@ -952,6 +1309,25 @@ useEffect(() => {
     updateStageMutation.mutate({
       conversationId: conversation.id,
       stageId: stageId === 'none' ? null : stageId
+    });
+  };
+
+  const handleDelete = () => {
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      return;
+    }
+
+    deleteConversation.mutate(conversation.id, {
+      onSuccess: () => {
+        toast.success("Email deleted successfully");
+        setShowDeleteConfirm(false);
+        // Parent component should handle navigation away from deleted email
+      },
+      onError: (error: any) => {
+        toast.error(`Failed to delete email: ${error.message}`);
+        setShowDeleteConfirm(false);
+      }
     });
   };
 
@@ -994,6 +1370,15 @@ useEffect(() => {
           <div className="flex items-start justify-between mb-2">
             <h2 className="text-lg font-semibold">{conversation.subject || "No Subject"}</h2>
             <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={handleDelete}
+                title={showDeleteConfirm ? "Click again to confirm delete" : "Delete"}
+              >
+                <Trash2 className={cn("h-4 w-4", showDeleteConfirm && "text-red-600")} />
+              </Button>
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -1055,7 +1440,50 @@ useEffect(() => {
                   </div>
                 </div>
                 
-                <EmailBodyContent html={conversation.email_body || undefined} plainText={conversation.preview || undefined} />
+                <EmailBodyContent 
+                  htmlBody={conversation.email_body_html || conversation.email_body}
+                  textBody={conversation.email_body_text}
+                  preview={conversation.preview}
+                />
+                
+                {/* Email Attachments Section (Email-only, not LinkedIn) */}
+                {conversation.email_attachments && conversation.email_attachments.length > 0 && (
+                  <div className="mt-6 pt-4 border-t">
+                    <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <Paperclip className="h-4 w-4" />
+                      Attachments ({conversation.email_attachments.length})
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {conversation.email_attachments
+                        .filter((att) => !att.isInline) // Only show non-inline attachments
+                        .map((attachment) => (
+                          <div
+                            key={attachment.id}
+                            className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 transition-colors"
+                          >
+                            <FileIcon className="h-8 w-8 text-muted-foreground flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">
+                                {attachment.filename}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatFileSize(attachment.size)}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0"
+                              onClick={() => handleDownloadAttachment(attachment.id, attachment.filename)}
+                              title="Download"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             

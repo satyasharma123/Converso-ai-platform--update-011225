@@ -70,6 +70,11 @@ export async function getConversations(
   // Get user's workspace
   const workspaceId = await getUserWorkspaceId(userId);
   
+  // IMPORTANT: Sorting behavior differs between email and LinkedIn:
+  // - EMAILS: last_message_at = received time (never updated on reply)
+  //   → Inbox stays sorted by when email was received
+  // - LINKEDIN: last_message_at = most recent activity (updated on send/receive)
+  //   → Chat conversations move to top on new activity
   let query = supabaseAdmin
     .from('conversations')
     .select(`

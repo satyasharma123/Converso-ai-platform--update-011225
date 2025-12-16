@@ -8,8 +8,13 @@ import { logger } from './utils/logger';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// Middleware - CORS configuration for credentials support
+app.use(cors({
+  origin: 'http://localhost:8082', // Frontend origin
+  credentials: true, // Allow cookies and auth headers
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-user-role'],
+}));
 app.use(express.json());
 
 // Debug logger to trace all API requests

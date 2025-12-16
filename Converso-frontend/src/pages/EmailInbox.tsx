@@ -432,78 +432,62 @@ export default function EmailInbox() {
     (!selectedConv.email_body || !(selectedConv as any).has_full_body)
   );
 
+  // Lazy-load email body when opening email (metadata-only sync architecture)
+  // Fetches from provider on first open, then caches in DB for instant subsequent opens
   const {
     data: fetchedEmail,
-    isFetching: isFetchingEmailBody,
+    isLoading: isLoadingEmailBody,
     isError: isEmailBodyError,
+    error: emailBodyError,
     refetch: refetchEmailBody,
   } = useEmailWithBody(shouldFetchFullBody ? selectedConv?.id ?? null : null);
-
-  const [bodyLoadTimedOut, setBodyLoadTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (!isFetchingEmailBody || !shouldFetchFullBody || !selectedConv?.id) {
-      setBodyLoadTimedOut(false);
-      return;
-    }
-
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setBodyLoadTimedOut(true);
-    }, 8000);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [isFetchingEmailBody, shouldFetchFullBody, selectedConv?.id]);
 
   const conversationForView = useMemo(() => {
     if (!selectedConv) return null;
 
-    if (fetchedEmail && fetchedEmail.id === selectedConv.id) {
-      return {
-        ...selectedConv,
-        ...fetchedEmail,
-        email_body:
-          fetchedEmail.email_body ||
-          (fetchedEmail as any).body ||
-          selectedConv.email_body ||
-          "",
-        email_attachments:
-          fetchedEmail.email_attachments ||
-          (fetchedEmail as any).emailAttachments ||
-          selectedConv.email_attachments ||
-          [],
-        has_full_body:
-          fetchedEmail.has_full_body ??
-          (fetchedEmail as any).has_full_body ??
-          (selectedConv as any).has_full_body,
-      };
-    }
+    // Lazy loading: Show preview immediately, then replace with full body when fetched
+    // Priority: fetchedEmail (lazy-loaded) > selectedConv (cached) > preview (metadata)
+    
+    // Get HTML body
+    const emailBodyHtml = fetchedEmail?.email_body_html || 
+                          selectedConv.email_body_html || 
+                          null;
+    
+    // Get text body
+    const emailBodyText = fetchedEmail?.email_body_text || 
+                          selectedConv.email_body_text || 
+                          null;
+    
+    // Backward compatibility: old email_body field
+    const legacyEmailBody = fetchedEmail?.email_body || 
+                            selectedConv.email_body || 
+                            null;
 
-    if (
-      shouldFetchFullBody &&
-      !selectedConv.email_body &&
-      !isEmailBodyError &&
-      !fetchedEmail
-    ) {
-      return {
-        ...selectedConv,
-        email_body: selectedConv.preview || '',
-      };
-    }
+    // IMPORTANT: Only merge email body-related fields from fetchedEmail
+    // Never overwrite core conversation fields like sender_name, sender_email, etc.
+    return {
+      ...selectedConv, // Base conversation data (sender, metadata, etc.)
+      // Only merge these specific fields from fetchedEmail:
+      email_body_html: emailBodyHtml,
+      email_body_text: emailBodyText,
+      email_body: emailBodyHtml || legacyEmailBody || selectedConv.preview || '',
+      email_attachments:
+        fetchedEmail?.email_attachments ||
+        (fetchedEmail as any)?.emailAttachments ||
+        selectedConv.email_attachments ||
+        [],
+      has_full_body:
+        fetchedEmail?.has_full_body ??
+        (fetchedEmail as any)?.has_full_body ??
+        (selectedConv as any)?.has_full_body,
+      email_body_fetched_at: fetchedEmail?.email_body_fetched_at || selectedConv.email_body_fetched_at,
+      isLazyLoading: isLoadingEmailBody, // Track lazy-loading state
+    };
+  }, [selectedConv, fetchedEmail, isLoadingEmailBody]);
 
-    return selectedConv;
-  }, [selectedConv, fetchedEmail, shouldFetchFullBody, isEmailBodyError]);
-
-  const isEmailBodyLoading =
-    shouldFetchFullBody &&
-    !fetchedEmail &&
-    isFetchingEmailBody &&
-    !bodyLoadTimedOut;
+  // Only show error if it's a critical auth issue (not network/timeout)
+  const hasEmailBodyError = isEmailBodyError && 
+    emailBodyError?.message?.includes('reconnect your account');
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
 
   // Calculate engagement score based on message count, response time, and activity
@@ -913,44 +897,29 @@ export default function EmailInbox() {
                     preview: (conversationForView as any).preview || null,
                     email_timestamp: (conversationForView as any).emailTimestamp || (conversationForView as any).email_timestamp || conversationForView.last_message_at,
                     received_account: (conversationForView as any).received_account || (conversationForView as any).receivedAccount || null,
-                    email_attachments: (conversationForView as any).email_attachments || (conversationForView as any).emailAttachments || [],
-                  }} 
-                  messages={messagesForSelected as any}
-                />
-                {isEmailBodyLoading && (
-                  <div className="absolute top-4 right-4 rounded-md bg-background/80 border px-3 py-1 text-xs text-muted-foreground shadow">
-                    Loading email body…
+                  email_attachments: (conversationForView as any).email_attachments || (conversationForView as any).emailAttachments || [],
+                }} 
+                messages={messagesForSelected as any}
+              />
+              {hasEmailBodyError && (
+                <div className="absolute top-4 right-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 shadow-lg flex items-center gap-3 max-w-md">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium">Account reconnection needed</p>
+                    <p className="text-amber-700 mt-0.5">
+                      Your Outlook account needs to be reconnected to load new emails.
+                    </p>
                   </div>
-                )}
-                {bodyLoadTimedOut && (
-                  <div className="absolute top-4 right-4 rounded-md bg-yellow-50 border border-yellow-200 px-3 py-2 text-xs text-yellow-700 shadow flex items-center gap-3">
-                    <span>Still fetching the full email…</span>
-                    <button
-                      onClick={() => {
-                        setBodyLoadTimedOut(false);
-                        refetchEmailBody();
-                      }}
-                      className="text-yellow-800 font-semibold underline"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (isEmailBodyLoading || bodyLoadTimedOut) ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <p className="text-sm">Loading email content…</p>
-                {bodyLoadTimedOut && (
-                  <button
-                    onClick={() => {
-                      setBodyLoadTimedOut(false);
-                      refetchEmailBody();
-                    }}
-                    className="text-xs underline text-primary"
+                  <Button
+                    onClick={() => window.location.href = '/settings?tab=integrations'}
+                    size="sm"
+                    variant="outline"
+                    className="whitespace-nowrap text-xs h-7"
                   >
-                    Retry now
-                  </button>
-                )}
+                    Reconnect
+                  </Button>
+                </div>
+              )}
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
