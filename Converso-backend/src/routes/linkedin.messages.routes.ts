@@ -156,6 +156,7 @@ router.post('/send-message', async (req, res) => {
         conversation_id: conversationId,
         timestamp: responseMessage.created_at || createdAt,
         is_from_lead: responseMessage.is_from_lead || false, // Messages you send are not from lead
+        content: responseMessage.content || text || '', // Include message content for preview
       });
     }
 

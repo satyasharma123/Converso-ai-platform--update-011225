@@ -84,7 +84,7 @@ export default function LinkedInInbox() {
 
   // Live updates via SSE for new LinkedIn messages
   const bumpUnread = useCallback(
-    (conversationId: string, timestamp?: string) => {
+    (conversationId: string, timestamp?: string, content?: string) => {
       queryClient.setQueriesData(
         { queryKey: ['conversations'] },
         (oldData: any) => {
@@ -108,6 +108,8 @@ export default function LinkedInInbox() {
               // Update last_message_at to current time for proper sorting
               last_message_at: timestamp || new Date().toISOString(),
               lastMessageAt: timestamp || new Date().toISOString(),
+              // Update preview with latest message content
+              preview: content || conv.preview,
             };
           });
           
@@ -159,9 +161,9 @@ export default function LinkedInInbox() {
           // This prevents the badge from appearing when you send a reply
           if (data.is_from_lead !== false) {
             // If is_from_lead is true or undefined (for backwards compatibility), bump unread
-            bumpUnread(data.conversation_id, data.timestamp);
+            bumpUnread(data.conversation_id, data.timestamp, data.content);
           } else {
-            // Even if it's your own message, update the timestamp to move conversation to top
+            // Even if it's your own message, update the timestamp and preview to move conversation to top
             queryClient.setQueriesData(
               { queryKey: ['conversations'] },
               (oldData: any) => {
@@ -173,6 +175,7 @@ export default function LinkedInInbox() {
                     ...conv,
                     last_message_at: data.timestamp || new Date().toISOString(),
                     lastMessageAt: data.timestamp || new Date().toISOString(),
+                    preview: data.content || conv.preview,
                   };
                 });
                 

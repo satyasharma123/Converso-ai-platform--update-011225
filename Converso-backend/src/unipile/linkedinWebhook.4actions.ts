@@ -552,10 +552,17 @@ async function syncChatMessages(
       }
     }
 
-    // Update conversation's last_message_at (and optionally unread state)
+    // Update conversation's last_message_at, preview, and optionally unread state
     if (messages.length > 0) {
       const latestTimestamp =
         messages.map(safeTimestamp).filter(Boolean).sort().pop() || new Date().toISOString();
+
+      // Get the latest message for preview
+      const latestMessage = messages.reduce((latest, msg) => {
+        const msgTime = safeTimestamp(msg);
+        const latestTime = safeTimestamp(latest);
+        return msgTime > latestTime ? msg : latest;
+      }, messages[0]);
 
       const updatePayload: Record<string, any> = {
         last_message_at: latestTimestamp,
@@ -563,6 +570,11 @@ async function syncChatMessages(
 
       if (hasLeadMessages) {
         updatePayload.is_read = false;
+      }
+
+      // Update preview with latest message content
+      if (latestMessage?.text || latestMessage?.body_text) {
+        updatePayload.preview = latestMessage.text || latestMessage.body_text;
       }
 
       await supabaseAdmin
@@ -725,10 +737,10 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
 
         logger.info(`[Webhook] Synced ${syncedCount} messages for chat ${chatId}`);
         if (syncedCount > 0) {
-          // Get the latest message to check if it's from lead
+          // Get the latest message to check if it's from lead and get content
           const { data: latestMsg } = await supabaseAdmin
             .from('messages')
-            .select('is_from_lead')
+            .select('is_from_lead, content')
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -740,6 +752,7 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
             conversation_id: conversationId,
             timestamp: event.timestamp || new Date().toISOString(),
             is_from_lead: latestMsg?.is_from_lead ?? true, // Default to true for safety
+            content: latestMsg?.content || '', // Include message content for preview
           });
         }
         break;

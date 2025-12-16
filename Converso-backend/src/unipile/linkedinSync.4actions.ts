@@ -712,7 +712,7 @@ export async function syncChatIncremental(
       }
     }
 
-    // Update conversation's last_message_at and mark as unread if new lead messages
+    // Update conversation's last_message_at, preview, and mark as unread if new lead messages
     if (messages.length > 0) {
       const latestTimestamp = messages
         .map(safeTimestamp)
@@ -722,12 +722,23 @@ export async function syncChatIncremental(
 
       const hasNewLeadMessages = messages.some(msg => !msg.is_sender);
       
+      // Get the latest message for preview
+      const latestMessage = messages.reduce((latest, msg) => {
+        const msgTime = safeTimestamp(msg);
+        const latestTime = safeTimestamp(latest);
+        return msgTime > latestTime ? msg : latest;
+      }, messages[0]);
+      
       const updatePayload: any = {};
       if (latestTimestamp) {
         updatePayload.last_message_at = latestTimestamp;
       }
       if (hasNewLeadMessages) {
         updatePayload.is_read = false;
+      }
+      // Update preview with latest message content
+      if (latestMessage?.text || latestMessage?.body_text) {
+        updatePayload.preview = latestMessage.text || latestMessage.body_text;
       }
 
       if (Object.keys(updatePayload).length > 0) {
