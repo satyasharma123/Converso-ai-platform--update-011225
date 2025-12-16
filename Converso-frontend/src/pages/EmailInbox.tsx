@@ -94,6 +94,12 @@ export default function EmailInbox() {
     setFilterPopoverOpen(false);
   };
 
+  // Calculate unread count and favorites count
+  const unreadCount = conversations.filter(conv => !(conv.is_read ?? (conv as any).isRead ?? false)).length;
+  const favoritesCount = conversations.filter(conv => 
+    Boolean((conv as any).is_favorite ?? (conv as any).isFavorite)
+  ).length;
+
   // Function to trigger sync for all email accounts
   const triggerEmailSync = (isManual: boolean = false) => {
     if (!user || !workspace) return;
@@ -672,15 +678,25 @@ export default function EmailInbox() {
                     </TabsTrigger>
                     <TabsTrigger 
                       value="unread"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5"
+                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5 relative"
                     >
                       Unread
+                      {unreadCount > 0 && (
+                        <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold text-white bg-blue-600 rounded-full">
+                          {unreadCount}
+                        </span>
+                      )}
                     </TabsTrigger>
                     <TabsTrigger 
                       value="favorites"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5"
+                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5 relative"
                     >
                       Favorites
+                      {favoritesCount > 0 && (
+                        <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold text-white bg-amber-500 rounded-full">
+                          {favoritesCount}
+                        </span>
+                      )}
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>

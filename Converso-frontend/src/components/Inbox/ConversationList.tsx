@@ -170,7 +170,7 @@ export function ConversationList({
               "flex items-start gap-2.5 p-2.5 transition-colors border-b cursor-pointer",
               "hover:bg-muted/40",
               conversation.selected && "bg-accent/30",
-              selectedId === conversation.id && "bg-accent/20 border-l-2 border-l-primary"
+              selectedId === conversation.id && "bg-accent/20 border-l-4 border-l-green-600"
             )}
           >
             {/* Checkbox - only show when showCheckboxes is true */}
