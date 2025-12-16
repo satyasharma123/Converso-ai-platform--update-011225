@@ -217,52 +217,57 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
       <ScrollArea className="h-full">
         <div className="px-4 py-5 space-y-3">
           {/* Profile Header */}
-          <div className="flex flex-col items-center text-center space-y-2">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={lead.profilePictureUrl || undefined} alt={lead.name} />
-              <AvatarFallback className="bg-muted text-sm font-semibold">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="w-full">
-              <h2 className="text-base font-semibold leading-tight">{lead.name}</h2>
-              {isEditingCompany && canEdit ? (
-                <div className="flex items-center justify-center gap-1 mt-0.5">
-                  <Input
-                    value={editedCompany}
-                    onChange={(e) => setEditedCompany(e.target.value)}
-                    className="h-6 text-xs px-2 text-center max-w-[200px]"
-                    placeholder="Company name"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveCompany();
-                      if (e.key === 'Escape') {
-                        setEditedCompany(lead.company || "");
-                        setIsEditingCompany(false);
-                      }
-                    }}
-                    onBlur={handleSaveCompany}
-                    autoFocus
-                  />
-                </div>
-              ) : (
-                <p 
-                  className={`text-xs text-muted-foreground mt-0.5 ${canEdit ? 'cursor-pointer hover:text-foreground' : ''}`}
-                  onClick={() => canEdit && setIsEditingCompany(true)}
-                >
-                  {editedCompany || lead.company || "Add company"}
-                </p>
-              )}
-            </div>
+          <div className="relative">
+            {/* LinkedIn Icon - Top Right */}
             {lead.linkedinUrl && (
               <a
                 href={lead.linkedinUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#0077B5] hover:bg-[#006399] transition-colors"
+                className="absolute top-0 right-0 inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#0077B5] hover:bg-[#006399] transition-colors"
+                title="View LinkedIn Profile"
               >
-                <Linkedin className="h-4 w-4 text-white" />
+                <Linkedin className="h-3 w-3 text-white" />
               </a>
             )}
+            
+            <div className="flex flex-col items-center text-center space-y-2">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={lead.profilePictureUrl || undefined} alt={lead.name} />
+                <AvatarFallback className="bg-muted text-sm font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="w-full">
+                <h2 className="text-base font-semibold leading-tight">{lead.name}</h2>
+                {isEditingCompany && canEdit ? (
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <Input
+                      value={editedCompany}
+                      onChange={(e) => setEditedCompany(e.target.value)}
+                      className="h-6 text-xs px-2 text-center max-w-[200px]"
+                      placeholder="Company name"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveCompany();
+                        if (e.key === 'Escape') {
+                          setEditedCompany(lead.company || "");
+                          setIsEditingCompany(false);
+                        }
+                      }}
+                      onBlur={handleSaveCompany}
+                      autoFocus
+                    />
+                  </div>
+                ) : (
+                  <p 
+                    className={`text-xs text-muted-foreground mt-0.5 ${canEdit ? 'cursor-pointer hover:text-foreground' : ''}`}
+                    onClick={() => canEdit && setIsEditingCompany(true)}
+                  >
+                    {editedCompany || lead.company || "Add company"}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Stage & SDR Card */}

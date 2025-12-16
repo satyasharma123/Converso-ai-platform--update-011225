@@ -5,7 +5,7 @@ import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, RefreshCcw } from "lucide-react";
+import { Search, Filter, RefreshCcw, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,6 +19,19 @@ import { useConversations, useToggleRead, useAssignConversation, useUpdateConver
 import { useMessages } from "@/hooks/useMessages";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function LinkedInInbox() {
   const location = useLocation();
@@ -28,6 +41,9 @@ export default function LinkedInInbox() {
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('all');
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState<string>('all');
+  const [sdrFilter, setSdrFilter] = useState<string>('all');
   
   const { user, userRole } = useAuth();
   
@@ -330,7 +346,7 @@ export default function LinkedInInbox() {
   // Apply filters and sort by last_message_at
   const filteredConversations = normalizedConversations
     .filter(conv => {
-      // SDR role filtering is handled by backend service
+      // Account filter
       const accountId =
         (conv as any).received_on_account_id ||
         (conv as any).receivedOnAccountId ||
@@ -338,6 +354,7 @@ export default function LinkedInInbox() {
       const matchesAccount = accountFilter === 'all' || 
         accountId === accountFilter;
       
+      // Search filter
       const senderName = conv.senderName || '';
       const matchesSearch = searchQuery === '' || 
         senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -352,7 +369,15 @@ export default function LinkedInInbox() {
         activeTab === 'favorites' ? isFavorite :
         true;
       
-      return matchesAccount && matchesSearch && matchesTab;
+      // Stage filter
+      const convStageId = (conv as any).customStageId || (conv as any).custom_stage_id;
+      const matchesStage = stageFilter === 'all' || convStageId === stageFilter;
+      
+      // SDR filter
+      const convSdrId = (conv as any).assignedTo || (conv as any).assigned_to;
+      const matchesSDR = sdrFilter === 'all' || convSdrId === sdrFilter;
+      
+      return matchesAccount && matchesSearch && matchesTab && matchesStage && matchesSDR;
     })
     .sort((a, b) => {
       // Sort by last_message_at descending (newest first)
@@ -496,7 +521,7 @@ export default function LinkedInInbox() {
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col lg:flex-row gap-2 h-[calc(100vh-120px)]">
-        <div className="overflow-hidden flex flex-col lg:w-[28%]">
+        <div className="overflow-hidden flex flex-col lg:w-[27%]">
           <div className="space-y-2 mb-3">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
@@ -557,9 +582,71 @@ export default function LinkedInInbox() {
               >
                 <RefreshCcw className={`h-3.5 w-3.5 ${isManualRefreshing ? 'animate-spin' : ''}`} />
               </Button>
-              <Button variant="outline" size="icon" className="h-8 w-8">
-                <Filter className="h-3.5 w-3.5" />
-              </Button>
+              <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+                <PopoverTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className={`h-8 w-8 ${(stageFilter !== 'all' || sdrFilter !== 'all') ? 'bg-primary/10 border-primary' : ''}`}
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72" align="end">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm">Filters</h4>
+                      {(stageFilter !== 'all' || sdrFilter !== 'all') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            setStageFilter('all');
+                            setSdrFilter('all');
+                          }}
+                        >
+                          Clear all
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Stage</Label>
+                      <Select value={stageFilter} onValueChange={setStageFilter}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="All Stages" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all" className="text-xs">All Stages</SelectItem>
+                          {pipelineStages.map(stage => (
+                            <SelectItem key={stage.id} value={stage.id} className="text-xs">
+                              {stage.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Assigned SDR</Label>
+                      <Select value={sdrFilter} onValueChange={setSdrFilter}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="All SDRs" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all" className="text-xs">All SDRs</SelectItem>
+                          {teamMembers.map(member => (
+                            <SelectItem key={member.id} value={member.id} className="text-xs">
+                              {member.full_name || member.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="flex items-center justify-between">
@@ -615,7 +702,7 @@ export default function LinkedInInbox() {
           </div>
         </div>
 
-        <div className="overflow-hidden flex flex-col lg:w-[52%]">
+        <div className="overflow-hidden flex flex-col lg:w-[49%]">
             {selectedConv ? (
               <div className="h-full bg-background rounded-lg border">
                 <ConversationView 
@@ -674,7 +761,7 @@ export default function LinkedInInbox() {
             )}
           </div>
 
-        <div className="lg:w-[20%] overflow-y-auto flex flex-col">
+        <div className="lg:w-[24%] overflow-y-auto flex flex-col">
           {selectedConv && mockLead && (
             <LeadProfilePanel 
               lead={mockLead}
