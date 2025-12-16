@@ -43,6 +43,7 @@ export interface Conversation {
   email_timestamp?: string | null; // Original email timestamp
   email_attachments?: EmailAttachment[] | null;
   received_account?: {
+    id?: string;
     account_name: string;
     account_email?: string;
     account_type: string;

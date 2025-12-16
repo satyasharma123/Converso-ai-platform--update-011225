@@ -19,12 +19,17 @@ export function ConnectedAccountFilter({ value, onChange, type }: ConnectedAccou
     return null;
   }
 
+  // Find the selected account to display properly
+  const selectedAccount = value === 'all' ? null : filteredAccounts.find(acc => acc.id === value);
+
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full h-8 text-xs">
         <div className="flex items-center gap-2">
           <Inbox className="h-3.5 w-3.5" />
-          <SelectValue placeholder="All Accounts" className="text-xs placeholder:text-xs" />
+          <SelectValue placeholder="All Accounts" className="text-xs placeholder:text-xs">
+            {selectedAccount ? selectedAccount.account_name : "All Accounts"}
+          </SelectValue>
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover border shadow-md z-50">

@@ -1,4 +1,4 @@
-import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive } from "lucide-react";
+import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ReceivedAccountBadge } from "./ReceivedAccountBadge";
 import { formatTimeAgo } from "@/utils/timeFormat";
-import { useToggleRead, useAssignConversation, useUpdateConversationStage } from "@/hooks/useConversations";
+import { useToggleRead, useAssignConversation, useUpdateConversationStage, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 
@@ -50,6 +50,8 @@ export function LinkedInConversationList({
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
+  const toggleFavorite = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
 
@@ -108,6 +110,29 @@ export function LinkedInConversationList({
 
   const handleArchive = (conversationId: string) => {
     toast.info('Archive feature coming soon');
+  };
+
+  const handleToggleFavorite = (conversation: LinkedInConversation) => {
+    const isFavorite = (conversation as any).is_favorite ?? (conversation as any).isFavorite ?? false;
+    toggleFavorite.mutate({ 
+      conversationId: conversation.id, 
+      isFavorite: !isFavorite 
+    });
+  };
+
+  const handleDelete = (conversationId: string) => {
+    const confirmed = window.confirm('Delete this conversation? This cannot be undone.');
+    if (!confirmed) return;
+    
+    deleteConversation.mutate(conversationId, {
+      onSuccess: () => {
+        toast.success('Conversation deleted successfully');
+      },
+      onError: (error) => {
+        console.error('Error deleting conversation:', error);
+        toast.error('Failed to delete conversation');
+      }
+    });
   };
 
   if (conversations.length === 0) {
@@ -282,6 +307,28 @@ export function LinkedInConversationList({
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleArchive(conversation.id); }}>
                 <Archive className="h-4 w-4 mr-2" />
                 Archive
+              </DropdownMenuItem>
+
+              {/* Favorite/Unfavorite */}
+              {((conversation as any).is_favorite ?? (conversation as any).isFavorite) ? (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleFavorite(conversation); }}>
+                  <StarOff className="h-4 w-4 mr-2" />
+                  Remove Favorite
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleToggleFavorite(conversation); }}>
+                  <Star className="h-4 w-4 mr-2" />
+                  Mark as Favorite
+                </DropdownMenuItem>
+              )}
+
+              {/* Delete */}
+              <DropdownMenuItem 
+                onClick={(e) => { e.stopPropagation(); handleDelete(conversation.id); }}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

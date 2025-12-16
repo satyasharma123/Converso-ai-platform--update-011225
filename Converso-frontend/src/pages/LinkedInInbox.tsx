@@ -1,10 +1,11 @@
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
+import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Tag, Send, Archive, RefreshCcw } from "lucide-react";
+import { Search, Filter, RefreshCcw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +15,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
-import { useConversations, useToggleRead } from "@/hooks/useConversations";
+import { useConversations, useToggleRead, useAssignConversation, useUpdateConversationStage, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,6 +44,10 @@ export default function LinkedInInbox() {
   const { data: pipelineStages = [] } = usePipelineStages();
   const { data: conversations = [], isLoading } = useConversations('linkedin');
   const toggleRead = useToggleRead();
+  const assignConversation = useAssignConversation();
+  const updateStage = useUpdateConversationStage();
+  const toggleFavoriteConversation = useToggleFavoriteConversation();
+  const deleteConversation = useDeleteConversation();
   const queryClient = useQueryClient();
   
   const parseBoolean = (value: any) => {
@@ -309,15 +314,22 @@ export default function LinkedInInbox() {
     }
   }, [queryClient, selectedConversation, user, userProfile]);
 
-  // Calculate unread count
+  // Calculate unread count and favorites count
   const unreadCount = normalizedConversations.filter(conv => !conv.isRead).length;
+  const favoritesCount = normalizedConversations.filter(conv => 
+    Boolean((conv as any).is_favorite ?? (conv as any).isFavorite)
+  ).length;
 
   // Apply filters and sort by last_message_at
   const filteredConversations = normalizedConversations
     .filter(conv => {
       // SDR role filtering is handled by backend service
+      const accountId =
+        (conv as any).received_on_account_id ||
+        (conv as any).receivedOnAccountId ||
+        (conv as any).received_account?.id;
       const matchesAccount = accountFilter === 'all' || 
-        conv.received_account?.account_name === accountFilter;
+        accountId === accountFilter;
       
       const senderName = conv.senderName || '';
       const matchesSearch = searchQuery === '' || 
@@ -326,10 +338,11 @@ export default function LinkedInInbox() {
       
       // Tab filtering
       const isUnread = !conv.isRead;
+      const isFavorite = Boolean((conv as any).is_favorite ?? (conv as any).isFavorite);
       const matchesTab = 
         activeTab === 'all' ? true :
         activeTab === 'unread' ? isUnread :
-        activeTab === 'favorites' ? false : // Favorites not yet implemented
+        activeTab === 'favorites' ? isFavorite :
         true;
       
       return matchesAccount && matchesSearch && matchesTab;
@@ -357,6 +370,74 @@ export default function LinkedInInbox() {
     } else {
       setSelectedConversations(filteredConversations.map(c => c.id));
     }
+  };
+
+  const handleBulkMarkRead = () => {
+    selectedConversations.forEach(id => {
+      const conv = conversations.find(c => c.id === id);
+      if (conv && !(conv.is_read || (conv as any).isRead)) {
+        toggleRead.mutate({ conversationId: id, isRead: true });
+      }
+    });
+    setSelectedConversations([]);
+  };
+
+  const handleBulkMarkUnread = () => {
+    selectedConversations.forEach(id => {
+      const conv = conversations.find(c => c.id === id);
+      if (conv && (conv.is_read || (conv as any).isRead)) {
+        toggleRead.mutate({ conversationId: id, isRead: false });
+      }
+    });
+    setSelectedConversations([]);
+  };
+
+  const handleBulkAssignSDR = (sdrId: string | null) => {
+    selectedConversations.forEach(id => {
+      assignConversation.mutate({ conversationId: id, sdrId });
+    });
+    setSelectedConversations([]);
+  };
+
+  const handleBulkChangeStage = (stageId: string) => {
+    selectedConversations.forEach(id => {
+      updateStage.mutate({ conversationId: id, stageId });
+    });
+    setSelectedConversations([]);
+  };
+
+  const handleBulkArchive = () => {
+    toast.info('Bulk archive feature coming soon');
+    setSelectedConversations([]);
+  };
+
+  const handleBulkFavorite = async (isFavorite: boolean) => {
+    if (selectedConversations.length === 0) {
+      toast.info('Select messages to update favorites');
+      return;
+    }
+
+    await Promise.all(
+      selectedConversations.map(id =>
+        toggleFavoriteConversation.mutateAsync({ conversationId: id, isFavorite })
+      )
+    );
+    setSelectedConversations([]);
+    toast.success(isFavorite ? 'Marked as favorite' : 'Removed favorites');
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedConversations.length === 0) {
+      toast.info('Select messages to delete');
+      return;
+    }
+
+    const confirmed = window.confirm('Delete selected conversations? This cannot be undone.');
+    if (!confirmed) return;
+
+    await Promise.all(selectedConversations.map(id => deleteConversation.mutateAsync(id)));
+    setSelectedConversations([]);
+    toast.success('Conversations deleted successfully');
   };
 
   const selectedConv = normalizedConversations.find((c) => c.id === selectedConversation);
@@ -431,9 +512,14 @@ export default function LinkedInInbox() {
                 </TabsTrigger>
                 <TabsTrigger 
                   value="favorites"
-                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5"
+                  className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent text-xs px-3 py-1.5 relative"
                 >
                   Favorites
+                  {favoritesCount > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold text-white bg-amber-500 rounded-full">
+                      {favoritesCount}
+                    </span>
+                  )}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -483,32 +569,18 @@ export default function LinkedInInbox() {
                 </span>
               </div>
               {selectedConversations.length > 0 && (
-                <div className="flex items-center gap-0.5">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7"
-                    onClick={() => toast.info('Tag feature coming soon')}
-                  >
-                    <Tag className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7"
-                    onClick={() => toast.info('Bulk send feature coming soon')}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7"
-                    onClick={() => toast.info('Archive feature coming soon')}
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                <BulkActions 
+                  selectedCount={selectedConversations.length}
+                  onMarkRead={handleBulkMarkRead}
+                  onMarkUnread={handleBulkMarkUnread}
+                  onAssignSDR={handleBulkAssignSDR}
+                  onChangeStage={handleBulkChangeStage}
+                  onArchive={handleBulkArchive}
+                  onDelete={handleBulkDelete}
+                  onFavorite={() => handleBulkFavorite(true)}
+                  onUnfavorite={() => handleBulkFavorite(false)}
+                  onClearSelection={() => setSelectedConversations([])}
+                />
               )}
             </div>
           </div>
