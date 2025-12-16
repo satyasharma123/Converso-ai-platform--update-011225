@@ -110,6 +110,8 @@ export default function LinkedInInbox() {
               lastMessageAt: timestamp || new Date().toISOString(),
               // Update preview with latest message content
               preview: content || conv.preview,
+              // Track who sent the last message (true = from lead, false = from you)
+              last_message_from_lead: true,
             };
           });
           
@@ -176,6 +178,8 @@ export default function LinkedInInbox() {
                     last_message_at: data.timestamp || new Date().toISOString(),
                     lastMessageAt: data.timestamp || new Date().toISOString(),
                     preview: data.content || conv.preview,
+                    // Track who sent the last message (false = from you when is_from_lead is false)
+                    last_message_from_lead: false,
                   };
                 });
                 

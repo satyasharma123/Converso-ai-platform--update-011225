@@ -220,7 +220,6 @@ export function LinkedInConversationList({
                 {/* Message Preview (2 lines) - LinkedIn style */}
                 {conversation.preview && (
                   <p className="text-xs text-muted-foreground line-clamp-2 leading-snug mb-1">
-                    <span className="font-normal">You: </span>
                     {stripHtml(conversation.preview)}
                   </p>
                 )}

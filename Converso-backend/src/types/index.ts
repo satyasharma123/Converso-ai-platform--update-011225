@@ -33,6 +33,7 @@ export interface Conversation {
   chat_id?: string | null;
   sender_attendee_id?: string | null;
   sender_profile_picture_url?: string | null;
+  last_message_from_lead?: boolean | null; // Track who sent the last message for preview display
   // Email-specific fields (only for conversation_type = 'email')
   email_body?: string | null; // Full email content stored directly in conversation
   has_full_body?: boolean; // Whether full email body has been fetched

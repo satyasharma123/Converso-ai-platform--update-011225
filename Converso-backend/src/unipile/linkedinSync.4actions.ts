@@ -739,6 +739,8 @@ export async function syncChatIncremental(
       // Update preview with latest message content
       if (latestMessage?.text || latestMessage?.body_text) {
         updatePayload.preview = latestMessage.text || latestMessage.body_text;
+        // Track if the last message was from you (sender) or from lead
+        updatePayload.last_message_from_lead = !latestMessage.is_sender;
       }
 
       if (Object.keys(updatePayload).length > 0) {
