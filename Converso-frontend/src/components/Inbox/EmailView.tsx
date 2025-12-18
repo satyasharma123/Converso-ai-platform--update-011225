@@ -63,6 +63,8 @@ interface Message {
   email_body?: string; // Legacy field (backward compatibility)
   timestamp: string;
   isFromLead: boolean;
+  // ✅ NEW: Message-level fields for accurate From/To display
+  is_from_lead?: boolean; // If false, message is sent by us
 }
 
 interface EmailViewProps {
@@ -86,6 +88,11 @@ interface EmailViewProps {
       oauth_provider?: string;
     };
     email_timestamp?: string; // Timestamp when email was received
+    // ✅ NEW: Folder-specific message fields (from backend)
+    folder_name?: string; // The folder this conversation is in
+    folder_sender_name?: string; // Sender name from latest message in folder
+    folder_sender_email?: string; // Sender email from latest message in folder
+    folder_is_from_lead?: boolean; // If false, it's sent by us
   };
   messages: Message[];
 }
@@ -1498,29 +1505,34 @@ useEffect(() => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                       <div>
-                        {/* ✅ FIX: Detect sent emails and swap From/To display */}
+                        {/* ✅ FINAL FIX: Use message-level fields as source of truth */}
                         {(() => {
-                          const isSentEmail = (conversation as any).folder_name === 'sent' || 
-                                             window.location.pathname.includes('/sent');
+                          // Use folder_is_from_lead from latest message to determine direction
+                          // If folder_is_from_lead === false, it's sent by us
+                          const isSentByUs = conversation.folder_is_from_lead === false;
                           
-                          if (isSentEmail) {
-                            // For SENT emails: Show YOU as From, recipient as To
+                          if (isSentByUs) {
+                            // SENT EMAIL: From = us, To = recipient (use folder_sender_email from sent message)
+                            const toName = conversation.folder_sender_name || conversation.senderName;
+                            const toEmail = conversation.folder_sender_email || conversation.senderEmail;
                             return (
                               <>
                                 <p className="text-base font-semibold text-foreground">
                                   {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
                                 </p>
                                 <p className="text-sm text-foreground mt-1">
-                                  <span className="font-medium">To:</span> {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                  <span className="font-medium">To:</span> {toName} &lt;{toEmail}&gt;
                                 </p>
                               </>
                             );
                           } else {
-                            // For INBOX emails: Show sender as From, you as To
+                            // INBOX EMAIL: From = sender (use folder_sender_email from message), To = us
+                            const fromName = conversation.folder_sender_name || conversation.senderName;
+                            const fromEmail = conversation.folder_sender_email || conversation.senderEmail;
                             return (
                               <>
                                 <p className="text-base font-semibold text-foreground">
-                                  {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                  {fromName} &lt;{fromEmail}&gt;
                                 </p>
                                 <p className="text-sm text-foreground mt-1">
                                   <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}
@@ -1598,29 +1610,38 @@ useEffect(() => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <div>
-                            {/* ✅ FIX: Detect sent emails and swap From/To display */}
+                            {/* ✅ FINAL FIX: Use message's is_from_lead field as source of truth */}
                             {(() => {
-                              const isSentEmail = (conversation as any).folder_name === 'sent' || 
-                                                 window.location.pathname.includes('/sent');
+                              // Use message.is_from_lead to determine direction
+                              // If is_from_lead === false, it's sent by us
+                              const isSentByUs = (message as any).is_from_lead === false;
                               
-                              if (isSentEmail) {
-                                // For SENT emails: Show YOU as From, recipient as To
+                              if (isSentByUs) {
+                                // SENT EMAIL: From = us, To = recipient
+                                // Use conversation.folder_sender_email (same as conversation list uses)
+                                // Fallback chain: folder_sender_email -> message.senderEmail -> conversation.senderEmail
+                                const recipientName = conversation.folder_sender_name || message.senderName || conversation.senderName;
+                                const recipientEmail = conversation.folder_sender_email || message.senderEmail || conversation.senderEmail;
                                 return (
                                   <>
                                     <p className="text-base font-semibold text-foreground">
                                       {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
                                     </p>
                                     <p className="text-sm text-foreground mt-1">
-                                      <span className="font-medium">To:</span> {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                      <span className="font-medium">To:</span> {recipientName} &lt;{recipientEmail}&gt;
                                     </p>
                                   </>
                                 );
                               } else {
-                                // For INBOX emails: Show sender as From, you as To
+                                // INBOX EMAIL: From = sender, To = us
+                                // Use conversation.folder_sender_email (same as conversation list uses)
+                                // Fallback chain: folder_sender_email -> message.senderEmail -> conversation.senderEmail
+                                const senderName = conversation.folder_sender_name || message.senderName || conversation.senderName;
+                                const senderEmail = conversation.folder_sender_email || message.senderEmail || conversation.senderEmail;
                                 return (
                                   <>
                                     <p className="text-base font-semibold text-foreground">
-                                      {message.senderName} &lt;{message.senderEmail || conversation.senderEmail}&gt;
+                                      {senderName} &lt;{senderEmail}&gt;
                                     </p>
                                     <p className="text-sm text-foreground mt-1">
                                       <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}

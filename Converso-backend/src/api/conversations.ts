@@ -192,7 +192,7 @@ async function getEmailConversationsByFolder(
     
     const { data: batchMessages, error: msgError } = await supabaseAdmin
       .from('messages')
-      .select('conversation_id, created_at, content, subject, provider_folder, sender_name')
+      .select('conversation_id, created_at, content, subject, provider_folder, sender_name, sender_email, is_from_lead')
       .in('conversation_id', batch)
       .eq('provider_folder', folder)
       .order('created_at', { ascending: false });
@@ -234,7 +234,9 @@ async function getEmailConversationsByFolder(
         folder_last_message_at: latestMsg.created_at,
         folder_preview: latestMsg.content || latestMsg.subject,
         folder_name: latestMsg.provider_folder,
-        folder_sender_name: latestMsg.sender_name
+        folder_sender_name: latestMsg.sender_name,
+        folder_sender_email: latestMsg.sender_email,
+        folder_is_from_lead: latestMsg.is_from_lead
       };
     })
     .sort((a: any, b: any) => {

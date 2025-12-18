@@ -37,6 +37,8 @@ export interface Conversation {
   folder_last_message_at?: string; // Latest message timestamp in specific folder
   folder_preview?: string; // Preview of latest message in specific folder
   folder_name?: string; // The folder this message belongs to
+  folder_sender_name?: string; // Sender name from latest message in folder
+  folder_sender_email?: string; // Sender email from latest message in folder
 }
 
 interface ConversationListProps {
@@ -167,7 +169,11 @@ export function ConversationList({
           // ✅ Use folder-specific preview if available (for email folder views)
           const displayPreview = conversation.folder_preview || conversation.preview;
           
-          const initials = (conversation.senderName || 'U')
+          // ✅ Use folder-specific sender if available (for email folder views)
+          // This ensures correct sender display when viewing specific folders
+          const displaySenderName = conversation.folder_sender_name || conversation.senderName;
+          
+          const initials = (displaySenderName || 'U')
             .split(' ')
             .map(n => n[0])
             .join('')
@@ -205,7 +211,7 @@ export function ConversationList({
                   "text-xs truncate flex-1",
                   isUnread ? "font-medium text-foreground" : "font-normal text-foreground"
                 )}>
-                  {conversation.senderName}
+                  {displaySenderName}
                 </span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <span className="text-[11px] text-muted-foreground">
