@@ -173,7 +173,7 @@ export async function fetchGmailEmailBody(
 
     const payload = message.data.payload;
     if (!payload) {
-      return { body: '', attachments: [] };
+      return { body: '', htmlBody: '', textBody: '', attachments: [] };
     }
 
     let htmlBody = '';
@@ -349,21 +349,27 @@ export function parseGmailMessageMetadata(message: GmailMessageMetadata) {
     headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
 
   const from = getHeader('From');
+  const to = getHeader('To');
   const subject = getHeader('Subject');
   const date = getHeader('Date');
   
   // Extract email from "Name <email@domain.com>" format
-  const emailMatch = from.match(/<(.+)>/);
-  const email = emailMatch ? emailMatch[1] : from;
-  const name = from.replace(/<.+>/, '').trim() || email;
+  const parseEmailAddress = (emailStr: string) => {
+    if (!emailStr) return { name: '', email: '' };
+    const emailMatch = emailStr.match(/<(.+?)>/);
+    const email = emailMatch ? emailMatch[1] : emailStr;
+    const name = emailStr.replace(/<.+?>/, '').trim() || email;
+    return { name, email };
+  };
+  
+  const fromParsed = parseEmailAddress(from);
+  const toParsed = parseEmailAddress(to.split(',')[0]); // Get first recipient
 
   return {
     messageId: message.id,
     threadId: message.threadId,
-    from: {
-      name,
-      email,
-    },
+    from: fromParsed,
+    to: toParsed,
     subject,
     snippet: message.snippet,
     date: new Date(parseInt(message.internalDate)),

@@ -5,10 +5,11 @@
 
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
-import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody, downloadGmailAttachment } from './gmailIntegration';
-import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody, downloadOutlookAttachment } from './outlookIntegration';
+import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody } from './gmailIntegration';
+import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody } from './outlookIntegration';
 import { upsertSyncStatus, getSyncStatus, updateSyncProgress } from '../api/syncStatus';
 import type { ConnectedAccount, EmailAttachment } from '../types';
+import { EMAIL_INITIAL_SYNC_DAYS } from '../config/unipile';
 
 interface EmailMetadata {
   messageId: string;
@@ -18,6 +19,38 @@ interface EmailMetadata {
   snippet: string;
   date: Date;
   timestamp: Date;
+}
+
+/**
+ * Normalize folder names across Gmail and Outlook
+ * Gmail: INBOX, SENT, TRASH, etc.
+ * Outlook: Inbox, SentItems, DeletedItems, etc.
+ * Normalized: inbox, sent, trash, archive, drafts, important
+ */
+function normalizeProviderFolder(folder: string, isGmail: boolean): string {
+  const folderLower = folder.toLowerCase();
+  
+  // Gmail normalization
+  if (isGmail) {
+    if (folderLower.includes('inbox')) return 'inbox';
+    if (folderLower.includes('sent')) return 'sent';
+    if (folderLower.includes('trash') || folderLower.includes('bin')) return 'trash';
+    if (folderLower.includes('archive')) return 'archive';
+    if (folderLower.includes('draft')) return 'drafts';
+    if (folderLower.includes('important') || folderLower.includes('starred')) return 'important';
+  }
+  
+  // Outlook normalization
+  if (!isGmail) {
+    if (folderLower.includes('inbox')) return 'inbox';
+    if (folderLower.includes('sentitems') || folderLower.includes('sent')) return 'sent';
+    if (folderLower.includes('deleteditems') || folderLower.includes('trash')) return 'trash';
+    if (folderLower.includes('archive')) return 'archive';
+    if (folderLower.includes('draft')) return 'drafts';
+  }
+  
+  // Default: return as-is but lowercase
+  return folderLower;
 }
 
 /**
@@ -51,7 +84,8 @@ async function getWorkspaceId(userId: string): Promise<string> {
 
 /**
  * Initialize email sync for a connected account
- * Fetches last 90 days of emails and stores metadata only
+ * Fetches emails based on EMAIL_INITIAL_SYNC_DAYS (default 30) and stores METADATA ONLY
+ * Bodies and attachment binaries are fetched lazily when user opens the email
  */
 export async function initEmailSync(
   accountId: string,
@@ -75,7 +109,15 @@ export async function initEmailSync(
     }
     
     account = accountData;
-    logger.info(`[Email Sync] Found account: ${account.account_email} (${account.oauth_provider})`);
+    
+    // Determine if this is incremental sync (has last_synced_at) or initial sync
+    const isIncrementalSync = !!account.last_synced_at;
+    const sinceDate = isIncrementalSync ? new Date(account.last_synced_at) : null;
+    const syncType = isIncrementalSync 
+      ? `INCREMENTAL (since ${sinceDate?.toISOString()})` 
+      : `INITIAL (last ${EMAIL_INITIAL_SYNC_DAYS} days)`;
+    
+    logger.info(`[Email Sync] ${syncType} - Account: ${account.account_email} (${account.oauth_provider})`);
 
     // Get workspace ID
     const workspaceId = await getWorkspaceId(userId);
@@ -94,7 +136,7 @@ export async function initEmailSync(
     }
 
     // Define folders to sync (removed 'snoozed')
-    const foldersToSync = ['inbox', 'sent', 'important', 'drafts', 'archive', 'deleted'];
+    const foldersToSync = ['inbox', 'sent', 'important', 'drafts', 'archive', 'trash'];
     
     let totalSynced = 0;
 
@@ -122,9 +164,10 @@ export async function initEmailSync(
         if (isGmail) {
           const result = await fetchGmailEmailMetadata(
             account as ConnectedAccount,
-            90, // Last 90 days
+            EMAIL_INITIAL_SYNC_DAYS, // Used for initial sync only
             pageToken,
-            folder
+            folder,
+            sinceDate || undefined // For incremental sync - fetch since last_synced_at
           );
           messages = result.messages;
           nextPageToken = result.nextPageToken;
@@ -132,9 +175,10 @@ export async function initEmailSync(
           try {
             const result = await fetchOutlookEmailMetadata(
               account as ConnectedAccount,
-              90, // Last 90 days
+              EMAIL_INITIAL_SYNC_DAYS, // Used for initial sync only
               skipToken,
-              folder
+              folder,
+              sinceDate || undefined // For incremental sync - fetch since last_synced_at
             );
             messages = result.messages;
             nextSkipToken = result.nextSkipToken;
@@ -168,9 +212,10 @@ export async function initEmailSync(
                   const updatedAccount = { ...account, oauth_access_token: newTokens.access_token };
                   const result = await fetchOutlookEmailMetadata(
                     updatedAccount as ConnectedAccount,
-                    90,
+                    EMAIL_INITIAL_SYNC_DAYS,
                     skipToken,
-                    folder
+                    folder,
+                    sinceDate || undefined
                   );
                   messages = result.messages;
                   nextSkipToken = result.nextSkipToken;
@@ -191,108 +236,99 @@ export async function initEmailSync(
           break;
         }
 
-        // Process messages and store in database
+        // Process messages and store in database (METADATA ONLY - no body/attachment binary fetch)
         for (const message of messages) {
         try {
           const parsed: any = isGmail 
             ? parseGmailMessageMetadata(message)
             : parseOutlookMessageMetadata(message);
 
-        // Fetch full email body
-        let emailBody = '';
-        let emailAttachments: EmailAttachment[] = [];
-        let attachmentsFetched = false;
-        let hasBody = false;
+        // METADATA-ONLY SYNC: Store attachment metadata if available, but don't fetch binaries
+        // Body will be fetched lazily when user opens the email
+        let attachmentMetadata: EmailAttachment[] = [];
         
-        try {
-          const bodyResult = isGmail
-            ? await fetchGmailEmailBody(account as ConnectedAccount, parsed.messageId)
-            : await fetchOutlookEmailBody(account as ConnectedAccount, parsed.messageId);
+        // Extract attachment metadata from the message metadata (if provider returns it)
+        if (message.attachments && Array.isArray(message.attachments)) {
+          attachmentMetadata = message.attachments.map((att: any) => ({
+            id: att.id || att.attachmentId,
+            filename: att.filename || att.name || 'unknown',
+            mimeType: att.mimeType || att.contentType || 'application/octet-stream',
+            size: att.size || 0,
+            isInline: att.isInline || false,
+            contentId: att.contentId,
+            provider: isGmail ? 'gmail' : 'outlook'
+          }));
+        }
 
-          emailBody = bodyResult.body || '';
-          emailAttachments = bodyResult.attachments || [];
-          attachmentsFetched = true;
+          // ===================================================================
+          // ✅ CORRECT ARCHITECTURE: Store the "OTHER PERSON" in conversation
+          // - For INBOX emails: Store sender (person who sent TO you)
+          // - For SENT emails: Store recipient (person you sent TO)
+          // ===================================================================
           
-          if (emailBody && emailBody.trim().length > 0) {
-            hasBody = true;
-          }
-        } catch (bodyError: any) {
-            // Log but don't fail the entire sync if body fetch fails
-            logger.warn(`Failed to fetch email body for ${parsed.messageId}: ${bodyError.message}`);
-            emailBody = parsed.snippet || ''; // Fallback to snippet
-          }
-
-          // Check if conversation already exists (by message_id)
-          // Use appropriate field based on provider
+          // Normalize folder name
+          const normalizedFolder = normalizeProviderFolder(parsed.folder || folder, isGmail);
+          
+          // ✅ KEY FIX: Determine who the "other person" is
+          const isSentEmail = normalizedFolder === 'sent' || normalizedFolder === 'drafts';
+          const otherPerson = isSentEmail ? parsed.to : parsed.from;
+          
+          // STEP 1: Find or create conversation by THREAD_ID (not message_id)
           let existingConvQuery = supabaseAdmin
             .from('conversations')
-            .select('id, has_full_body')
-            .eq('workspace_id', workspaceId);
+            .select('id, sender_name, sender_email, subject')
+            .eq('workspace_id', workspaceId)
+            .eq('conversation_type', 'email');
           
           if (isGmail) {
-            existingConvQuery = existingConvQuery.eq('gmail_message_id', parsed.messageId);
+            existingConvQuery = existingConvQuery.eq('gmail_thread_id', parsed.threadId);
           } else if (isOutlook) {
-            existingConvQuery = existingConvQuery.eq('outlook_message_id', parsed.messageId);
+            existingConvQuery = existingConvQuery.eq('outlook_conversation_id', parsed.threadId);
           }
           
           const { data: existingConv } = await existingConvQuery.single();
-
+          
+          let conversationId: string;
+          
           if (existingConv) {
-            // Update existing conversation - update body if we have it and it wasn't stored before
-            const updateData: any = {
-              email_timestamp: parsed.timestamp.toISOString(),
-              preview: emailBody ? emailBody.substring(0, 500) : parsed.snippet,
-              subject: parsed.subject,
-              sender_name: parsed.from.name,
-              sender_email: parsed.from.email,
-              last_message_at: parsed.timestamp.toISOString(),
-              email_folder: parsed.folder || folder, // Update folder
-            };
-
-            // Only update has_full_body if we successfully fetched the body
-            if (hasBody) {
-              updateData.has_full_body = true;
-              // Store full email body directly in conversation
-              updateData.email_body = emailBody;
-            }
-
-            if (attachmentsFetched) {
-              updateData.email_attachments = emailAttachments;
-            }
-
+            // ✅ CONVERSATION IMMUTABILITY RULE:
+            // Once created, NEVER update sender_name, sender_email, or subject
+            // Only update last_message_at to reflect latest activity
+            conversationId = existingConv.id;
+            
             await supabaseAdmin
               .from('conversations')
-              .update(updateData)
-              .eq('id', existingConv.id);
-
-            // ✅ No message updates - emails don't use messages table
-            logger.info(`Updated email conversation: ${parsed.subject} (${existingConv.id})`);
+              .update({
+                last_message_at: parsed.timestamp.toISOString(),
+              })
+              .eq('id', conversationId);
+            
+            logger.info(`Found existing conversation for thread: ${parsed.threadId}`);
           } else {
-            // Create new conversation with full body
+            // Create new conversation - store the OTHER PERSON
             const conversationData: any = {
               conversation_type: 'email',
-              sender_name: parsed.from.name,
-              sender_email: parsed.from.email,
+              sender_name: otherPerson.name,      // ✅ FIXED: Other person (recipient for sent, sender for inbox)
+              sender_email: otherPerson.email,    // ✅ FIXED: Other person's email
               subject: parsed.subject,
-              preview: emailBody ? emailBody.substring(0, 500) : parsed.snippet,
+              preview: parsed.snippet,
               email_timestamp: parsed.timestamp.toISOString(),
               last_message_at: parsed.timestamp.toISOString(),
               received_on_account_id: accountId,
               workspace_id: workspaceId,
-              has_full_body: hasBody,
-              email_attachments: attachmentsFetched ? emailAttachments : [],
-              is_read: false,
+              is_read: normalizedFolder !== 'inbox', // ✅ Only inbox emails are unread
               status: 'new',
-              email_folder: parsed.folder || folder, // Store folder information
+              email_folder: normalizedFolder, // DEPRECATED - kept for backward compatibility
             };
             
-            // Add provider-specific fields
+            // Add provider-specific thread IDs AND message IDs
+            // ✅ CRITICAL: Store first message ID so body can be fetched later
             if (isGmail) {
-              conversationData.gmail_message_id = parsed.messageId;
               conversationData.gmail_thread_id = parsed.threadId;
+              conversationData.gmail_message_id = parsed.messageId; // ✅ NEW: For lazy body loading
             } else if (isOutlook) {
-              conversationData.outlook_message_id = parsed.messageId;
-              conversationData.outlook_conversation_id = parsed.threadId || parsed.conversationId;
+              conversationData.outlook_conversation_id = parsed.threadId;
+              conversationData.outlook_message_id = parsed.messageId; // ✅ NEW: For lazy body loading
             }
             
             const { data: newConv, error: convError } = await supabaseAdmin
@@ -302,12 +338,85 @@ export async function initEmailSync(
               .single();
 
             if (convError) {
-              logger.error(`Error creating conversation for message ${parsed.messageId}:`, convError);
-            } else if (newConv) {
-              // ✅ Email data is stored in conversations table only
-              // No message record needed - prevents duplicate storage
-              logger.info(`Created email conversation: ${parsed.subject} (${newConv.id})`);
+              logger.error(`Error creating conversation for thread ${parsed.threadId}:`, convError);
+              continue; // Skip this message
             }
+            
+            conversationId = newConv.id;
+            logger.info(`Created new conversation for thread: ${parsed.threadId}`);
+          }
+          
+          // STEP 2: Check if message already exists (by provider_message_id)
+          const { data: existingMessage } = await supabaseAdmin
+            .from('messages')
+            .select('id')
+            .eq('workspace_id', workspaceId)
+            .eq('provider_message_id', parsed.messageId)
+            .single();
+          
+          if (existingMessage) {
+            // Message already synced - skip
+            logger.info(`Message already exists: ${parsed.messageId}`);
+            continue;
+          }
+          
+          // STEP 3: Fetch email body from provider (no lazy loading)
+          // ✅ MINIMAL FIX: Fetch body during sync, store in messages table
+          let emailHtmlBody: string | null = null;
+          let emailTextBody: string | null = null;
+          
+          try {
+            logger.info(`[Email Sync] Fetching body for message: ${parsed.messageId}`);
+            const bodyResult = isGmail
+              ? await fetchGmailEmailBody(account as ConnectedAccount, parsed.messageId)
+              : await fetchOutlookEmailBody(account as ConnectedAccount, parsed.messageId);
+            
+            emailHtmlBody = bodyResult.htmlBody || null;
+            emailTextBody = bodyResult.textBody || null;
+            
+            logger.info(`[Email Sync] Body fetched: HTML=${emailHtmlBody?.length || 0}b, Text=${emailTextBody?.length || 0}b`);
+          } catch (bodyError: any) {
+            // Don't fail sync if body fetch fails - store metadata and preview
+            logger.warn(`[Email Sync] Failed to fetch body for ${parsed.messageId}: ${bodyError.message}`);
+            // Continue with null body - preview will be used as fallback
+          }
+          
+          // STEP 4: Create message record with body
+          const messageData: any = {
+            conversation_id: conversationId,
+            workspace_id: workspaceId,
+            sender_name: parsed.from.name,
+            sender_email: parsed.from.email,
+            subject: parsed.subject,
+            content: parsed.snippet, // Preview/snippet as content
+            is_from_lead: !isSentEmail, // ✅ FIX: Sent emails are from US, not from leads
+            provider_folder: normalizedFolder, // ✅ CRITICAL: Store folder at message level
+            provider_message_id: parsed.messageId,
+            provider_thread_id: parsed.threadId,
+            provider: isGmail ? 'gmail' : 'outlook',
+            created_at: parsed.timestamp.toISOString(),
+            // ✅ MINIMAL FIX: Store body in messages table at sync time
+            html_body: emailHtmlBody,
+            text_body: emailTextBody,
+          };
+          
+          // Add provider-specific fields (legacy compatibility)
+          if (isGmail) {
+            messageData.gmail_message_id = parsed.messageId;
+          } else if (isOutlook) {
+            messageData.outlook_message_id = parsed.messageId;
+          }
+          
+          const { data: newMessage, error: msgError } = await supabaseAdmin
+            .from('messages')
+            .insert(messageData)
+            .select()
+            .single();
+
+          if (msgError) {
+            logger.error(`Error creating message ${parsed.messageId}:`, msgError);
+          } else {
+            logger.info(`✅ Created message with body: ${parsed.subject} in ${normalizedFolder} folder (HTML: ${emailHtmlBody?.length || 0}b, Text: ${emailTextBody?.length || 0}b)`);
           }
 
           totalSynced++;
@@ -368,7 +477,14 @@ export async function initEmailSync(
     // Mark sync as completed
     await upsertSyncStatus(workspaceId, accountId, 'completed');
 
-    logger.info(`[Email Sync] ✅ Completed for ${account.account_email}. Total: ${totalSynced} emails synced from all folders`);
+    // Update last_synced_at for incremental sync (email accounts only)
+    await supabaseAdmin
+      .from('connected_accounts')
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq('id', accountId)
+      .eq('account_type', 'email');
+
+    logger.info(`[Email Sync] ✅ ${syncType} completed for ${account.account_email}. Total: ${totalSynced} emails synced (with body in messages table) from all folders`);
   } catch (error: any) {
     const errorMessage = error?.message || 'Unknown error during email sync';
     logger.error(`[Email Sync] ❌ Error for account ${account?.account_email || accountId}:`, {
@@ -409,14 +525,15 @@ export async function initEmailSync(
 }
 
 /**
- * Fetch full email body and store it
- * Called when user opens an email
+ * Fetch and store email body for a conversation (LAZY LOADING)
+ * Called when user opens an email for the first time
+ * Supports metadata-only sync architecture
  */
 export async function fetchAndStoreEmailBody(
   conversationId: string,
   messageId: string,
   account: ConnectedAccount
-): Promise<string> {
+): Promise<{ html: string; text: string; attachments: EmailAttachment[] }> {
   try {
     // Determine provider and use appropriate integration
     const isGmail = account.oauth_provider === 'google';
@@ -426,37 +543,101 @@ export async function fetchAndStoreEmailBody(
       throw new Error(`Unsupported email provider: ${account.oauth_provider}`);
     }
 
-    // Fetch body from appropriate API
+    // Fetch body from appropriate API (lazy load on first open)
+    logger.info(`[Lazy Load] Fetching email body for ${conversationId} from ${isGmail ? 'Gmail' : 'Outlook'}`);
+    
     const bodyResult = isGmail
       ? await fetchGmailEmailBody(account, messageId)
       : await fetchOutlookEmailBody(account, messageId);
 
-    const body = bodyResult.body || '';
+    // Use explicit HTML and text bodies from provider
+    const bodyHtml = bodyResult.htmlBody || '';
+    const bodyText = bodyResult.textBody || '';
     const attachments = bodyResult.attachments || [];
 
-    // Update conversation to store body directly in conversation table
+    logger.info(`[Lazy Load] Body extracted: HTML=${bodyHtml.length}b, Text=${bodyText.length}b, Attachments=${attachments.length}`);
+
+    // ✅ CRITICAL FIX: Get existing preview before updating (never overwrite with null/undefined)
+    const { data: existingConv } = await supabaseAdmin
+      .from('conversations')
+      .select('preview')
+      .eq('id', conversationId)
+      .single();
+
+    // Update conversation with lazy-loaded body in new fields
+    // ✅ CRITICAL: Only update preview if we have new content, otherwise preserve existing
+    const updateData: any = {
+      email_body_html: bodyHtml || null,
+      email_body_text: bodyText || null,
+      email_body_fetched_at: new Date().toISOString(),
+      email_attachments: attachments.length > 0 ? attachments : undefined,
+      // Keep old fields for backward compatibility during migration
+      email_body: bodyHtml || bodyText || existingConv?.preview || '',
+      has_full_body: !!(bodyHtml || bodyText),
+    };
+
+    // ✅ CRITICAL: Only update preview if we have new content
+    // NEVER overwrite existing preview with empty/null
+    if (bodyHtml || bodyText) {
+      const newPreview = (bodyHtml || bodyText).substring(0, 500);
+      if (newPreview.trim()) {
+        updateData.preview = newPreview;
+      }
+    }
+    // If no new content, preserve existing preview (don't update it)
+
     const { error: updateError } = await supabaseAdmin
       .from('conversations')
-      .update({
-        email_body: body, // Store full email body in conversation
-        has_full_body: true,
-        preview: body.substring(0, 500), // Update preview with full body snippet
-        email_attachments: attachments,
-      })
+      .update(updateData)
       .eq('id', conversationId);
 
     if (updateError) {
-      logger.error('Error updating conversation with body:', updateError);
+      logger.error('[Lazy Load] Error updating conversation with body:', updateError);
       throw updateError;
     }
 
-    // ✅ No message update needed - emails store body in conversation only
-    logger.info(`Email body stored in conversation ${conversationId}`);
+    logger.info(`[Lazy Load] ✅ Email body stored for conversation ${conversationId} (HTML: ${bodyHtml.length}b, Text: ${bodyText.length}b)`);
 
-    return body;
+    return {
+      html: bodyHtml,
+      text: bodyText,
+      attachments,
+    };
   } catch (error: any) {
-    logger.error('Error fetching email body:', error);
-    throw error;
+    logger.error(`[Lazy Load] ❌ Error fetching email body for ${conversationId}:`, {
+      error: error.message,
+      stack: error.stack,
+      provider: account.oauth_provider,
+      messageId,
+    });
+    
+    // ✅ CRITICAL: Mark as fetched (with error) to prevent infinite retry loops
+    // But preserve existing preview
+    try {
+      await supabaseAdmin
+        .from('conversations')
+        .update({
+          email_body_fetched_at: new Date().toISOString(),
+          has_full_body: false,
+          // Don't update preview or body fields - preserve what's there
+        })
+        .eq('id', conversationId);
+    } catch (updateError) {
+      logger.error('[Lazy Load] Failed to mark conversation as fetched:', updateError);
+    }
+    
+    // Provide user-friendly error messages for common issues
+    if (error.message?.includes('401') || error.message?.includes('token') || error.message?.includes('expired')) {
+      throw new Error('Email account authentication expired. Please reconnect your account in Settings.');
+    }
+    
+    // Return empty but don't throw - let frontend show preview
+    logger.warn(`[Lazy Load] Returning empty body for ${conversationId}, frontend will show preview`);
+    return {
+      html: '',
+      text: '',
+      attachments: [],
+    };
   }
 }
 

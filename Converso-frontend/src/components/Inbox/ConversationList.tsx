@@ -1,4 +1,4 @@
-import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2 } from "lucide-react";
+import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2, Reply, Forward, ReplyAll } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
@@ -27,11 +27,16 @@ export interface Conversation {
   assignedTo?: string;
   customStageId?: string;
   selected?: boolean;
+  email_action_status?: 'replied' | 'replied_all' | 'forwarded' | null; // EMAIL ONLY - for action icons
   receivedAccount?: {
     account_name: string;
     account_email?: string;
     account_type: string;
   };
+  // ✅ Folder-specific fields (from backend when filtering by folder)
+  folder_last_message_at?: string; // Latest message timestamp in specific folder
+  folder_preview?: string; // Preview of latest message in specific folder
+  folder_name?: string; // The folder this message belongs to
 }
 
 interface ConversationListProps {
@@ -155,7 +160,13 @@ export function ConversationList({
         {conversations.map((conversation) => {
           // Determine if email is unread (show dot if unread)
           const isUnread = !(conversation.isRead ?? (conversation as any).is_read ?? false);
-          const ts = conversation.timestamp || (conversation as any).last_message_at || '';
+          
+          // ✅ Use folder-specific timestamp if available (for email folder views)
+          const ts = conversation.folder_last_message_at || conversation.timestamp || (conversation as any).last_message_at || '';
+          
+          // ✅ Use folder-specific preview if available (for email folder views)
+          const displayPreview = conversation.folder_preview || conversation.preview;
+          
           const initials = (conversation.senderName || 'U')
             .split(' ')
             .map(n => n[0])
@@ -206,19 +217,35 @@ export function ConversationList({
                 </div>
               </div>
 
-              {/* Second Row: Subject */}
+              {/* Second Row: Subject with Action Icon */}
               {conversation.subject && (
-                <p className={cn(
-                  "text-xs truncate",
-                  isUnread ? "font-normal text-foreground" : "text-muted-foreground"
-                )}>
-                  {conversation.subject}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  {/* Action Icon (EMAIL ONLY - replied/forwarded) */}
+                  {conversation.type === 'email' && conversation.email_action_status && (
+                    <>
+                      {conversation.email_action_status === 'replied' && (
+                        <Reply className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                      )}
+                      {conversation.email_action_status === 'replied_all' && (
+                        <Reply className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                      )}
+                      {conversation.email_action_status === 'forwarded' && (
+                        <Forward className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                      )}
+                    </>
+                  )}
+                  <p className={cn(
+                    "text-xs truncate flex-1",
+                    isUnread ? "font-normal text-foreground" : "text-muted-foreground"
+                  )}>
+                    {conversation.subject}
+                  </p>
+                </div>
               )}
 
               {/* Third Row: Preview (2 lines max) */}
               <p className="text-xs text-muted-foreground line-clamp-2">
-                {stripHtml(conversation.preview)}
+                {stripHtml(displayPreview)}
               </p>
 
               {/* Fourth Row: Account Badge + SDR Badge */}

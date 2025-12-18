@@ -36,6 +36,12 @@ interface OutlookMessageMetadata {
       address: string;
     };
   };
+  toRecipients?: Array<{
+    emailAddress: {
+      name: string;
+      address: string;
+    };
+  }>;
   folder?: string; // Track which folder this email belongs to
 }
 
@@ -90,7 +96,7 @@ export async function fetchOutlookEmailMetadata(
       case 'archive':
         baseUrl += `/mailFolders('Archive')/messages`;
         break;
-      case 'deleted':
+      case 'trash':
         baseUrl += `/mailFolders('DeletedItems')/messages`;
         break;
       case 'important':
@@ -107,7 +113,7 @@ export async function fetchOutlookEmailMetadata(
       filter += ` and flag/flagStatus eq 'flagged'`;
     }
 
-    let url = `${baseUrl}?$filter=${encodeURIComponent(filter)}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,from&$orderby=receivedDateTime desc&$top=100`;
+    let url = `${baseUrl}?$filter=${encodeURIComponent(filter)}&$select=id,conversationId,subject,bodyPreview,receivedDateTime,from,toRecipients&$orderby=receivedDateTime desc&$top=100`;
 
     if (skipToken) {
       url += `&$skiptoken=${skipToken}`;
@@ -329,13 +335,18 @@ export async function downloadOutlookAttachment(
  */
 export function parseOutlookMessageMetadata(message: OutlookMessageMetadata) {
   const from = message.from?.emailAddress || { name: '', address: '' };
-  
+  const to = message.toRecipients?.[0]?.emailAddress || { name: '', address: '' };
+
   return {
     messageId: message.id,
     threadId: message.conversationId,
     from: {
       name: from.name || from.address,
       email: from.address,
+    },
+    to: {
+      name: to.name || to.address,
+      email: to.address,
     },
     subject: message.subject || '',
     snippet: message.bodyPreview || '',

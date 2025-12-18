@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,6 +11,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead, useDeleteConversation } from "@/hooks/useConversations";
 import { useSendMessage } from "@/hooks/useMessages";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +57,10 @@ interface Message {
   senderName: string;
   senderEmail?: string;
   content: string;
-  email_body?: string; // Full HTML body
+  // ✅ MINIMAL FIX: Email body stored in messages table
+  html_body?: string; // HTML version of email body
+  text_body?: string; // Plain text version of email body
+  email_body?: string; // Legacy field (backward compatibility)
   timestamp: string;
   isFromLead: boolean;
 }
@@ -71,11 +75,16 @@ interface EmailViewProps {
     assigned_to?: string;
     custom_stage_id?: string;
     is_read?: boolean;
-    email_body?: string; // Legacy: Full email body for emails (backward compatibility)
-    email_body_html?: string; // NEW: Explicit HTML content
-    email_body_text?: string; // NEW: Explicit text content
-    preview?: string; // Email preview/description
-    email_attachments?: EmailAttachment[]; // Received email attachments
+    // ✅ MINIMAL FIX: Conversation is metadata only - NO email body fields
+    // Email body is in messages[0].html_body / messages[0].text_body
+    preview?: string; // Email preview/snippet (fallback only)
+    received_account?: {
+      id: string;
+      account_name?: string;
+      account_email: string;
+      account_type: string;
+      oauth_provider?: string;
+    };
     email_timestamp?: string; // Timestamp when email was received
   };
   messages: Message[];
@@ -136,6 +145,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const toggleRead = useToggleRead();
   const deleteConversation = useDeleteConversation();
   const sendMessage = useSendMessage();
+  const queryClient = useQueryClient();
   
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
@@ -328,16 +338,64 @@ const EmailBodyContent = ({
   textBody?: string | null;
   preview?: string | null;
 }) => {
-  // Use new rendering utility that handles HTML sanitization and text formatting
-  const renderedHtml = renderEmailBody(htmlBody, textBody, preview);
+  // ✅ FINAL FIX: Unwrap JSON if needed, then render HTML directly
+  const getActualHtmlBody = (body: string | null | undefined): string | null => {
+    if (!body) return null;
+    
+    // Check if body is JSON-wrapped: {"body":"<html>..."}
+    if (body.trim().startsWith('{') && body.includes('"body"')) {
+      try {
+        const parsed = JSON.parse(body);
+        return parsed.body || parsed.htmlBody || body;
+      } catch (e) {
+        // Not valid JSON, return as-is
+        return body;
+      }
+    }
+    
+    return body;
+  };
+
+  const actualHtmlBody = getActualHtmlBody(htmlBody);
+  
+  // Temporary debug log (remove later)
+  React.useEffect(() => {
+    console.log('[EmailBodyContent] HTML unwrapping:', {
+      originalType: typeof htmlBody,
+      wasJsonWrapped: htmlBody?.trim().startsWith('{'),
+      hasActualHtml: !!actualHtmlBody,
+      actualHtmlPreview: actualHtmlBody?.slice(0, 200),
+      hasText: !!textBody,
+      hasPreview: !!preview,
+    });
+  }, [htmlBody, actualHtmlBody, textBody, preview]);
 
   return (
     <div className="mt-10 email-body-wrapper">
       <style>{EMAIL_BODY_STYLES}</style>
-      <div 
-        className="email-html-body"
-        dangerouslySetInnerHTML={{ __html: renderedHtml }} 
-      />
+      
+      {/* Priority 1: Render html_body directly if it exists */}
+      {actualHtmlBody ? (
+        <div 
+          className="email-html-body"
+          dangerouslySetInnerHTML={{ __html: actualHtmlBody }} 
+        />
+      ) : textBody ? (
+        /* Priority 2: Render text_body as plain text */
+        <pre className="email-text-body whitespace-pre-wrap font-sans text-sm leading-relaxed">
+          {textBody}
+        </pre>
+      ) : preview ? (
+        /* Priority 3: Render preview as fallback */
+        <div className="email-preview text-sm text-muted-foreground">
+          {preview}
+        </div>
+      ) : (
+        /* Priority 4: No content available */
+        <div className="text-sm text-muted-foreground italic">
+          No email content available
+        </div>
+      )}
     </div>
   );
 };
@@ -814,8 +872,19 @@ useEffect(() => {
       inlineQuillRef.current?.getEditor()?.setText("");
       dialogQuillRef.current?.getEditor()?.setText("");
       
-      // Refresh the conversation to show the sent message
-      // The parent component should handle this via query invalidation
+      // ✅ CRITICAL: Force refresh conversations to show updated inbox with action icons
+      // This prevents showing stale cached data (sent emails in inbox)
+      console.log('[EmailView] Invalidating all queries after send');
+      await queryClient.invalidateQueries({ queryKey: ['conversations', 'email'] });
+      await queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      await queryClient.invalidateQueries({ queryKey: ['email-body', conversation.id] }); // ← FIX: Clear email body cache!
+      
+      // Small delay to let backend complete all database operations
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['conversations', 'email'] });
+        queryClient.refetchQueries({ queryKey: ['email-body', conversation.id] }); // ← FIX: Refetch email body!
+        console.log('[EmailView] Refetched all queries after send');
+      }, 500);
     } catch (error: any) {
       console.error("Error sending email:", error);
       toast.error(error.message || "Failed to send email");
@@ -1429,20 +1498,46 @@ useEffect(() => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-base font-semibold text-foreground">
-                          {conversation.senderName} &lt;{conversation.senderEmail}&gt;
-                        </p>
-                        <p className="text-sm text-foreground mt-1">
-                          <span className="font-medium">To:</span> {conversation.senderEmail}
-                        </p>
+                        {/* ✅ FIX: Detect sent emails and swap From/To display */}
+                        {(() => {
+                          const isSentEmail = (conversation as any).folder_name === 'sent' || 
+                                             window.location.pathname.includes('/sent');
+                          
+                          if (isSentEmail) {
+                            // For SENT emails: Show YOU as From, recipient as To
+                            return (
+                              <>
+                                <p className="text-base font-semibold text-foreground">
+                                  {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
+                                </p>
+                                <p className="text-sm text-foreground mt-1">
+                                  <span className="font-medium">To:</span> {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                </p>
+                              </>
+                            );
+                          } else {
+                            // For INBOX emails: Show sender as From, you as To
+                            return (
+                              <>
+                                <p className="text-base font-semibold text-foreground">
+                                  {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                </p>
+                                <p className="text-sm text-foreground mt-1">
+                                  <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}
+                                </p>
+                              </>
+                            );
+                          }
+                        })()}
                       </div>
                     </div>
                   </div>
                 </div>
                 
+                {/* ✅ MINIMAL FIX: Render body from messages[0], not conversation */}
                 <EmailBodyContent 
-                  htmlBody={conversation.email_body_html || conversation.email_body}
-                  textBody={conversation.email_body_text}
+                  htmlBody={(messages[0] as any)?.html_body || null}
+                  textBody={(messages[0] as any)?.text_body || null}
                   preview={conversation.preview}
                 />
                 
@@ -1503,21 +1598,48 @@ useEffect(() => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-base font-semibold text-foreground">
-                              {message.senderName} &lt;{message.senderEmail || conversation.senderEmail}&gt;
-                            </p>
-                            <p className="text-sm text-foreground mt-1">
-                              <span className="font-medium">To:</span> {conversation.senderEmail}
-                            </p>
+                            {/* ✅ FIX: Detect sent emails and swap From/To display */}
+                            {(() => {
+                              const isSentEmail = (conversation as any).folder_name === 'sent' || 
+                                                 window.location.pathname.includes('/sent');
+                              
+                              if (isSentEmail) {
+                                // For SENT emails: Show YOU as From, recipient as To
+                                return (
+                                  <>
+                                    <p className="text-base font-semibold text-foreground">
+                                      {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
+                                    </p>
+                                    <p className="text-sm text-foreground mt-1">
+                                      <span className="font-medium">To:</span> {conversation.senderName} &lt;{conversation.senderEmail}&gt;
+                                    </p>
+                                  </>
+                                );
+                              } else {
+                                // For INBOX emails: Show sender as From, you as To
+                                return (
+                                  <>
+                                    <p className="text-base font-semibold text-foreground">
+                                      {message.senderName} &lt;{message.senderEmail || conversation.senderEmail}&gt;
+                                    </p>
+                                    <p className="text-sm text-foreground mt-1">
+                                      <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}
+                                    </p>
+                                  </>
+                                );
+                              }
+                            })()}
                           </div>
                           <span className="text-sm text-muted-foreground whitespace-nowrap ml-4">{formatEmailTimestamp(message.timestamp)}</span>
                         </div>
                       </div>
                     </div>
                     
+                    {/* ✅ MINIMAL FIX: Render body from message.html_body / text_body */}
                     <EmailBodyContent
-                      html={message.email_body || undefined}
-                      plainText={message.content || undefined}
+                      htmlBody={(message as any).html_body || message.email_body || null}
+                      textBody={(message as any).text_body || null}
+                      preview={message.content || null}
                     />
                   </div>
                 )}
@@ -1534,9 +1656,11 @@ useEffect(() => {
                     </p>
                     
                     <div className="opacity-80 mt-4">
+                      {/* ✅ MINIMAL FIX: Render body from message.html_body / text_body */}
                       <EmailBodyContent
-                        html={message.email_body || undefined}
-                        plainText={message.content || undefined}
+                        htmlBody={(message as any).html_body || message.email_body || null}
+                        textBody={(message as any).text_body || null}
+                        preview={message.content || null}
                       />
                     </div>
                   </div>
