@@ -24,6 +24,45 @@ async function withTimeout<T>(promise: Promise<T>, description: string): Promise
 }
 
 /**
+ * Safely fetch user-specific state for conversations
+ * Returns a map of conversation_id -> {is_favorite, is_read}
+ * Falls back gracefully if table doesn't exist
+ */
+async function getUserConversationStates(
+  userId: string,
+  conversationIds: string[]
+): Promise<Map<string, { is_favorite: boolean; is_read: boolean }>> {
+  const stateMap = new Map();
+  
+  if (!userId || conversationIds.length === 0) {
+    return stateMap;
+  }
+  
+  try {
+    // Try to query conversation_user_state table
+    const { data, error } = await supabaseAdmin
+      .from('conversation_user_state')
+      .select('conversation_id, is_favorite, is_read')
+      .eq('user_id', userId)
+      .in('conversation_id', conversationIds);
+    
+    if (!error && data) {
+      data.forEach(state => {
+        stateMap.set(state.conversation_id, {
+          is_favorite: state.is_favorite,
+          is_read: state.is_read
+        });
+      });
+    }
+  } catch (err) {
+    // Table doesn't exist yet - this is OK, we'll use fallback
+    logger.debug('[User State] conversation_user_state table not available, using fallback');
+  }
+  
+  return stateMap;
+}
+
+/**
  * Get workspace ID for a user
  */
 async function getUserWorkspaceId(userId: string): Promise<string | null> {
@@ -69,7 +108,7 @@ export async function getConversations(
   // Get user's workspace
   const workspaceId = await getUserWorkspaceId(userId);
   
-  console.log(`[Conversations API] type=${type}, folder=${folder}, userId=${userId}`);
+  console.log(`[Conversations API] type=${type}, folder=${folder}, userId=${userId}, userRole=${userRole}`);
   
   // ===================================================================
   // ✅ EMAIL WITH FOLDER: Provider-truth filtering (no inference)
@@ -118,17 +157,43 @@ export async function getConversations(
   // SDR filtering here MUST exactly match RLS:
   // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
+    console.log(`[EMAIL SDR FILTER] Applying assigned_to filter for userId: ${userId}`);
     query = query.eq('assigned_to', userId);
   }
 
   const { data, error } = await query;
 
-  if (error) throw error;
+  if (error) {
+    console.error(`[EMAIL QUERY ERROR]`, error);
+    throw error;
+  }
   
-  const conversations = (data as Conversation[]) || [];
+  let conversations = (data as Conversation[]) || [];
+  console.log(`[EMAIL QUERY RESULT] Found ${conversations.length} conversations BEFORE user state merge`);
+  
+  // Fetch user-specific state and merge it with conversations
+  if (conversations.length > 0 && userId) {
+    const conversationIds = conversations.map(c => c.id);
+    const userStates = await getUserConversationStates(userId, conversationIds);
+    
+    // Merge user-specific state with conversations
+    conversations = conversations.map(conv => {
+      const userState = userStates.get(conv.id);
+      if (userState) {
+        // User has specific state - use it
+        return {
+          ...conv,
+          is_favorite: userState.is_favorite,
+          is_read: userState.is_read
+        };
+      }
+      // No user-specific state - use conversation defaults
+      return conv;
+    });
+  }
   
   if (type === 'email') {
-    console.log(`[EMAIL] Returned ${conversations.length} conversations (no folder filter)`);
+    console.log(`[EMAIL FINAL] Returning ${conversations.length} conversations (userRole=${userRole}, folder=${folder || 'none'})`);
   }
 
   return conversations;
@@ -144,7 +209,7 @@ async function getEmailConversationsByFolder(
   userRole: 'admin' | 'sdr' | null,
   folder: string
 ): Promise<Conversation[]> {
-  console.log('[EMAIL FOLDER] Starting query for folder:', folder);
+  console.log(`[EMAIL FOLDER] Starting query for folder: ${folder}, userRole: ${userRole}, userId: ${userId}`);
   
   // Step 1: Get all email conversations with received_account info
   let convQuery = supabaseAdmin
@@ -169,6 +234,7 @@ async function getEmailConversationsByFolder(
   // SDR filtering here MUST exactly match RLS:
   // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
+    console.log(`[EMAIL FOLDER SDR] Applying assigned_to filter for userId: ${userId}`);
     convQuery = convQuery.eq('assigned_to', userId);
   }
 
@@ -180,9 +246,11 @@ async function getEmailConversationsByFolder(
   }
   
   if (!allConversations || allConversations.length === 0) {
-    console.log('[EMAIL FOLDER] No email conversations found');
+    console.log(`[EMAIL FOLDER] No email conversations found (userRole=${userRole}, folder=${folder})`);
     return [];
   }
+  
+  console.log(`[EMAIL FOLDER] Found ${allConversations.length} total email conversations for userRole=${userRole}`);
   
   console.log(`[EMAIL FOLDER] Found ${allConversations.length} total email conversations`);
   
@@ -249,8 +317,32 @@ async function getEmailConversationsByFolder(
       return new Date(b.folder_last_message_at).getTime() - new Date(a.folder_last_message_at).getTime();
     });
   
-  console.log(`[EMAIL FOLDER] Returning ${filtered.length} conversations for folder: ${folder}`);
-  return filtered as Conversation[];
+  console.log(`[EMAIL FOLDER] Filtered to ${filtered.length} conversations with messages in folder: ${folder}`);
+  
+  // Fetch user-specific state and merge it with conversations
+  let result = filtered as Conversation[];
+  if (result.length > 0 && userId) {
+    const conversationIds = result.map(c => c.id);
+    const userStates = await getUserConversationStates(userId, conversationIds);
+    
+    // Merge user-specific state with conversations
+    result = result.map(conv => {
+      const userState = userStates.get(conv.id);
+      if (userState) {
+        // User has specific state - use it
+        return {
+          ...conv,
+          is_favorite: userState.is_favorite,
+          is_read: userState.is_read
+        };
+      }
+      // No user-specific state - use conversation defaults
+      return conv;
+    });
+  }
+  
+  console.log(`[EMAIL FOLDER FINAL] Returning ${result.length} conversations (userRole=${userRole}, folder=${folder})`);
+  return result;
 }
 
 export async function assignConversation(
@@ -309,18 +401,49 @@ export async function toggleConversationReadStatus(
   userId: string,
   isRead: boolean
 ): Promise<void> {
-  // TODO: After migration, use conversation_user_state for user-specific read status
-  // const { error } = await supabaseAdmin.rpc('toggle_conversation_read', {
-  //   p_conversation_id: conversationId,
-  //   p_user_id: userId
-  // });
+  if (!userId) {
+    // Fallback to old method if no userId
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({ is_read: isRead })
+      .eq('id', conversationId);
+    if (error) throw error;
+    return;
+  }
   
-  // TEMPORARY: Use old method until migration is applied
+  try {
+    // Try to use conversation_user_state table (new method)
+    const { error } = await supabaseAdmin
+      .from('conversation_user_state')
+      .upsert({
+        conversation_id: conversationId,
+        user_id: userId,
+        is_read: isRead,
+        is_favorite: false, // Default, will be overwritten if exists
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'conversation_id,user_id',
+        ignoreDuplicates: false
+      });
+    
+    if (!error) {
+      // Success with new method
+      return;
+    }
+    
+    // If error, fall through to old method
+    logger.debug('[Toggle Read] conversation_user_state not available, using fallback');
+  } catch (err) {
+    // Table doesn't exist yet, use fallback
+    logger.debug('[Toggle Read] Using fallback method');
+  }
+  
+  // Fallback to old method
   const { error } = await supabaseAdmin
     .from('conversations')
     .update({ is_read: isRead })
     .eq('id', conversationId);
-
+  
   if (error) throw error;
 }
 
@@ -379,14 +502,66 @@ export async function toggleFavoriteConversation(
   userId: string,
   isFavorite?: boolean
 ): Promise<void> {
-  // TODO: After migration, use conversation_user_state for user-specific favorite status
-  // const { error } = await supabaseAdmin.rpc('toggle_conversation_favorite', {
-  //   p_conversation_id: conversationId,
-  //   p_user_id: userId
-  // });
+  if (!userId) {
+    // Fallback to old method if no userId
+    let newValue = isFavorite;
+    if (newValue === undefined) {
+      const { data: conv } = await supabaseAdmin
+        .from('conversations')
+        .select('is_favorite')
+        .eq('id', conversationId)
+        .single();
+      newValue = !conv?.is_favorite;
+    }
+    
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({ is_favorite: newValue })
+      .eq('id', conversationId);
+    if (error) throw error;
+    return;
+  }
   
-  // TEMPORARY: Use old method until migration is applied
-  // If isFavorite is provided, use it; otherwise toggle
+  try {
+    // Try to use conversation_user_state table (new method)
+    // First, get current state to toggle if needed
+    let newValue = isFavorite;
+    if (newValue === undefined) {
+      const { data: state } = await supabaseAdmin
+        .from('conversation_user_state')
+        .select('is_favorite')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId)
+        .single();
+      newValue = !state?.is_favorite;
+    }
+    
+    const { error } = await supabaseAdmin
+      .from('conversation_user_state')
+      .upsert({
+        conversation_id: conversationId,
+        user_id: userId,
+        is_favorite: newValue,
+        is_read: true, // Default, will be overwritten if exists
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'conversation_id,user_id',
+        ignoreDuplicates: false
+      });
+    
+    if (!error) {
+      // Success with new method
+      return;
+    }
+    
+    // If error, fall through to old method
+    logger.debug('[Toggle Favorite] conversation_user_state not available, using fallback');
+  } catch (err) {
+    // Table doesn't exist yet, use fallback
+    logger.debug('[Toggle Favorite] Using fallback method');
+  }
+  
+  // Fallback to old method
   let newValue = isFavorite;
   if (newValue === undefined) {
     const { data: conv } = await supabaseAdmin
@@ -401,7 +576,7 @@ export async function toggleFavoriteConversation(
     .from('conversations')
     .update({ is_favorite: newValue })
     .eq('id', conversationId);
-
+  
   if (error) throw error;
 }
 
@@ -424,35 +599,24 @@ export async function getMailboxCounts(
 ): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
   const workspaceId = await getUserWorkspaceId(userId);
   
-  // Base query for email conversations
-  let baseQuery = supabaseAdmin
+  // Build query for email conversations
+  let convListQuery = supabaseAdmin
     .from('conversations')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('conversation_type', 'email');
   
   // Filter by workspace
   if (workspaceId) {
-    baseQuery = baseQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
+    convListQuery = convListQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
   }
   
   // IMPORTANT: SDRs can ONLY see assigned conversations
   if (userRole === 'sdr') {
-    baseQuery = baseQuery.eq('assigned_to', userId);
+    convListQuery = convListQuery.eq('assigned_to', userId);
   }
   
   // Get conversation IDs for this user/role
-  const { data: conversations, error: convError } = await supabaseAdmin
-    .from('conversations')
-    .select('id')
-    .eq('conversation_type', 'email')
-    .modify((query) => {
-      if (workspaceId) {
-        query.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
-      }
-      if (userRole === 'sdr') {
-        query.eq('assigned_to', userId);
-      }
-    });
+  const { data: conversations, error: convError } = await convListQuery;
   
   if (convError || !conversations || conversations.length === 0) {
     return { inbox: 0, sent: 0, archive: 0, trash: 0 };
