@@ -802,9 +802,9 @@ export default function EmailInbox() {
                 ) : userRole === 'sdr' && filteredConversations.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
-                    <h3 className="text-sm font-semibold mb-1">No emails assigned</h3>
+                    <h3 className="text-sm font-semibold mb-1">No email conversations assigned to you yet</h3>
                     <p className="text-xs text-muted-foreground">
-                      Emails will appear here once an admin assigns them to you.
+                      Once an admin assigns emails, they will appear here.
                     </p>
                   </div>
                 ) : userRole === 'admin' && connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (

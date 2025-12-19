@@ -14,6 +14,7 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Message {
   id: string;
@@ -98,6 +99,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   }, [conversation.id, combinedMessages.length]);
 
   // Hooks for data and mutations
+  const { userRole } = useAuth();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: stages = [] } = usePipelineStages();
   const toggleRead = useToggleRead();
@@ -461,30 +463,32 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   )}
                 </DropdownMenuItem>
 
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Assign to SDR
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
-                    <DropdownMenuItem onClick={() => handleAssignSDR(null)}>
-                      Unassigned
-                      {!conversation.assignedTo && " ✓"}
-                    </DropdownMenuItem>
-                    {teamMembers.map((member: any) => (
-                      <DropdownMenuItem 
-                        key={member.id}
-                        onClick={() => handleAssignSDR(member.id)}
-                      >
-                        {member.full_name}
-                        {conversation.assignedTo === member.id && " ✓"}
+                {userRole === 'admin' && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Assign to SDR
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
+                      <DropdownMenuItem onClick={() => handleAssignSDR(null)}>
+                        Unassigned
+                        {!conversation.assignedTo && " ✓"}
                       </DropdownMenuItem>
-                    ))}
-                    {teamMembers.length === 0 && (
-                      <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
-                    )}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
+                      {teamMembers.map((member: any) => (
+                        <DropdownMenuItem 
+                          key={member.id}
+                          onClick={() => handleAssignSDR(member.id)}
+                        >
+                          {member.full_name}
+                          {conversation.assignedTo === member.id && " ✓"}
+                        </DropdownMenuItem>
+                      ))}
+                      {teamMembers.length === 0 && (
+                        <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
 
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>

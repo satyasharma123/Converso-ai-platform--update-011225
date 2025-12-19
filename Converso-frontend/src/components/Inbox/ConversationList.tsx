@@ -10,6 +10,7 @@ import { formatTimeAgo } from "@/utils/timeFormat";
 import { useToggleRead, useAssignConversation, useUpdateConversationStage, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface Conversation {
   id: string;
@@ -69,6 +70,7 @@ export function ConversationList({
   const updateStage = useUpdateConversationStage();
   const toggleFavorite = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
+  const { userRole } = useAuth();
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
 
@@ -322,32 +324,34 @@ export function ConversationList({
                 )}
               </DropdownMenuItem>
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Assign to SDR
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
-                  <DropdownMenuItem 
-                    onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, null); }}
-                  >
-                    Unassigned
-                    {!(conversation.assignedTo || (conversation as any).assigned_to) && " ✓"}
-                  </DropdownMenuItem>
-                  {teamMembers.map((member) => (
+              {userRole === 'admin' && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Assign to SDR
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
                     <DropdownMenuItem 
-                      key={member.id}
-                      onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, member.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, null); }}
                     >
-                      {member.full_name}
-                      {(conversation.assignedTo || (conversation as any).assigned_to) === member.id && " ✓"}
+                      Unassigned
+                      {!(conversation.assignedTo || (conversation as any).assigned_to) && " ✓"}
                     </DropdownMenuItem>
-                  ))}
-                  {teamMembers.length === 0 && (
-                    <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+                    {teamMembers.map((member) => (
+                      <DropdownMenuItem
+                        key={member.id}
+                        onClick={(e) => { e.stopPropagation(); handleAssignSDR(conversation.id, member.id); }}
+                      >
+                        {member.full_name}
+                        {(conversation.assignedTo || (conversation as any).assigned_to) === member.id && " ✓"}
+                      </DropdownMenuItem>
+                    ))}
+                    {teamMembers.length === 0 && (
+                      <DropdownMenuItem disabled>No team members available</DropdownMenuItem>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
 
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>

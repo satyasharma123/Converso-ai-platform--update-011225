@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead, useDeleteConversation } from "@/hooks/useConversations";
+import { useAuth } from "@/hooks/useAuth";
 import { useSendMessage } from "@/hooks/useMessages";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -162,6 +163,7 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const deleteConversation = useDeleteConversation();
   const sendMessage = useSendMessage();
   const queryClient = useQueryClient();
+  const { userRole } = useAuth();
   
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
@@ -1488,19 +1490,21 @@ useEffect(() => {
         <div className="flex-shrink-0 border-b bg-background">
           {/* Assign and Stage Dropdowns */}
           <div className="flex items-center gap-2 px-6 pt-4 pb-2">
-            <Select value={conversation.assigned_to || 'unassigned'} onValueChange={handleAssign}>
-              <SelectTrigger className="w-[140px] h-7 text-xs">
-                <SelectValue placeholder={assignedSdr ? assignedSdr.full_name : 'Assign'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {sdrs.map((sdr) => (
-                  <SelectItem key={sdr.id} value={sdr.id}>
-                    {sdr.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {userRole === 'admin' && (
+              <Select value={conversation.assigned_to || 'unassigned'} onValueChange={handleAssign}>
+                <SelectTrigger className="w-[140px] h-7 text-xs">
+                  <SelectValue placeholder={assignedSdr ? assignedSdr.full_name : 'Assign'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {sdrs.map((sdr) => (
+                    <SelectItem key={sdr.id} value={sdr.id}>
+                      {sdr.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             
             <Select value={conversation.custom_stage_id || 'none'} onValueChange={handleStageChange}>
               <SelectTrigger className="w-[140px] h-7 text-xs">
