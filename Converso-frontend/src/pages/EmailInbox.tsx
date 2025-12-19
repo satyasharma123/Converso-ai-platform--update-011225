@@ -799,6 +799,14 @@ export default function EmailInbox() {
                       <p className="text-sm text-muted-foreground">Loading...</p>
                     </div>
                   </div>
+                ) : userRole === 'sdr' && filteredConversations.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                    <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
+                    <h3 className="text-sm font-semibold mb-1">No Assigned Conversations</h3>
+                    <p className="text-xs text-muted-foreground">
+                      You don't have any email conversations assigned to you yet.
+                    </p>
+                  </div>
                 ) : connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-blue-500 mb-3" />

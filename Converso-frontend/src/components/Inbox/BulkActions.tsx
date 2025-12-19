@@ -113,11 +113,6 @@ export function BulkActions({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          <DropdownMenuItem onClick={onArchive}>
-            <Archive className="h-4 w-4 mr-2" />
-            Archive
-          </DropdownMenuItem>
-
           <DropdownMenuItem onClick={onFavorite}>
             <Star className="h-4 w-4 mr-2" />
             Mark as Favorite
@@ -128,10 +123,19 @@ export function BulkActions({
             Remove Favorite
           </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={onDelete} className="text-destructive">
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </DropdownMenuItem>
+          {userRole === 'admin' && (
+            <>
+              <DropdownMenuItem onClick={onArchive}>
+                <Archive className="h-4 w-4 mr-2" />
+                Archive
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
     </DropdownMenu>
   );

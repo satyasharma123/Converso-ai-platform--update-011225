@@ -113,9 +113,12 @@ export async function getConversations(
     query = query.eq('conversation_type', type);
   }
 
-  // SDRs only see their assigned conversations
+  // IMPORTANT:
+  // supabaseAdmin bypasses RLS.
+  // SDR filtering here MUST exactly match RLS:
+  // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
-    query = query.or(`assigned_to.eq.${userId},assigned_to.is.null`);
+    query = query.eq('assigned_to', userId);
   }
 
   const { data, error } = await query;
@@ -161,9 +164,12 @@ async function getEmailConversationsByFolder(
     convQuery = convQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
   }
 
-  // SDRs only see their assigned conversations
+  // IMPORTANT:
+  // supabaseAdmin bypasses RLS.
+  // SDR filtering here MUST exactly match RLS:
+  // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
-    convQuery = convQuery.or(`assigned_to.eq.${userId},assigned_to.is.null`);
+    convQuery = convQuery.eq('assigned_to', userId);
   }
 
   const { data: allConversations, error: convError } = await convQuery;
@@ -300,11 +306,38 @@ export async function markConversationAsRead(conversationId: string): Promise<vo
 
 export async function toggleConversationReadStatus(
   conversationId: string,
+  userId: string,
   isRead: boolean
 ): Promise<void> {
+  // TODO: After migration, use conversation_user_state for user-specific read status
+  // const { error } = await supabaseAdmin.rpc('toggle_conversation_read', {
+  //   p_conversation_id: conversationId,
+  //   p_user_id: userId
+  // });
+  
+  // TEMPORARY: Use old method until migration is applied
   const { error } = await supabaseAdmin
     .from('conversations')
     .update({ is_read: isRead })
+    .eq('id', conversationId);
+
+  if (error) throw error;
+}
+
+export async function markConversationRead(
+  conversationId: string,
+  userId: string
+): Promise<void> {
+  // TODO: After migration, use conversation_user_state for user-specific read status
+  // const { error } = await supabaseAdmin.rpc('mark_conversation_read', {
+  //   p_conversation_id: conversationId,
+  //   p_user_id: userId
+  // });
+  
+  // TEMPORARY: Use old method until migration is applied
+  const { error } = await supabaseAdmin
+    .from('conversations')
+    .update({ is_read: true })
     .eq('id', conversationId);
 
   if (error) throw error;
@@ -343,11 +376,30 @@ export async function getConversationById(conversationId: string): Promise<Conve
 
 export async function toggleFavoriteConversation(
   conversationId: string,
-  isFavorite: boolean
+  userId: string,
+  isFavorite?: boolean
 ): Promise<void> {
+  // TODO: After migration, use conversation_user_state for user-specific favorite status
+  // const { error } = await supabaseAdmin.rpc('toggle_conversation_favorite', {
+  //   p_conversation_id: conversationId,
+  //   p_user_id: userId
+  // });
+  
+  // TEMPORARY: Use old method until migration is applied
+  // If isFavorite is provided, use it; otherwise toggle
+  let newValue = isFavorite;
+  if (newValue === undefined) {
+    const { data: conv } = await supabaseAdmin
+      .from('conversations')
+      .select('is_favorite')
+      .eq('id', conversationId)
+      .single();
+    newValue = !conv?.is_favorite;
+  }
+  
   const { error } = await supabaseAdmin
     .from('conversations')
-    .update({ is_favorite: isFavorite })
+    .update({ is_favorite: newValue })
     .eq('id', conversationId);
 
   if (error) throw error;
@@ -360,6 +412,80 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     .eq('id', conversationId);
 
   if (error) throw error;
+}
+
+/**
+ * Get mailbox folder counts (assignment-aware for SDRs)
+ * Returns counts for inbox, sent, archive, trash folders
+ */
+export async function getMailboxCounts(
+  userId: string,
+  userRole: 'admin' | 'sdr' | null
+): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
+  const workspaceId = await getUserWorkspaceId(userId);
+  
+  // Base query for email conversations
+  let baseQuery = supabaseAdmin
+    .from('conversations')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_type', 'email');
+  
+  // Filter by workspace
+  if (workspaceId) {
+    baseQuery = baseQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
+  }
+  
+  // IMPORTANT: SDRs can ONLY see assigned conversations
+  if (userRole === 'sdr') {
+    baseQuery = baseQuery.eq('assigned_to', userId);
+  }
+  
+  // Get conversation IDs for this user/role
+  const { data: conversations, error: convError } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('conversation_type', 'email')
+    .modify((query) => {
+      if (workspaceId) {
+        query.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
+      }
+      if (userRole === 'sdr') {
+        query.eq('assigned_to', userId);
+      }
+    });
+  
+  if (convError || !conversations || conversations.length === 0) {
+    return { inbox: 0, sent: 0, archive: 0, trash: 0 };
+  }
+  
+  const conversationIds = conversations.map(c => c.id);
+  
+  // Count conversations by folder using messages table
+  const folderCounts: Record<string, number> = {};
+  
+  for (const folder of ['inbox', 'sent', 'archive', 'trash']) {
+    // Get distinct conversation IDs that have messages in this folder
+    const { data: folderConvs, error: folderError } = await supabaseAdmin
+      .from('messages')
+      .select('conversation_id', { count: 'exact', head: false })
+      .in('conversation_id', conversationIds)
+      .eq('provider_folder', folder);
+    
+    if (!folderError && folderConvs) {
+      // Count unique conversation IDs
+      const uniqueConvIds = new Set(folderConvs.map((m: any) => m.conversation_id));
+      folderCounts[folder] = uniqueConvIds.size;
+    } else {
+      folderCounts[folder] = 0;
+    }
+  }
+  
+  return {
+    inbox: folderCounts.inbox || 0,
+    sent: folderCounts.sent || 0,
+    archive: folderCounts.archive || 0,
+    trash: folderCounts.trash || 0,
+  };
 }
 
 export async function updateLeadProfile(

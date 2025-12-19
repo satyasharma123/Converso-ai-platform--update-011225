@@ -699,8 +699,14 @@ export default function LinkedInInbox() {
                 </div>
               ) : filteredConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                  <p className="text-sm text-muted-foreground mb-2">No conversations found</p>
-                  <p className="text-xs text-muted-foreground">The database is empty. Please seed the database.</p>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {userRole === 'sdr' ? 'No Assigned Conversations' : 'No conversations found'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {userRole === 'sdr' 
+                      ? 'You don\'t have any LinkedIn conversations assigned to you yet.'
+                      : 'The database is empty. Please seed the database.'}
+                  </p>
                 </div>
               ) : (
                 <LinkedInConversationList

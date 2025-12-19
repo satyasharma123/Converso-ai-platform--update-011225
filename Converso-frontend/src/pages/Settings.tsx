@@ -64,7 +64,15 @@ export default function Settings() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Get active tab from URL or default
+  // SDRs can only access profile and integrations tabs
   const activeTab = searchParams.get('tab') || (userRole === 'admin' ? 'rules' : 'profile');
+  
+  // Redirect SDRs if they try to access admin-only tabs
+  useEffect(() => {
+    if (userRole === 'sdr' && (activeTab === 'rules' || activeTab === 'pipeline' || activeTab === 'workspace')) {
+      setSearchParams({ tab: 'profile' });
+    }
+  }, [userRole, activeTab, setSearchParams]);
 
   // Profile state
   const [fullName, setFullName] = useState("");

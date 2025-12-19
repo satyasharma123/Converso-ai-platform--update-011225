@@ -33,6 +33,26 @@ router.get(
 );
 
 /**
+ * GET /api/conversations/mailbox-counts
+ * Get mailbox folder counts (assignment-aware for SDRs)
+ */
+router.get(
+  '/mailbox-counts',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
+    const userRole = req.user?.role || req.headers['x-user-role'] as 'admin' | 'sdr' | null || null;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const counts = await conversationsService.getMailboxCounts(userId, userRole);
+    res.json({ data: counts });
+  })
+);
+
+/**
  * GET /api/conversations/:id
  * Get a single conversation by ID
  */
@@ -114,15 +134,17 @@ router.patch(
  */
 router.patch(
   '/:id/read',
-  asyncHandler(async (req: Request, res: Response) => {
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { isRead } = req.body;
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
 
     if (typeof isRead !== 'boolean') {
       return res.status(400).json({ error: 'isRead must be a boolean' });
     }
 
-    await conversationsService.toggleRead(id, isRead);
+    await conversationsService.toggleRead(id, userId, isRead);
     res.json({ message: 'Read status updated successfully' });
   })
 );
@@ -148,15 +170,13 @@ router.patch(
  */
 router.patch(
   '/:id/favorite',
-  asyncHandler(async (req: Request, res: Response) => {
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { isFavorite } = req.body;
+    const userId = req.user?.id || req.headers['x-user-id'] as string;
 
-    if (typeof isFavorite !== 'boolean') {
-      return res.status(400).json({ error: 'isFavorite must be a boolean' });
-    }
-
-    await conversationsService.toggleFavorite(id, isFavorite);
+    await conversationsService.toggleFavorite(id, userId, isFavorite);
     res.json({ message: 'Favorite status updated successfully' });
   })
 );

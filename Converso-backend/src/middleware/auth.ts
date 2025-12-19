@@ -12,9 +12,7 @@ export interface AuthenticatedRequest extends Request {
 
 /**
  * Authentication middleware
- * Verifies JWT token from Authorization header or x-user-id header
- * For now, we'll use a simple approach with x-user-id header
- * TODO: Implement proper JWT verification
+ * Verifies JWT token from Authorization header or x-user-id header (dev only)
  */
 export const authenticate = async (
   req: AuthenticatedRequest,
@@ -22,14 +20,16 @@ export const authenticate = async (
   next: NextFunction
 ) => {
   try {
-    // Get token from Authorization header
     const authHeader = req.headers.authorization;
     const userId = req.headers['x-user-id'] as string;
 
-    // For now, if we have x-user-id, we'll trust it (from mock auth)
-    // In production, verify JWT token
-    if (userId) {
-      // Get user profile to verify they exist
+    // PRODUCTION SAFETY: Reject x-user-id in production
+    if (process.env.NODE_ENV === 'production' && userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // NON-PRODUCTION: Handle x-user-id for local development
+    if (process.env.NODE_ENV !== 'production' && userId) {
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('id, email, full_name')
@@ -40,7 +40,6 @@ export const authenticate = async (
         return res.status(401).json({ error: 'Invalid user' });
       }
 
-      // Get user role
       const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
@@ -53,7 +52,6 @@ export const authenticate = async (
         role: roleData?.role || null,
       };
 
-      // If we have a token, create user-specific Supabase client
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         req.supabaseClient = createUserClient(token);
@@ -62,18 +60,15 @@ export const authenticate = async (
       return next();
     }
 
-    // If no userId header, try to verify JWT token
+    // JWT authentication (works in all environments)
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      
-      // Verify token with Supabase
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
       if (error || !user) {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
 
-      // Get user role
       const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
@@ -90,7 +85,6 @@ export const authenticate = async (
       return next();
     }
 
-    // No authentication provided
     return res.status(401).json({ error: 'Authentication required' });
   } catch (error: any) {
     return res.status(401).json({ error: 'Authentication failed', details: error.message });
@@ -106,10 +100,12 @@ export const optionalAuth = async (
   next: NextFunction
 ) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const authHeader = req.headers.authorization;
+    const userId = req.headers['x-user-id'] as string;
 
-    if (userId) {
+    // PRODUCTION SAFETY: Ignore x-user-id in production (silently skip)
+    // NON-PRODUCTION: Handle x-user-id for local development
+    if (process.env.NODE_ENV !== 'production' && userId) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, email')
@@ -131,14 +127,22 @@ export const optionalAuth = async (
       }
     }
 
+    // JWT authentication (works in all environments)
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const { data: { user } } = await supabase.auth.getUser(token);
       
       if (user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
         req.user = {
           id: user.id,
           email: user.email || '',
+          role: roleData?.role || null,
         };
         req.supabaseClient = createUserClient(token);
       }
@@ -146,7 +150,6 @@ export const optionalAuth = async (
 
     next();
   } catch (error) {
-    // Continue even if auth fails (optional)
     next();
   }
 };

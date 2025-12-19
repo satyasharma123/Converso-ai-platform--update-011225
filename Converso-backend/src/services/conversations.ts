@@ -71,14 +71,14 @@ export const conversationsService = {
   },
 
   /**
-   * Toggle read status
+   * Toggle read status (user-specific after migration)
    */
-  async toggleRead(conversationId: string, isRead: boolean): Promise<void> {
+  async toggleRead(conversationId: string, userId: string | undefined, isRead: boolean): Promise<void> {
     if (!conversationId) {
       throw new Error('Conversation ID is required');
     }
 
-    return conversationsApi.toggleConversationReadStatus(conversationId, isRead);
+    return conversationsApi.toggleConversationReadStatus(conversationId, userId || '', isRead);
   },
 
   /**
@@ -92,12 +92,15 @@ export const conversationsService = {
     return conversationsApi.updateConversationStage(conversationId, stageId);
   },
 
-  async toggleFavorite(conversationId: string, isFavorite: boolean): Promise<void> {
+  /**
+   * Toggle favorite status (user-specific after migration)
+   */
+  async toggleFavorite(conversationId: string, userId: string | undefined, isFavorite?: boolean): Promise<void> {
     if (!conversationId) {
       throw new Error('Conversation ID is required');
     }
 
-    return conversationsApi.toggleFavoriteConversation(conversationId, isFavorite);
+    return conversationsApi.toggleFavoriteConversation(conversationId, userId || '', isFavorite);
   },
 
   async deleteConversation(conversationId: string): Promise<void> {
@@ -137,6 +140,20 @@ export const conversationsService = {
     }
 
     return conversationsApi.updateLeadProfile(conversationId, updates);
+  },
+
+  /**
+   * Get mailbox folder counts (assignment-aware for SDRs)
+   */
+  async getMailboxCounts(
+    userId: string,
+    userRole: 'admin' | 'sdr' | null
+  ): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    return conversationsApi.getMailboxCounts(userId, userRole);
   },
 };
 
