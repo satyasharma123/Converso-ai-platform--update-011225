@@ -789,10 +789,22 @@ useEffect(() => {
     // Get the user's new message
     const userMessage = replyContent || '';
 
-    // Get the original email content
-    const originalEmailHtml = conversation.email_body_html || conversation.email_body || '';
-    const originalEmailText = conversation.email_body_text || '';
-    
+    // Prefer the latest message in the thread as the original for quoting
+    const latestMessage = messages.length > 0 ? (messages[messages.length - 1] as any) : null;
+
+    // Pull body from message-level fields first, then conversation fallback
+    const originalEmailHtml =
+      latestMessage?.html_body ||
+      latestMessage?.email_body ||
+      conversation.email_body_html ||
+      conversation.email_body ||
+      '';
+    const originalEmailText =
+      latestMessage?.text_body ||
+      latestMessage?.content ||
+      conversation.email_body_text ||
+      '';
+
     // Use HTML if available, otherwise text
     const originalContent = originalEmailHtml || originalEmailText;
 
@@ -802,28 +814,32 @@ useEffect(() => {
     }
 
     // Format the original email timestamp
-    const emailDate = conversation.email_timestamp 
-      ? new Date(conversation.email_timestamp).toLocaleString('en-US', {
+    const emailDateSource = latestMessage?.timestamp || conversation.email_timestamp || conversation.last_message_at;
+    const emailDate = emailDateSource
+      ? new Date(emailDateSource).toLocaleString('en-US', {
           weekday: 'short',
           year: 'numeric',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
-          hour12: true
+          hour12: true,
         })
       : '';
+
+    const originalFromName = latestMessage?.senderName || conversation.senderName || 'Unknown';
+    const originalFromEmail = latestMessage?.senderEmail || conversation.senderEmail || '';
 
     // Build the quoted email header
     const quotedHeader = replyType === 'forward'
       ? `<br><br><div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ccc;">
            <p><strong>---------- Forwarded message ---------</strong><br>
-           From: <strong>${conversation.senderName}</strong> &lt;${conversation.senderEmail}&gt;<br>
+           From: <strong>${originalFromName}</strong> &lt;${originalFromEmail}&gt;<br>
            Date: ${emailDate}<br>
            Subject: ${conversation.subject || 'No Subject'}</p>
          </div><br>`
       : `<br><br><div style="margin-top: 20px; padding-top: 10px; border-left: 3px solid #ccc; padding-left: 10px; color: #666;">
-           <p>On ${emailDate}, <strong>${conversation.senderName}</strong> &lt;${conversation.senderEmail}&gt; wrote:</p>
+           <p>On ${emailDate}, <strong>${originalFromName}</strong> &lt;${originalFromEmail}&gt; wrote:</p>
          </div>`;
 
     // Build quoted original content

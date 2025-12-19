@@ -88,6 +88,8 @@ export function transformMessage(msg: Message): any {
     conversationId: msg.conversation_id,
     senderId: msg.sender_id,
     senderName: msg.sender_name,
+    senderEmail: (msg as any).sender_email || null,
+    sender_email: (msg as any).sender_email || null,
     content: msg.content,
     email_body: (msg as any).email_body || null,
     emailBody: (msg as any).email_body || null,
