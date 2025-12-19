@@ -853,59 +853,6 @@ useEffect(() => {
     return `${userMessage}${quotedHeader}${quotedContent}`;
   };
 
-  // Build a preview of the quoted original (without the user's new message) to show inside the draft panel
-  const buildQuotedOriginalPreview = () => {
-    const latestMessage = messages.length > 0 ? (messages[messages.length - 1] as any) : null;
-    const originalEmailHtml =
-      latestMessage?.html_body ||
-      latestMessage?.email_body ||
-      conversation.email_body_html ||
-      conversation.email_body ||
-      '';
-    const originalEmailText =
-      latestMessage?.text_body ||
-      latestMessage?.content ||
-      conversation.email_body_text ||
-      '';
-    const originalContent = originalEmailHtml || originalEmailText;
-
-    if (!originalContent) return null;
-
-    const emailDateSource = latestMessage?.timestamp || conversation.email_timestamp || conversation.last_message_at;
-    const emailDate = emailDateSource
-      ? new Date(emailDateSource).toLocaleString('en-US', {
-          weekday: 'short',
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        })
-      : '';
-
-    const originalFromName = latestMessage?.senderName || conversation.senderName || 'Unknown';
-    const originalFromEmail = latestMessage?.senderEmail || conversation.senderEmail || '';
-
-    const quotedHeader = replyType === 'forward'
-      ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 12px; color: #555;">
-           <p style="margin: 0 0 8px 0;"><strong>---------- Forwarded message ---------</strong><br>
-           From: <strong>${originalFromName}</strong> &lt;${originalFromEmail}&gt;<br>
-           Date: ${emailDate}<br>
-           Subject: ${conversation.subject || 'No Subject'}</p>
-         </div>`
-      : `<div style="margin-top: 12px; padding-top: 10px; border-left: 3px solid #ccc; padding-left: 10px; color: #666; font-size: 12px;">
-           <p style="margin: 0 0 8px 0;">On ${emailDate}, <strong>${originalFromName}</strong> &lt;${originalFromEmail}&gt; wrote:</p>
-         </div>`;
-
-    const quotedContent = replyType === 'forward'
-      ? `<div style="margin-left: 0; font-size: 12px;">${originalContent}</div>`
-      : `<blockquote style="margin: 10px 0; padding-left: 10px; border-left: 3px solid #ccc; color: #666; font-size: 12px;">
-           ${originalContent}
-         </blockquote>`;
-
-    return `${quotedHeader}${quotedContent}`;
-  };
 
   const handleSend = async () => {
     const editor =
@@ -1153,22 +1100,6 @@ useEffect(() => {
         </div>
         
         <div className="px-6 py-4 space-y-4">
-          {/* Show quoted original inside composer for verification */}
-          {(() => {
-            const previewHtml = buildQuotedOriginalPreview();
-            if (!previewHtml) return null;
-            const renderedPreview = renderEmailBody(previewHtml, null, null);
-            return (
-              <div className="border rounded bg-muted/20 p-3 text-xs text-muted-foreground max-h-56 overflow-auto">
-                <div className="font-semibold text-foreground mb-2">Included trail</div>
-                <div
-                  className="email-html-body prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: renderedPreview }}
-                />
-              </div>
-            );
-          })()}
-
           <div
             className={cn(
               "rounded-lg bg-transparent ring-0 focus-within:ring-0",
