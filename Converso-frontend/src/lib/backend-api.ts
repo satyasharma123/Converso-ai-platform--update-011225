@@ -18,9 +18,10 @@ export const conversationsApi = {
   /**
    * Get all conversations
    */
-  async list(type?: 'email' | 'linkedin'): Promise<Conversation[]> {
+  async list(type?: 'email' | 'linkedin', folder?: string): Promise<Conversation[]> {
     const params: Record<string, string> = {};
     if (type) params.type = type;
+    if (folder) params.folder = folder;
     return apiClient.get<Conversation[]>('/api/conversations', params);
   },
 

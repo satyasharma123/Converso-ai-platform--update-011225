@@ -27,3 +27,6 @@ DELETE FROM public.conversations WHERE conversation_type = 'linkedin';
 
 
 
+
+
+

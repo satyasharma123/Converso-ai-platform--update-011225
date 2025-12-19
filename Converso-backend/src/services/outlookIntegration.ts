@@ -197,9 +197,9 @@ export async function fetchOutlookEmailBody(
 
   try {
     // Fetch body with HTML format explicitly requested
-    // Prefer-Outlook-Format: text ensures we get HTML body content
+    // Note: contentId is not available in the attachments collection, only in individual attachment GET
     const response = await fetch(
-      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview,hasAttachments&$expand=attachments($select=id,name,contentType,size,isInline,contentId)`,
+      `https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=body,bodyPreview,hasAttachments&$expand=attachments($select=id,name,contentType,size,isInline)`,
       {
         headers: {
           Authorization: `Bearer ${account.oauth_access_token}`,
@@ -238,13 +238,14 @@ export async function fetchOutlookEmailBody(
     const message: any = await response.json();
     
     // Extract attachments metadata
+    // Note: contentId is not available in the expand query, would need individual GET per attachment
     const attachments: EmailAttachment[] = (message?.attachments || []).map((attachment: any) => ({
       id: attachment.id,
       filename: attachment.name,
       mimeType: attachment.contentType,
       size: attachment.size,
-      isInline: attachment.isInline,
-      contentId: attachment.contentId,
+      isInline: attachment.isInline || false,
+      contentId: undefined, // Would require separate API call per attachment
       provider: 'outlook',
     }));
 

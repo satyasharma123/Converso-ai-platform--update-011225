@@ -124,6 +124,7 @@ router.get(
     dateThreshold.setDate(dateThreshold.getDate() - daysBack);
 
     // Query conversations with workspace filter
+    // IMPORTANT: Only fetch inbox emails, exclude sent folder
     const { data: conversations, error } = await supabaseAdmin
       .from('conversations')
       .select(`
@@ -136,6 +137,7 @@ router.get(
       `)
       .eq('workspace_id', workspace_id as string)
       .eq('conversation_type', 'email')
+      .or('email_folder.eq.inbox,email_folder.is.null') // ✅ Inbox only - excludes sent folder
       .gte('email_timestamp', dateThreshold.toISOString())
       .order('email_timestamp', { ascending: false })
       .limit(parseInt(limit as string));
@@ -166,7 +168,8 @@ router.get(
     }
 
     // Query conversations before the given timestamp
-    const { data: conversations, error } = await supabaseAdmin
+    // IMPORTANT: Only fetch inbox emails, exclude sent folder
+    const { data: conversations, error} = await supabaseAdmin
       .from('conversations')
       .select(`
         *,
@@ -178,6 +181,7 @@ router.get(
       `)
       .eq('workspace_id', workspace_id as string)
       .eq('conversation_type', 'email')
+      .or('email_folder.eq.inbox,email_folder.is.null') // ✅ Inbox only - excludes sent folder
       .lt('email_timestamp', before as string)
       .order('email_timestamp', { ascending: false })
       .limit(parseInt(limit as string));
@@ -194,6 +198,8 @@ router.get(
 /**
  * GET /api/emails/folder-counts
  * Get email counts for different folders (inbox, unread, etc.)
+ * Uses latest message's provider_folder to determine conversation folder
+ * LinkedIn is NOT affected - this endpoint is email-only
  */
 router.get(
   '/folder-counts',
@@ -206,56 +212,216 @@ router.get(
     }
 
     try {
-      // Get all connected email accounts for this workspace
-      const { data: connectedAccounts } = await supabaseAdmin
-        .from('connected_accounts')
-        .select('account_email, workspace_id')
-        .eq('account_type', 'email');
-
-      // Filter accounts by workspace_id if available, or get all email accounts
-      let accountEmails: string[] = [];
-      if (connectedAccounts) {
-        // If accounts have workspace_id, filter by it
-        const workspaceAccounts = connectedAccounts.filter(acc => 
-          !acc.workspace_id || acc.workspace_id === workspace_id
-        );
-        accountEmails = workspaceAccounts.map(acc => acc.account_email).filter(Boolean);
-        
-        // If no workspace-specific accounts, use all email accounts as fallback
-        if (accountEmails.length === 0) {
-          accountEmails = connectedAccounts.map(acc => acc.account_email).filter(Boolean);
-        }
-      }
-
-      // Get all email conversations for this workspace with folder information
-      const { data: conversations, error } = await supabaseAdmin
+      // Get all email conversations for this workspace
+      const { data: conversations, error: convError } = await supabaseAdmin
         .from('conversations')
-        .select('id, is_read, email_folder')
-        .eq('workspace_id', workspace_id as string)
+        .select('id, is_read')
+        .or(`workspace_id.eq.${workspace_id},workspace_id.is.null`)
         .eq('conversation_type', 'email');
 
-      if (error) {
-        logger.error('Error fetching conversations for folder counts:', error);
+      if (convError) {
+        logger.error('Error fetching conversations for folder counts:', convError);
         return res.status(500).json({ error: 'Failed to fetch folder counts' });
       }
 
-      const emails = conversations || [];
+      const conversationIds = (conversations || []).map(c => c.id);
+      
+      // Fetch ALL messages to determine conversation folder
+      const { data: allMessages } = await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, provider_folder, is_from_lead, created_at')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: false });
 
-      // Calculate counts based on email_folder field
+      // ✅ SMART FOLDER LOGIC: Same as conversations.ts
+      const conversationFolderMap = new Map<string, string>();
+      const conversationMessagesMap = new Map<string, any[]>();
+      
+      if (allMessages) {
+        // Group messages by conversation
+        for (const msg of allMessages) {
+          if (!conversationMessagesMap.has(msg.conversation_id)) {
+            conversationMessagesMap.set(msg.conversation_id, []);
+          }
+          conversationMessagesMap.get(msg.conversation_id)!.push(msg);
+        }
+        
+        // Determine folder for each conversation using priority rules
+        for (const [convId, messages] of conversationMessagesMap.entries()) {
+          // Priority 1: Deleted/Trash
+          const hasDeleted = messages.some(m => 
+            m.provider_folder === 'trash' || m.provider_folder === 'deleted'
+          );
+          if (hasDeleted) {
+            conversationFolderMap.set(convId, 'deleted');
+            continue;
+          }
+          
+          // Priority 2: Archive
+          const hasArchive = messages.some(m => m.provider_folder === 'archive');
+          if (hasArchive) {
+            conversationFolderMap.set(convId, 'archive');
+            continue;
+          }
+          
+          // Priority 3: Drafts
+          const hasDrafts = messages.some(m => m.provider_folder === 'drafts');
+          if (hasDrafts) {
+            conversationFolderMap.set(convId, 'drafts');
+            continue;
+          }
+          
+          // Priority 4: Inbox (has ANY message from lead)
+          const hasInboxFromLead = messages.some(m => 
+            (m.provider_folder === 'inbox' || m.provider_folder === null) && 
+            m.is_from_lead === true
+          );
+          if (hasInboxFromLead) {
+            conversationFolderMap.set(convId, 'inbox');
+            continue;
+          }
+          
+          // Priority 5: Sent (ALL messages are outgoing)
+          const allSent = messages.every(m => 
+            m.provider_folder === 'sent' || m.is_from_lead === false
+          );
+          if (allSent) {
+            conversationFolderMap.set(convId, 'sent');
+            continue;
+          }
+          
+          // Default: inbox
+          conversationFolderMap.set(convId, 'inbox');
+        }
+      }
+
+      // Add derived_folder to each conversation
+      const conversationsWithFolder = (conversations || []).map(conv => ({
+        ...conv,
+        derived_folder: conversationFolderMap.get(conv.id) || 'inbox',
+      }));
+
+      // Calculate counts based on derived folder from latest message
       const counts = {
-        inbox: emails.filter(e => e.email_folder === 'inbox' || !e.email_folder).length,
-        unread: emails.filter(e => !e.is_read).length,
-        sent: emails.filter(e => e.email_folder === 'sent').length,
-        important: emails.filter(e => e.email_folder === 'important').length,
-        drafts: emails.filter(e => e.email_folder === 'drafts').length,
-        archive: emails.filter(e => e.email_folder === 'archive').length,
-        deleted: emails.filter(e => e.email_folder === 'deleted').length,
+        inbox: conversationsWithFolder.filter(e => e.derived_folder === 'inbox').length,
+        unread: conversationsWithFolder.filter(e => !e.is_read).length, // ✅ FIX: Count all unread
+        sent: conversationsWithFolder.filter(e => e.derived_folder === 'sent').length,
+        important: conversationsWithFolder.filter(e => e.derived_folder === 'important').length,
+        drafts: conversationsWithFolder.filter(e => e.derived_folder === 'drafts').length,
+        archive: conversationsWithFolder.filter(e => e.derived_folder === 'archive').length,
+        deleted: conversationsWithFolder.filter(e => e.derived_folder === 'deleted').length,
       };
 
       res.json({ data: counts });
     } catch (error: any) {
       logger.error('Error calculating folder counts:', error);
       res.status(500).json({ error: 'Failed to calculate folder counts' });
+    }
+  })
+);
+
+/**
+ * GET /api/emails/test-outlook-folders
+ * DIAGNOSTIC ENDPOINT: Test if Outlook Sent & Trash folders have messages
+ * Returns message counts from Microsoft Graph API directly
+ * MUST be before /:id route to avoid being caught by parameter matching
+ */
+router.get(
+  '/test-outlook-folders',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      logger.info('[Outlook Test] Testing Outlook folder access');
+
+      // Fetch Outlook account
+      const { data: outlookAccounts, error: fetchError } = await supabaseAdmin
+        .from('connected_accounts')
+        .select('*')
+        .eq('oauth_provider', 'microsoft')
+        .limit(1);
+
+      if (fetchError || !outlookAccounts || outlookAccounts.length === 0) {
+        return res.json({ 
+          success: false, 
+          error: 'No Outlook accounts found' 
+        });
+      }
+
+      const account = outlookAccounts[0];
+      logger.info(`[Outlook Test] Testing account: ${account.account_email}`);
+
+      // Test each folder
+      const folderTests = [];
+      const foldersToTest = ['inbox', 'sent', 'trash'];
+
+      for (const folder of foldersToTest) {
+        try {
+          // Map folder names to Outlook API paths
+          let folderPath = '';
+          switch (folder) {
+            case 'inbox':
+              folderPath = '/messages';
+              break;
+            case 'sent':
+              folderPath = `/mailFolders('SentItems')/messages`;
+              break;
+            case 'trash':
+              folderPath = `/mailFolders('DeletedItems')/messages`;
+              break;
+          }
+
+          const response = await fetch(
+            `https://graph.microsoft.com/v1.0/me${folderPath}?$top=5&$select=id,subject,from,receivedDateTime`,
+            {
+              headers: {
+                Authorization: `Bearer ${account.oauth_access_token}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (response.ok) {
+            const data: any = await response.json();
+            folderTests.push({
+              folder,
+              status: 'success',
+              messageCount: data.value?.length || 0,
+              hasMessages: (data.value?.length || 0) > 0,
+              sample: data.value?.[0] ? {
+                subject: data.value[0].subject,
+                from: data.value[0].from?.emailAddress?.address,
+                date: data.value[0].receivedDateTime
+              } : null
+            });
+          } else {
+            const errorData: any = await response.json();
+            folderTests.push({
+              folder,
+              status: 'error',
+              error: errorData.error?.message || response.statusText
+            });
+          }
+        } catch (error: any) {
+          folderTests.push({
+            folder,
+            status: 'error',
+            error: error.message
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        account: account.account_email,
+        folderTests
+      });
+
+    } catch (error: any) {
+      logger.error('[Outlook Test] Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   })
 );
@@ -272,6 +438,7 @@ router.get(
     const { id } = req.params;
 
     // Get conversation (email-only, never LinkedIn)
+    // ✅ CRITICAL: Only fetch inbox emails, NEVER sent/archive/deleted
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .select(`
@@ -285,6 +452,10 @@ router.get(
     if (convError || !conversation) {
       return res.status(404).json({ error: 'Email not found' });
     }
+
+    // ✅ LOG: Track which folder this email is from
+    logger.info(`[GET /api/emails/${id}] Fetching email body for: ${conversation.sender_name}, Folder: ${conversation.email_folder || 'inbox'}`);
+    logger.info(`[GET /api/emails/${id}] DEBUG: gmail_message_id=${conversation.gmail_message_id}, outlook_message_id=${(conversation as any).outlook_message_id}, received_account=${!!conversation.received_account}`);
 
     // If body already fetched (lazy-loaded previously), return from cache
     if (conversation.email_body_fetched_at && conversation.email_body_html) {
@@ -320,35 +491,47 @@ router.get(
           conversation.received_account as any
         );
 
+        // ✅ CRITICAL FIX: Always preserve preview field even when body is fetched
         return res.json({ 
           data: {
             ...conversation,
-            email_body: bodyResult.html, // Return HTML body
-            email_body_html: bodyResult.html,
-            email_body_text: bodyResult.text,
+            email_body: bodyResult.html || bodyResult.text || conversation.preview || '', // Multiple fallbacks
+            email_body_html: bodyResult.html || null,
+            email_body_text: bodyResult.text || null,
+            preview: conversation.preview || bodyResult.text?.substring(0, 500) || '', // ✅ ALWAYS preserve preview
             email_attachments: bodyResult.attachments,
-            has_full_body: true,
+            has_full_body: !!(bodyResult.html || bodyResult.text),
           }
         });
       } catch (error: any) {
         logger.error('[Lazy Load] Error fetching email body:', error);
         
-        // Return preview if body fetch fails
+        // ✅ CRITICAL FIX: Return preview if body fetch fails - NEVER return empty body
         return res.json({
           data: {
             ...conversation,
-            email_body: conversation.preview || '',
+            email_body: conversation.preview || conversation.email_body || '',
+            email_body_html: null,
+            email_body_text: null,
+            preview: conversation.preview || '', // ✅ ALWAYS preserve preview
             body_fetch_error: error.message,
+            has_full_body: false,
           }
         });
       }
     }
 
     // Fallback to preview if no message ID or can't fetch body
+    // ✅ CRITICAL FIX: Always return preview, never empty
+    logger.warn(`[Lazy Load] No message ID found for ${id}, returning preview only`);
     res.json({ 
       data: {
         ...conversation,
-        email_body: conversation.preview || conversation.email_body || '',
+        email_body: conversation.preview || conversation.email_body || 'No content available',
+        email_body_html: null,
+        email_body_text: null,
+        preview: conversation.preview || '', // ✅ ALWAYS preserve preview
+        has_full_body: false,
       }
     });
   })
@@ -609,68 +792,14 @@ router.post(
         }
       }
 
-      // Store the sent message in the messages table for history
-      // NOTE: For emails, we do NOT update last_message_at or is_read
-      // Emails work differently from LinkedIn chat:
-      // - Inbox stays sorted by email_timestamp (when received)
-      // - Sent emails go to "Sent" folder in email provider
-      // - Original email conversation remains unchanged in inbox
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('full_name, workspace_id')
-        .eq('id', userId)
-        .single();
-
-      await supabaseAdmin
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          sender_id: userId,
-          sender_name: profile?.full_name || 'You',
-          content: body,
-          is_from_lead: false,
-          email_body: body,
-        });
-
-      // Create a "Sent" folder conversation entry (EMAIL ONLY - not LinkedIn)
-      // This makes the sent email appear in the Sent folder view
-      const sentTimestamp = new Date().toISOString();
-      const sentConversationData: any = {
-        conversation_type: 'email', // ← CRITICAL: Only for emails
-        sender_name: profile?.full_name || 'You',
-        sender_email: account.account_email || 'unknown',
-        subject: replyType === "forward" 
-          ? `Fwd: ${conversation.subject || "No Subject"}`
-          : `Re: ${conversation.subject || "No Subject"}`,
-        preview: body.replace(/<[^>]+>/g, '').substring(0, 200), // Strip HTML for preview
-        email_timestamp: sentTimestamp,
-        last_message_at: sentTimestamp,
-        received_on_account_id: account.id,
-        workspace_id: profile?.workspace_id || conversation.workspace_id,
-        email_folder: 'sent', // ← KEY: Makes it appear in Sent folder
-        is_read: true, // Sent emails are always "read"
-        status: 'new',
-        email_body_html: body,
-        email_body_text: body.replace(/<[^>]+>/g, ''),
-        email_body_fetched_at: sentTimestamp,
-        // ⚠️ IMPORTANT: Do NOT add gmail_message_id, gmail_thread_id, outlook_message_id, etc.
-        // Sent folder conversations are LOCAL COPIES only - they don't need provider IDs
-        // Adding provider IDs can cause conflicts with received emails that have the same IDs
-      };
-
-      // Store sent email in conversations table (for Sent folder)
-      // This is a LOCAL COPY for display - completely independent from inbox conversations
-      await supabaseAdmin
-        .from('conversations')
-        .insert(sentConversationData);
-
-      // ⚠️ IMPORTANT: DO NOT update last_message_at for emails!
-      // This is email behavior (not LinkedIn chat):
-      // - Inbox remains sorted by received time (email_timestamp)
-      // - Sent emails don't move the conversation to top
-      // - The sent email lives in the email provider's "Sent" folder
-
-      logger.info(`[Email Send] Successfully sent ${replyType} via ${isGmail ? 'Gmail' : 'Outlook'} and stored in Sent folder`);
+      // ✅ PROVIDER-SYNC-FIRST ARCHITECTURE
+      // Do NOT create local sent messages or conversations
+      // Sent email will be synced from provider's Sent folder during next sync
+      // This matches LinkedIn architecture: provider → sync → display
+      // ✅ PROVIDER-SYNC-FIRST: Complete
+      // Email sent via provider API successfully
+      // Will be synced from provider's Sent folder during next sync
+      logger.info(`[Email Send] ✅ Successfully sent ${replyType} via ${isGmail ? 'Gmail' : 'Outlook'}`);
 
       res.json({
         success: true,
@@ -681,6 +810,113 @@ router.post(
       logger.error('[Email Send] Error:', error);
       res.status(500).json({
         error: `Failed to send email: ${error.message}`,
+      });
+    }
+  })
+);
+
+/**
+ * POST /api/email-sync/resync-outlook
+ * TEMPORARY ADMIN ENDPOINT: Re-sync all Outlook accounts to backfill Sent & Trash folders
+ * This endpoint triggers a full sync for all Outlook accounts to populate provider_folder
+ * Safe to run multiple times (idempotent)
+ */
+router.post(
+  '/resync-outlook',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      logger.info('[Outlook Resync] Starting full Outlook re-sync for Sent & Trash backfill');
+
+      // Fetch all Outlook connected accounts
+      const { data: outlookAccounts, error: fetchError } = await supabaseAdmin
+        .from('connected_accounts')
+        .select('*')
+        .eq('oauth_provider', 'microsoft');
+
+      if (fetchError) {
+        logger.error('[Outlook Resync] Failed to fetch Outlook accounts:', fetchError);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to fetch Outlook accounts' 
+        });
+      }
+
+      if (!outlookAccounts || outlookAccounts.length === 0) {
+        logger.info('[Outlook Resync] No active Outlook accounts found');
+        return res.json({ 
+          success: true, 
+          message: 'No active Outlook accounts to sync',
+          accounts: 0 
+        });
+      }
+
+      logger.info(`[Outlook Resync] Found ${outlookAccounts.length} Outlook account(s) to sync`);
+
+      const results = [];
+
+      // Re-sync each Outlook account
+      for (const account of outlookAccounts) {
+        try {
+          logger.info(`[Outlook Resync] Syncing account: ${account.account_email} (ID: ${account.id})`);
+          
+          // ✅ CRITICAL: Clear last_synced_at to force FULL historical sync (not incremental)
+          // This ensures Microsoft Graph fetches ALL messages from ALL folders (including Sent & Trash)
+          const previousSyncDate = account.last_synced_at;
+          logger.info(`[Outlook Resync] Clearing last_synced_at (was: ${previousSyncDate || 'NULL'}) to force full historical sync`);
+          
+          await supabaseAdmin
+            .from('connected_accounts')
+            .update({ last_synced_at: null })
+            .eq('id', account.id);
+          
+          logger.info(`[Outlook Resync] ✅ Cleared sync cursor - will fetch historical messages from all folders`);
+          
+          // Trigger full sync (includes inbox, sent, trash, etc.)
+          // Now that last_synced_at is NULL, initEmailSync will treat this as INITIAL sync
+          // and fetch messages from the past EMAIL_INITIAL_SYNC_DAYS (default: 30 days)
+          await initEmailSync(account.id, 'full');
+          
+          results.push({
+            accountId: account.id,
+            accountEmail: account.account_email,
+            status: 'success',
+            message: 'Full historical sync completed (Sent & Trash backfilled)'
+          });
+
+          logger.info(`[Outlook Resync] ✅ Successfully synced ${account.account_email} - historical messages backfilled`);
+        } catch (syncError: any) {
+          logger.error(`[Outlook Resync] ❌ Failed to sync ${account.account_email}:`, syncError);
+          results.push({
+            accountId: account.id,
+            accountEmail: account.account_email,
+            status: 'error',
+            message: syncError.message
+          });
+        }
+      }
+
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+
+      logger.info(`[Outlook Resync] Completed: ${successCount} success, ${errorCount} errors`);
+
+      return res.json({
+        success: true,
+        message: `Outlook re-sync completed for ${outlookAccounts.length} account(s)`,
+        summary: {
+          total: outlookAccounts.length,
+          success: successCount,
+          errors: errorCount
+        },
+        results
+      });
+
+    } catch (error: any) {
+      logger.error('[Outlook Resync] Unexpected error:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to resync Outlook accounts: ${error.message}`,
       });
     }
   })

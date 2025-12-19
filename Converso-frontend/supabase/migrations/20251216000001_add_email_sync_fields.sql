@@ -28,3 +28,5 @@ CREATE INDEX IF NOT EXISTS idx_conversations_body_not_fetched
 ON public.conversations(id, conversation_type) 
 WHERE email_body_fetched_at IS NULL AND conversation_type = 'email';
 
+
+

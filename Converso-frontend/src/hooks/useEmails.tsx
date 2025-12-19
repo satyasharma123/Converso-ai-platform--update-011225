@@ -12,6 +12,10 @@ export interface EmailConversation {
   email_timestamp?: string;
   gmail_message_id?: string;
   has_full_body?: boolean;
+  email_body_html?: string; // Lazy-loaded HTML body
+  email_body_text?: string; // Lazy-loaded text body
+  email_body_fetched_at?: string; // Timestamp when body was fetched
+  email_attachments?: EmailAttachment[]; // Received attachments
   is_read: boolean;
   status: string;
   received_account?: {
@@ -19,6 +23,17 @@ export interface EmailConversation {
     account_email?: string;
     account_type: string;
   };
+}
+
+// Email attachment type (received attachments)
+export interface EmailAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  isInline?: boolean;
+  contentId?: string;
+  provider?: 'gmail' | 'outlook';
 }
 
 /**
@@ -75,7 +90,8 @@ export function useEmailsInfinite() {
 }
 
 /**
- * Hook to get email with full body (fetches from Gmail if needed)
+ * Hook to get email with full body (fetches from Gmail/Outlook if needed)
+ * Fetches silently in background - no loading states shown to user
  */
 export function useEmailWithBody(conversationId: string | null) {
   return useQuery({
@@ -83,12 +99,95 @@ export function useEmailWithBody(conversationId: string | null) {
     queryFn: async () => {
       if (!conversationId) return null;
 
-      const email = await apiClient.get<EmailConversation & { body?: string }>(
-        `/api/emails/${conversationId}`
-      );
-      return email;
+      try {
+        // apiClient already unwraps { data: ... } to just the data
+        const emailData = await apiClient.get<EmailConversation & { 
+          email_body?: string; 
+          body?: string;
+          email_body_html?: string;
+          email_body_text?: string;
+        }>(
+          `/api/emails/${conversationId}`
+        );
+        
+        // ✅ CRITICAL FIX: Always preserve preview field (critical fallback)
+        // Never return empty body if preview exists
+        const finalEmailBody = emailData.email_body || 
+                               emailData.body || 
+                               emailData.email_body_html || 
+                               emailData.email_body_text ||
+                               emailData.preview || 
+                               '';
+
+        // ✅ CRITICAL: Ensure preview is never null/empty
+        const preservedPreview = emailData.preview || 
+                                emailData.email_body_text?.substring(0, 500) ||
+                                emailData.email_body_html?.substring(0, 500) ||
+                                '';
+
+        console.log('[useEmailWithBody] Fetched email:', {
+          conversationId,
+          hasHtml: !!emailData.email_body_html,
+          hasText: !!emailData.email_body_text,
+          hasPreview: !!emailData.preview,
+          previewLength: preservedPreview.length,
+        });
+
+        return {
+          ...emailData,
+          email_body: finalEmailBody,
+          email_body_html: emailData.email_body_html || null,
+          email_body_text: emailData.email_body_text || null,
+          preview: preservedPreview, // ✅ CRITICAL: Always preserve preview
+        };
+      } catch (error: any) {
+        // Don't throw on network errors - just return null so preview is shown
+        // Only throw on auth errors (so user can reconnect)
+        if (error?.message?.includes('reconnect') || error?.message?.includes('expired')) {
+          throw error;
+        }
+        console.warn('[useEmailWithBody] Email body fetch failed (will use preview):', error.message);
+        return null;
+      }
     },
     enabled: !!conversationId,
+    retry: (failureCount, error: any) => {
+      // Don't retry auth errors (user needs to reconnect)
+      if (error?.message?.includes('reconnect') || error?.message?.includes('expired')) {
+        return false;
+      }
+      // Retry network errors up to 3 times
+      return failureCount < 3;
+    },
+    retryDelay: (attemptIndex) => Math.min(500 * 2 ** attemptIndex, 3000), // Faster retries: 500ms, 1s, 2s
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
+  });
+}
+
+/**
+ * ✅ STEP 5: Hook to get sent emails (following LinkedIn architecture)
+ * Returns conversations where user sent messages (queried via messages table)
+ */
+export function useSentEmails(enabled: boolean = true) {
+  const { data: workspace } = useWorkspace();
+
+  return useQuery({
+    queryKey: ['sent-emails', workspace?.id],
+    queryFn: async () => {
+      if (!workspace?.id) return [];
+      
+      const response = await apiClient.get<EmailConversation[]>(
+        `/api/emails/sent?workspace_id=${workspace.id}`
+      );
+      return response || [];
+    },
+    enabled: !!workspace?.id && enabled, // ✅ FIX: Only fetch when explicitly enabled
+    // ✅ OPTIMIZED: Sent emails don't change frequently
+    refetchInterval: false, // ✅ FIX: No auto-refresh
+    refetchOnWindowFocus: false, // ✅ FIX: No refetch on window focus
+    refetchOnMount: false, // ✅ FIX: No refetch on component mount
+    staleTime: 5 * 60 * 1000, // ✅ FIX: Data fresh for 5 minutes
   });
 }
 

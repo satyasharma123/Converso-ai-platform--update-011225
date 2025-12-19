@@ -8,11 +8,32 @@ import DOMPurify from 'dompurify';
 
 /**
  * Detect if content is actual HTML (not just plain text)
+ * Returns true only if content has meaningful HTML structure
  */
 export function isActualHtml(content: string): boolean {
   if (!content) return false;
-  // Check for common HTML tags
-  return /<(html|head|body|div|p|table|br|img|a|span|strong|em|b|i|ul|ol|li|blockquote|h[1-6])[>\s]/i.test(content);
+  
+  // Count HTML tags
+  const htmlTagMatches = content.match(/<(html|head|body|div|p|table|br|img|a|span|strong|em|b|i|ul|ol|li|blockquote|h[1-6]|font|center)[>\s]/gi);
+  
+  // If there are multiple HTML tags, it's likely real HTML
+  if (htmlTagMatches && htmlTagMatches.length >= 3) {
+    return true;
+  }
+  
+  // Check for HTML document structure
+  if (/<html/i.test(content) || /<body/i.test(content) || /<head/i.test(content)) {
+    return true;
+  }
+  
+  // Check for formatted content (tables, lists, etc.)
+  if (/<table/i.test(content) || /<ul/i.test(content) || /<ol/i.test(content)) {
+    return true;
+  }
+  
+  // If it only has a few <br> tags or simple formatting, treat as plain text
+  // This handles cases where plain text has been minimally wrapped
+  return false;
 }
 
 /**
@@ -29,29 +50,48 @@ function escapeHtml(text: string): string {
 
 /**
  * Convert plain text to HTML
- * Handles line breaks, paragraphs, and quoted text
+ * Handles line breaks, paragraphs, URLs, and quoted text
  */
 export function convertPlainTextToHtml(text: string): string {
   if (!text) return '';
   
-  // Split by double newlines or common email separators
-  const sections = text.split(/\n{2,}|(?=^On .* wrote:$)|(?=^From:)|(?=^Sent:)|(?=^[-]{3,})|(?=^_{3,})/gm);
+  // Strip any existing minimal HTML tags (like <div>, </div>) that might be wrapping plain text
+  let cleaned = text.replace(/<\/?div[^>]*>/gi, '\n').replace(/<\/?span[^>]*>/gi, '');
   
-  return sections
-    .map((section) => {
-      const trimmed = section.trim();
+  // First, escape HTML entities
+  let escaped = escapeHtml(cleaned);
+  
+  // Convert URLs to clickable links (before we add our own HTML)
+  escaped = escaped.replace(
+    /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+  
+  // Convert email addresses to mailto links
+  escaped = escaped.replace(
+    /([a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/g,
+    '<a href="mailto:$1">$1</a>'
+  );
+  
+  // Split by paragraphs (double newlines or more, or single newlines with significant spacing)
+  const paragraphs = escaped.split(/\n\s*\n+/);
+  
+  return paragraphs
+    .map((para) => {
+      const trimmed = para.trim();
       if (!trimmed) return '';
       
-      // Detect quoted/replied sections
-      const isQuoted = trimmed.startsWith('>') || /^On .* wrote:/i.test(trimmed) || trimmed.startsWith('|');
-      const isSeparator = /^[-_]{3,}/.test(trimmed);
-      const isHeader = /^(From|To|Sent|Subject|Date):/i.test(trimmed);
+      // Detect different types of content
+      const isQuoted = trimmed.startsWith('&gt;') || /^On .* wrote:/i.test(trimmed) || trimmed.startsWith('|');
+      const isSeparator = /^[-_=]{3,}/.test(trimmed);
+      const isHeader = /^(From|To|Cc|Bcc|Sent|Subject|Date):/i.test(trimmed);
       
-      const escaped = escapeHtml(trimmed).replace(/\n/g, '<br />');
+      // Convert single line breaks to <br> (preserve line breaks within paragraphs)
+      const withBreaks = trimmed.replace(/\n/g, '<br />');
       
       if (isQuoted) {
         // Style quoted text as blockquote
-        return `<blockquote class="email-quote">${escaped}</blockquote>`;
+        return `<blockquote class="email-quote">${withBreaks}</blockquote>`;
       }
       
       if (isSeparator) {
@@ -59,10 +99,11 @@ export function convertPlainTextToHtml(text: string): string {
       }
       
       if (isHeader) {
-        return `<p class="email-header-line"><strong>${escaped}</strong></p>`;
+        return `<p class="email-header-line"><strong>${withBreaks}</strong></p>`;
       }
       
-      return `<p>${escaped}</p>`;
+      // Regular paragraph
+      return `<p>${withBreaks}</p>`;
     })
     .filter(Boolean)
     .join('');
@@ -88,6 +129,7 @@ export function sanitizeEmailHtml(html: string): string {
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       'blockquote', 'pre', 'code',
       'font', 'center', // Legacy tags common in emails
+      'article', 'section', 'header', 'footer', 'main', 'aside', 'nav', // HTML5 semantic tags
     ],
     // Allowed attributes
     ALLOWED_ATTR: [
@@ -98,16 +140,19 @@ export function sanitizeEmailHtml(html: string): string {
       'colspan', 'rowspan',
       'color', 'bgcolor', 'face', 'size', // Font attributes
       'dir', 'lang',
+      'type', // For lists (ol type="1")
     ],
     // Allow inline styles (common in emails)
     ALLOW_DATA_ATTR: false,
     // Remove scripts, iframes, etc.
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'applet', 'base', 'form', 'input', 'button'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'applet', 'base', 'form', 'input', 'button', 'textarea', 'select'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
     // Keep document structure
     WHOLE_DOCUMENT: false,
     RETURN_DOM: false,
     RETURN_DOM_FRAGMENT: false,
+    // Add hook to clean up inline styles that might break layout
+    ADD_ATTR: ['target'],
   };
   
   // Sanitize HTML
@@ -184,17 +229,23 @@ export function renderEmailBody(
   // Priority: htmlBody > textBody > preview
   
   // 1. Try HTML body
-  if (htmlBody && isActualHtml(htmlBody)) {
-    return sanitizeEmailHtml(htmlBody);
+  if (htmlBody && htmlBody.trim()) {
+    // Check if it's actual HTML or just plain text wrapped in minimal HTML
+    if (isActualHtml(htmlBody)) {
+      return sanitizeEmailHtml(htmlBody);
+    } else {
+      // It's plain text disguised as HTML, convert it
+      return convertPlainTextToHtml(htmlBody);
+    }
   }
   
   // 2. Try text body
-  if (textBody) {
+  if (textBody && textBody.trim()) {
     return convertPlainTextToHtml(textBody);
   }
   
   // 3. Fallback to preview (from metadata)
-  if (preview) {
+  if (preview && preview.trim()) {
     if (isActualHtml(preview)) {
       return sanitizeEmailHtml(preview);
     }
@@ -386,4 +437,36 @@ export const EMAIL_BODY_STYLES = `
 .email-html-body [class*=" Mso"] {
   font-family: inherit !important;
 }
+
+/* Plain text email body */
+.email-text-body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #111827;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Links in plain text converted to HTML */
+.email-html-body a[href^="http"],
+.email-html-body a[href^="mailto"] {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+/* Email preview fallback */
+.email-preview {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b7280;
+}
 `;
+
+

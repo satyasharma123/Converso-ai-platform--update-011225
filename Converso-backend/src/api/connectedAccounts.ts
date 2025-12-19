@@ -7,7 +7,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  */
 
 export async function getConnectedAccounts(userId?: string, client?: SupabaseClient): Promise<ConnectedAccount[]> {
-  const dbClient = client || supabase;
+  // Always use admin client to bypass RLS for connected accounts query
+  // This is safe because we filter by user_id/workspace_id
+  const dbClient = client || supabaseAdmin;
   
   // If userId is provided, get their workspace_id and fetch all accounts for that workspace
   if (userId) {

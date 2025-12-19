@@ -111,6 +111,18 @@ router.get(
       
       logger.info(`Gmail OAuth successful for user: ${userId}, email: ${userInfo.email}`);
 
+      // Get user's workspace_id from their profile
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', userId)
+        .single();
+      
+      const workspaceId = profile?.workspace_id || null;
+      if (!workspaceId) {
+        logger.warn(`User ${userId} has no workspace_id - account will be created without workspace_id`);
+      }
+
       // Calculate token expiry
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + (tokens.expires_in || 3600));
@@ -127,7 +139,7 @@ router.get(
       let accountId: string;
 
       if (existingAccounts && existingAccounts.length > 0) {
-        // Update existing account with OAuth tokens
+        // Update existing account with OAuth tokens and workspace_id
         accountId = existingAccounts[0].id;
         await supabaseAdmin
           .from('connected_accounts')
@@ -138,12 +150,13 @@ router.get(
             oauth_provider: 'google',
             sync_status: 'pending',
             last_synced_at: null,
+            workspace_id: workspaceId, // Update workspace_id if missing
           })
           .eq('id', accountId);
 
         logger.info(`Updated existing Gmail account: ${accountId}`);
       } else {
-        // Create new connected account
+        // Create new connected account with workspace_id
         // Use supabaseAdmin to bypass RLS since users should be able to connect their own accounts
         const newAccount = await connectedAccountsService.createAccount({
           account_name: `Gmail - ${userInfo.email}`,
@@ -151,6 +164,7 @@ router.get(
           account_type: 'email',
           is_active: true,
           user_id: userId,
+          workspace_id: workspaceId, // ✅ Add workspace_id
           oauth_access_token: tokens.access_token,
           oauth_refresh_token: tokens.refresh_token,
           oauth_token_expires_at: expiresAt.toISOString(),
@@ -159,7 +173,7 @@ router.get(
         }, supabaseAdmin); // Always use admin client to bypass RLS
 
         accountId = newAccount.id;
-        logger.info(`Created new Gmail account: ${accountId}`);
+        logger.info(`Created new Gmail account: ${accountId} with workspace_id: ${workspaceId}`);
       }
 
       // Trigger email sync immediately in background (automatic sync on account creation)
@@ -297,6 +311,18 @@ router.get(
       const userEmail = userInfo.mail || userInfo.userPrincipalName;
       logger.info(`Outlook OAuth successful for user: ${userId}, email: ${userEmail}`);
 
+      // Get user's workspace_id from their profile
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('workspace_id')
+        .eq('id', userId)
+        .single();
+      
+      const workspaceId = profile?.workspace_id || null;
+      if (!workspaceId) {
+        logger.warn(`User ${userId} has no workspace_id - account will be created without workspace_id`);
+      }
+
       // Calculate token expiry
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + (tokens.expires_in || 3600));
@@ -313,7 +339,7 @@ router.get(
       let accountId: string;
 
       if (existingAccounts && existingAccounts.length > 0) {
-        // Update existing account with OAuth tokens
+        // Update existing account with OAuth tokens and workspace_id
         accountId = existingAccounts[0].id;
         await supabaseAdmin
           .from('connected_accounts')
@@ -324,18 +350,20 @@ router.get(
             oauth_provider: 'microsoft',
             sync_status: 'pending',
             last_synced_at: null,
+            workspace_id: workspaceId, // Update workspace_id if missing
           })
           .eq('id', accountId);
 
         logger.info(`Updated existing Outlook account: ${accountId}`);
       } else {
-        // Create new connected account
+        // Create new connected account with workspace_id
         const newAccount = await connectedAccountsService.createAccount({
           account_name: `Outlook - ${userEmail}`,
           account_email: userEmail,
           account_type: 'email',
           is_active: true,
           user_id: userId,
+          workspace_id: workspaceId, // ✅ Add workspace_id
           oauth_access_token: tokens.access_token,
           oauth_refresh_token: tokens.refresh_token,
           oauth_token_expires_at: expiresAt.toISOString(),
@@ -344,7 +372,7 @@ router.get(
         }, supabaseAdmin);
 
         accountId = newAccount.id;
-        logger.info(`Created new Outlook account: ${accountId}`);
+        logger.info(`Created new Outlook account: ${accountId} with workspace_id: ${workspaceId}`);
       }
 
       // Trigger email sync immediately in background (automatic sync on account creation)

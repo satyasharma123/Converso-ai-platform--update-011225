@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trigger Email Sync</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2563eb; }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover { background: #1d4ed8; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .log {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .info { color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Trigger Email Sync</h1>
+        <p>Click the button below to sync emails from Gmail/Outlook, including the <strong>Sent folder</strong>.</p>
+        
+        <button id="triggerSync" onclick="triggerEmailSync()">
+            🚀 Trigger Full Email Sync
+        </button>
+        
+        <button id="checkStatus" onclick="checkSyncStatus()">
+            📊 Check Sync Status
+        </button>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3001';
+        let userId = null;
+        let workspaceId = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const color = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div class="${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function initAuth() {
+            try {
+                const session = JSON.parse(localStorage.getItem('sb-wahvinwuyefmkmgmjspo-auth-token'));
+                if (!session?.user?.id) {
+                    log('❌ Not authenticated. Please log in to Converso first.', 'error');
+                    return false;
+                }
+                userId = session.user.id;
+                log('✅ Authenticated as: ' + (session.user.email || userId), 'success');
+                
+                // Get workspace
+                const wsResponse = await fetch(`${API_URL}/api/workspace`, {
+                    headers: { 'x-user-id': userId }
+                });
+                const wsData = await wsResponse.json();
+                workspaceId = wsData.data?.id;
+                
+                if (workspaceId) {
+                    log('✅ Workspace ID: ' + workspaceId, 'success');
+                }
+                
+                return true;
+            } catch (error) {
+                log('❌ Authentication error: ' + error.message, 'error');
+                return false;
+            }
+        }
+
+        async function triggerEmailSync() {
+            const button = document.getElementById('triggerSync');
+            button.disabled = true;
+            button.textContent = '⏳ Syncing...';
+            
+            log('🔄 Starting email sync...');
+            
+            if (!await initAuth()) {
+                button.disabled = false;
+                button.textContent = '🚀 Trigger Full Email Sync';
+                return;
+            }
+            
+            try {
+                // Get connected email accounts
+                const accountsResponse = await fetch(`${API_URL}/api/connected-accounts?userId=${userId}`, {
+                    headers: { 'x-user-id': userId }
+                });
+                const accountsData = await accountsResponse.json();
+                const emailAccounts = accountsData.data.filter(a => a.account_type === 'email');
+                
+                log(`📧 Found ${emailAccounts.length} email account(s)`);
+                
+                if (emailAccounts.length === 0) {
+                    log('❌ No email accounts connected. Connect Gmail/Outlook first.', 'error');
+                    button.disabled = false;
+                    button.textContent = '🚀 Trigger Full Email Sync';
+                    return;
+                }
+                
+                // Trigger sync for each account
+                for (const account of emailAccounts) {
+                    log(`🔄 Syncing: ${account.account_email}...`);
+                    
+                    const syncResponse = await fetch(`${API_URL}/api/emails/init-sync`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-user-id': userId
+                        },
+                        body: JSON.stringify({ account_id: account.id })
+                    });
+                    
+                    if (syncResponse.ok) {
+                        log(`✅ Sync triggered for: ${account.account_email}`, 'success');
+                    } else {
+                        const error = await syncResponse.text();
+                        log(`❌ Sync failed for ${account.account_email}: ${error}`, 'error');
+                    }
+                }
+                
+                log('✅ All syncs triggered! Wait 20-30 seconds for completion.', 'success');
+                log('📊 Checking sync status in 5 seconds...');
+                
+                setTimeout(checkSyncStatus, 5000);
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+            } finally {
+                button.disabled = false;
+                button.textContent = '🚀 Trigger Full Email Sync';
+            }
+        }
+
+        async function checkSyncStatus() {
+            if (!userId || !workspaceId) {
+                await initAuth();
+            }
+            
+            log('📊 Checking sync status...');
+            
+            try {
+                const accountsResponse = await fetch(`${API_URL}/api/connected-accounts?userId=${userId}`, {
+                    headers: { 'x-user-id': userId }
+                });
+                const accountsData = await accountsResponse.json();
+                const emailAccounts = accountsData.data.filter(a => a.account_type === 'email');
+                
+                for (const account of emailAccounts) {
+                    const statusResponse = await fetch(
+                        `${API_URL}/api/emails/sync-status?workspace_id=${workspaceId}&account_id=${account.id}`,
+                        { headers: { 'x-user-id': userId } }
+                    );
+                    const statusData = await statusResponse.json();
+                    const status = statusData.data?.status || 'unknown';
+                    const lastSynced = statusData.data?.last_synced_at;
+                    
+                    if (status === 'completed') {
+                        log(`✅ ${account.account_email}: Sync completed`, 'success');
+                        if (lastSynced) {
+                            log(`   Last synced: ${new Date(lastSynced).toLocaleString()}`);
+                        }
+                    } else if (status === 'in_progress') {
+                        log(`⏳ ${account.account_email}: Sync in progress...`, 'info');
+                    } else if (status === 'error') {
+                        log(`❌ ${account.account_email}: Sync error`, 'error');
+                        if (statusData.data?.sync_error) {
+                            log(`   Error: ${statusData.data.sync_error}`, 'error');
+                        }
+                    } else {
+                        log(`❓ ${account.account_email}: ${status}`, 'info');
+                    }
+                }
+                
+                log('✅ Status check complete. Refresh your inbox to see results!', 'success');
+                
+            } catch (error) {
+                log('❌ Error checking status: ' + error.message, 'error');
+            }
+        }
+
+        // Auto-init on page load
+        window.addEventListener('load', () => {
+            log('🎯 Ready to sync emails!');
+            log('👉 Make sure you\'re logged in to Converso in another tab first.');
+        });
+    </script>
+</body>
+</html>
+
+

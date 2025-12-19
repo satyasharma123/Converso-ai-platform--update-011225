@@ -8,17 +8,19 @@ import type { Conversation } from '../types';
 export const conversationsService = {
   /**
    * Get conversations with role-based filtering
+   * folder parameter is email-only - LinkedIn is NOT affected
    */
   async getConversations(
     userId: string,
     userRole: 'admin' | 'sdr' | null,
-    type?: 'email' | 'linkedin'
+    type?: 'email' | 'linkedin',
+    folder?: string
   ): Promise<Conversation[]> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
-    return conversationsApi.getConversations(userId, userRole, type);
+    return conversationsApi.getConversations(userId, userRole, type, folder);
   },
 
   /**

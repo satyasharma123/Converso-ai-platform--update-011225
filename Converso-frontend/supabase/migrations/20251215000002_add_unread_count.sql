@@ -111,3 +111,6 @@ WHERE is_read = true;
 
 -- Add comment for documentation
 COMMENT ON COLUMN conversations.unread_count IS 'Number of unread messages from leads in this conversation. Automatically updated by triggers.';
+
+
+

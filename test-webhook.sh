@@ -122,3 +122,6 @@ echo "- Backend logs: Check terminal running 'npm run dev' in Converso-backend"
 echo "- Frontend logs: Check browser console (F12)"
 echo "- ngrok logs: Check terminal running ngrok or visit http://localhost:4040"
 echo ""
+
+
+

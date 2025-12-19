@@ -27,6 +27,7 @@ export interface Conversation {
   stage_assigned_at?: string | null;
   received_on_account_id?: string;
   email_folder?: string | null;
+  derived_folder?: string | null; // ✅ Derived from latest message's provider_folder
   company_name?: string | null;
   location?: string | null;
   // LinkedIn-specific fields
@@ -36,6 +37,9 @@ export interface Conversation {
   last_message_from_lead?: boolean | null; // Track who sent the last message for preview display
   // Email-specific fields (only for conversation_type = 'email')
   email_body?: string | null; // Full email content stored directly in conversation
+  email_body_html?: string | null; // HTML email body
+  email_body_text?: string | null; // Plain text email body
+  email_body_fetched_at?: string | null; // When body was fetched
   has_full_body?: boolean; // Whether full email body has been fetched
   gmail_message_id?: string | null; // Gmail-specific message ID
   gmail_thread_id?: string | null; // Gmail-specific thread ID

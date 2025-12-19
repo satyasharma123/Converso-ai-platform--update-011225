@@ -21,12 +21,13 @@ router.get(
     const userRole = req.user?.role || req.headers['x-user-role'] as 'admin' | 'sdr' | null || 
                      (req.query.userRole as 'admin' | 'sdr' | null) || null;
     const type = req.query.type as 'email' | 'linkedin' | undefined;
+    const folder = req.query.folder as string | undefined;
 
     if (!userId) {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const conversations = await conversationsService.getConversations(userId, userRole, type);
+    const conversations = await conversationsService.getConversations(userId, userRole, type, folder);
     res.json({ data: transformConversations(conversations) });
   })
 );
@@ -281,7 +282,7 @@ router.post(
       
       res.json({ 
         message: 'Messages synced successfully',
-        ...result
+        result
       });
     } catch (err: any) {
       logger.error(`[Conversation Sync] Failed to sync conversation ${id}`, err);

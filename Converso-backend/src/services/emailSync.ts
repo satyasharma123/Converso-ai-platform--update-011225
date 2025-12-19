@@ -274,6 +274,8 @@ export async function initEmailSync(
           const otherPerson = isSentEmail ? parsed.to : parsed.from;
           
           // STEP 1: Find or create conversation by THREAD_ID (not message_id)
+          // ✅ CRITICAL FIX: For SENT emails, also match by recipient email
+          // This prevents forwarded emails from being grouped with original thread
           let existingConvQuery = supabaseAdmin
             .from('conversations')
             .select('id, sender_name, sender_email, subject')
@@ -284,6 +286,11 @@ export async function initEmailSync(
             existingConvQuery = existingConvQuery.eq('gmail_thread_id', parsed.threadId);
           } else if (isOutlook) {
             existingConvQuery = existingConvQuery.eq('outlook_conversation_id', parsed.threadId);
+          }
+          
+          // ✅ For SENT emails, also match by recipient to avoid grouping forwards
+          if (isSentEmail) {
+            existingConvQuery = existingConvQuery.eq('sender_email', otherPerson.email);
           }
           
           const { data: existingConv } = await existingConvQuery.single();

@@ -11,6 +11,9 @@ export const LINKEDIN_DAILY_DM_LIMIT = parseInt(process.env.LINKEDIN_DAILY_DM_LI
 export const LINKEDIN_DAILY_DM_WARN_AT = parseInt(process.env.LINKEDIN_DAILY_DM_WARN_AT || '80', 10);
 export const LINKEDIN_INITIAL_SYNC_DAYS = parseInt(process.env.LINKEDIN_INITIAL_SYNC_DAYS || '30', 10);
 
+// Email sync configuration
+export const EMAIL_INITIAL_SYNC_DAYS = parseInt(process.env.EMAIL_INITIAL_SYNC_DAYS || '30', 10);
+
 if (!UNIPILE_API_KEY) {
   console.warn('[Unipile Config] UNIPILE_API_KEY is not set! LinkedIn integration will not work.');
 }

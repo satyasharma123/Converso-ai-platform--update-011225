@@ -33,41 +33,61 @@ router.get(
     }
 
     // Get all messages
+    // Get all messages
     let messages = await messagesService.getMessages(conversationId);
 
-    // Fetch full email body for the latest message if it's missing
-    // This ensures the main email displays fully when opened
+    // Fetch full email bodies for ALL messages that are missing them
+    // This ensures all emails in the thread display fully when opened
     if (conversation.received_account && messages.length > 0) {
       const account = conversation.received_account as any;
       const isGmail = account.oauth_provider === 'google';
       const isOutlook = account.oauth_provider === 'microsoft';
       
       if (isGmail || isOutlook) {
-        // Get the latest message (most recent)
-        const latestMessage = messages[messages.length - 1] as any;
-        const messageId = latestMessage?.gmail_message_id || latestMessage?.outlook_message_id;
+        const { fetchGmailEmailBody } = await import('../services/gmailIntegration');
+        const { fetchOutlookEmailBody } = await import('../services/outlookIntegration');
         
-        // Fetch body if message has ID but no email_body
-        if (messageId && !latestMessage?.email_body) {
-          try {
-            const { fetchGmailEmailBody } = await import('../services/gmailIntegration');
-            const { fetchOutlookEmailBody } = await import('../services/outlookIntegration');
-            
-            const body = isGmail
-              ? await fetchGmailEmailBody(account, messageId)
-              : await fetchOutlookEmailBody(account, messageId);
-            
-            // Update message in database
-            await supabaseAdmin
-              .from('messages')
-              .update({ email_body: body })
-              .eq('id', latestMessage.id);
-            
-            // Update message object for response
-            latestMessage.email_body = body;
-          } catch (error: any) {
-            logger.error(`Error fetching email body for message ${latestMessage.id}:`, error);
-            // Continue - will show snippet instead
+        // Fetch bodies for ALL messages that don't have them
+        for (const message of messages) {
+          const msg = message as any;
+          const messageId = msg.gmail_message_id || msg.outlook_message_id;
+          
+          // Check if message needs body fetching (no html_body AND no text_body)
+          const needsBody = messageId && !msg.html_body && !msg.text_body;
+          
+          // Debug logging to understand why some messages don't fetch
+          if (!needsBody && !msg.html_body && !msg.text_body) {
+            logger.warn(`[Messages] Skipping body fetch for message ${msg.id}: No provider message ID (gmail_message_id=${!!msg.gmail_message_id}, outlook_message_id=${!!msg.outlook_message_id})`);
+          }
+          
+          if (needsBody) {
+            try {
+              logger.info(`[Messages] Fetching body for message ${msg.id} (messageId: ${messageId})`);
+              
+              const bodyResult = isGmail
+                ? await fetchGmailEmailBody(account, messageId)
+                : await fetchOutlookEmailBody(account, messageId);
+              
+              // Update message in database with html_body and text_body
+              await supabaseAdmin
+                .from('messages')
+                .update({ 
+                  html_body: bodyResult.htmlBody || null,
+                  text_body: bodyResult.textBody || null,
+                  email_body: bodyResult.htmlBody || bodyResult.textBody || msg.content, // Legacy field
+                })
+                .eq('id', msg.id);
+              
+              // Update message object for response
+              msg.html_body = bodyResult.htmlBody || null;
+              msg.text_body = bodyResult.textBody || null;
+              msg.email_body = bodyResult.htmlBody || bodyResult.textBody || msg.content;
+              
+              logger.info(`[Messages] ✅ Body fetched for message ${msg.id}: HTML=${bodyResult.htmlBody?.length || 0}b, Text=${bodyResult.textBody?.length || 0}b`);
+            } catch (error: any) {
+              logger.error(`[Messages] Error fetching body for message ${msg.id}:`, error.message);
+              // Continue - will show snippet/content instead
+            }
           }
         }
       }

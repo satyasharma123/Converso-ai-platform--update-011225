@@ -37,3 +37,6 @@ ALTER TABLE public.messages
 CREATE INDEX IF NOT EXISTS idx_messages_provider
   ON public.messages(provider)
   WHERE provider IS NOT NULL;
+
+
+

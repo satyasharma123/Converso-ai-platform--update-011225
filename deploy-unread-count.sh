@@ -106,3 +106,6 @@ echo "=================================="
 echo -e "${GREEN}✓ Deployment script complete!${NC}"
 echo ""
 echo "Need help? Check UNREAD_COUNT_IMPLEMENTATION.md"
+
+
+

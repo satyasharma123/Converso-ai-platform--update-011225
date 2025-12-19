@@ -7,19 +7,21 @@ import type { Conversation } from '@backend/src/types';
 // Re-export types for convenience
 export type { Conversation } from '@backend/src/types';
 
-export function useConversations(type?: 'email' | 'linkedin') {
+export function useConversations(type?: 'email' | 'linkedin', folder?: string, enabled: boolean = true) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['conversations', type, user?.id],
+    queryKey: ['conversations', type, folder, user?.id],
     queryFn: async () => {
       if (!user) return [];
-      return conversationsApi.list(type);
+      return conversationsApi.list(type, folder);
     },
-    enabled: !!user,
-    refetchInterval: 5000, // Poll every 5 seconds for new messages/conversations
-    refetchOnWindowFocus: true, // Refetch when user focuses window
-    staleTime: 2000, // Data is fresh for 2 seconds
+    enabled: !!user && enabled, // ✅ FIX: Allow conditional enabling
+    // ✅ OPTIMIZED: Only LinkedIn gets polling, Email uses manual refresh
+    refetchInterval: type === 'linkedin' ? 15000 : false, // LinkedIn: 15s, Email: manual only
+    refetchOnWindowFocus: type === 'linkedin', // ✅ FIX: Only LinkedIn auto-refetches
+    refetchOnMount: false, // ✅ FIX: Don't refetch on component mount
+    staleTime: 5 * 60 * 1000, // ✅ FIX: Data fresh for 5 minutes (was 30s!)
   });
 }
 

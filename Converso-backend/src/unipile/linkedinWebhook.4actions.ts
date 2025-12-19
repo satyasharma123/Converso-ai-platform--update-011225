@@ -605,8 +605,8 @@ export async function handleLinkedInWebhook(req: Request, res: Response) {
   const chatId =
     event.chat_id ||
     event.message?.chat_id ||
-    event.message?.provider_chat_id ||
-    event.provider_chat_id;
+    (event.message as any)?.provider_chat_id ||
+    (event as any).provider_chat_id;
 
   const accountId =
     event.account_id ||

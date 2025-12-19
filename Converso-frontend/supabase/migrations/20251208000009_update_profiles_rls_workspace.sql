@@ -21,3 +21,6 @@ CREATE POLICY "Users can view profiles in their workspace"
 -- Add comment explaining the policy
 COMMENT ON POLICY "Users can view profiles in their workspace" ON public.profiles IS 
 'Users can only view profiles (team members) from their own workspace';
+
+
+
