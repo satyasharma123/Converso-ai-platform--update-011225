@@ -17,7 +17,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
-import { useEmailWithBody } from "@/hooks/useEmails";
 import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilter";
 import { toast } from "sonner";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
@@ -54,7 +53,10 @@ export default function EmailInbox() {
   }, [location]);
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
-  const { data: conversations = [], isLoading, error: conversationsError } = useConversations('email');
+  
+  // ✅ MULTI-FOLDER SUPPORT: Fetch conversations for selected folder only
+  // Backend filters by folder using message-level provider_folder
+  const { data: conversations = [], isLoading, error: conversationsError } = useConversations('email', selectedFolder);
   
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
@@ -222,8 +224,9 @@ export default function EmailInbox() {
     }, 2000);
     
     return () => clearTimeout(timeoutId);
+    // ✅ FIX: Remove syncStatuses.length and connectedAccounts.length from deps to prevent refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, connectedAccounts.length, syncStatuses.length, workspace?.id]);
+  }, [user?.id, workspace?.id]);
 
   // Auto-sync every 15 minutes
   useEffect(() => {
@@ -236,22 +239,25 @@ export default function EmailInbox() {
     }, 15 * 60 * 1000); // 15 minutes
     
     return () => clearInterval(syncInterval);
+    // ✅ FIX: Remove connectedAccounts.length from deps to prevent refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, workspace?.id, connectedAccounts.length]);
+  }, [user?.id, workspace?.id]);
 
+  // ✅ FIX: Removed debug useEffect that was causing refetch loops on conversations changes
   // Debug: Log all conversations with their stage IDs when filter is active
-  useEffect(() => {
-    if (filterState.stage !== 'all') {
-      console.log('[Filter Debug] All conversations with stages:', conversations.map(conv => ({
-        id: conv.id,
-        subject: (conv as any).subject?.substring(0, 40),
-        custom_stage_id: (conv as any).custom_stage_id,
-        customStageId: (conv as any).customStageId,
-        assignedStageId: (conv as any).custom_stage_id || (conv as any).customStageId || 'NULL'
-      })));
-      console.log('[Filter Debug] Active stage filter:', filterState.stage);
-    }
-  }, [filterState.stage, conversations]);
+  // (Commenting out to prevent refetch loops - enable only for debugging)
+  // useEffect(() => {
+  //   if (filterState.stage !== 'all') {
+  //     console.log('[Filter Debug] All conversations with stages:', conversations.map(conv => ({
+  //       id: conv.id,
+  //       subject: (conv as any).subject?.substring(0, 40),
+  //       custom_stage_id: (conv as any).custom_stage_id,
+  //       customStageId: (conv as any).customStageId,
+  //       assignedStageId: (conv as any).custom_stage_id || (conv as any).customStageId || 'NULL'
+  //     })));
+  //     console.log('[Filter Debug] Active stage filter:', filterState.stage);
+  //   }
+  // }, [filterState.stage, conversations]);
 
   // Apply filters
   const filteredConversations = conversations
@@ -269,8 +275,8 @@ export default function EmailInbox() {
         searchQuery === '' ||
         searchTarget.includes(searchQuery.toLowerCase());
 
-      const folder = (conv as any).email_folder || (conv as any).emailFolder || 'inbox';
-      const matchesFolder = folder === selectedFolder;
+      // ✅ NO FOLDER FILTERING: Backend already filtered by folder
+      // Conversations returned are already for the selected folder
 
       const isUnread = !(conv.is_read ?? (conv as any).isRead ?? false);
       const isFavorite = Boolean((conv as any).is_favorite ?? (conv as any).isFavorite);
@@ -312,7 +318,7 @@ export default function EmailInbox() {
         }
       }
 
-      const allMatches = matchesAccount && matchesSearch && matchesFolder && matchesTab && matchesSdr && matchesStage;
+      const allMatches = matchesAccount && matchesSearch && matchesTab && matchesSdr && matchesStage;
       
       // Log when a conversation matches all filters (only when stage filter is active)
       if (filterState.stage !== 'all' && allMatches) {
@@ -320,7 +326,7 @@ export default function EmailInbox() {
           id: conv.id,
           subject: (conv as any).subject?.substring(0, 30),
           stageId: normalizedStageId,
-          matches: { account: matchesAccount, search: matchesSearch, folder: matchesFolder, tab: matchesTab, sdr: matchesSdr, stage: matchesStage }
+          matches: { account: matchesAccount, search: matchesSearch, tab: matchesTab, sdr: matchesSdr, stage: matchesStage }
         });
       }
       
@@ -331,19 +337,21 @@ export default function EmailInbox() {
       selected: selectedConversations.includes(conv.id),
     }));
 
+  // ✅ FIX: Removed debug useEffect that was causing refetch loops
   // Debug: Log filtered results count
-  useEffect(() => {
-    if (filterState.stage !== 'all') {
-      console.log('[Filter Debug] Filtered results:', {
-        totalConversations: conversations.length,
-        filteredCount: filteredConversations.length,
-        activeStageFilter: filterState.stage,
-        activeSdrFilter: filterState.sdr,
-        activeFolder: selectedFolder,
-        activeTab: tabValue
-      });
-    }
-  }, [filteredConversations.length, filterState, conversations.length, selectedFolder, tabValue]);
+  // (Commenting out to prevent refetch loops - enable only for debugging)
+  // useEffect(() => {
+  //   if (filterState.stage !== 'all') {
+  //     console.log('[Filter Debug] Filtered results:', {
+  //       totalConversations: conversations.length,
+  //       filteredCount: filteredConversations.length,
+  //       activeStageFilter: filterState.stage,
+  //       activeSdrFilter: filterState.sdr,
+  //       activeFolder: selectedFolder,
+  //       activeTab: tabValue
+  //     });
+  //   }
+  // }, [filteredConversations.length, filterState, conversations.length, selectedFolder, tabValue]);
 
   const handleToggleSelect = (id: string) => {
     setSelectedConversations(prev => 
@@ -426,69 +434,23 @@ export default function EmailInbox() {
     setSelectedConversations([]);
   };
 
+  // ✅ MINIMAL FIX: Conversation is metadata only, messages contain email body
+  // This prevents body loss when conversations cache is invalidated
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
-  const shouldFetchFullBody = !!(
-    selectedConv &&
-    (!selectedConv.email_body || !(selectedConv as any).has_full_body)
-  );
-
-  // Lazy-load email body when opening email (metadata-only sync architecture)
-  // Fetches from provider on first open, then caches in DB for instant subsequent opens
-  const {
-    data: fetchedEmail,
-    isLoading: isLoadingEmailBody,
-    isError: isEmailBodyError,
-    error: emailBodyError,
-    refetch: refetchEmailBody,
-  } = useEmailWithBody(shouldFetchFullBody ? selectedConv?.id ?? null : null);
-
-  const conversationForView = useMemo(() => {
-    if (!selectedConv) return null;
-
-    // Lazy loading: Show preview immediately, then replace with full body when fetched
-    // Priority: fetchedEmail (lazy-loaded) > selectedConv (cached) > preview (metadata)
-    
-    // Get HTML body
-    const emailBodyHtml = fetchedEmail?.email_body_html || 
-                          selectedConv.email_body_html || 
-                          null;
-    
-    // Get text body
-    const emailBodyText = fetchedEmail?.email_body_text || 
-                          selectedConv.email_body_text || 
-                          null;
-    
-    // Backward compatibility: old email_body field
-    const legacyEmailBody = fetchedEmail?.email_body || 
-                            selectedConv.email_body || 
-                            null;
-
-    // IMPORTANT: Only merge email body-related fields from fetchedEmail
-    // Never overwrite core conversation fields like sender_name, sender_email, etc.
-    return {
-      ...selectedConv, // Base conversation data (sender, metadata, etc.)
-      // Only merge these specific fields from fetchedEmail:
-      email_body_html: emailBodyHtml,
-      email_body_text: emailBodyText,
-      email_body: emailBodyHtml || legacyEmailBody || selectedConv.preview || '',
-      email_attachments:
-        fetchedEmail?.email_attachments ||
-        (fetchedEmail as any)?.emailAttachments ||
-        selectedConv.email_attachments ||
-        [],
-      has_full_body:
-        fetchedEmail?.has_full_body ??
-        (fetchedEmail as any)?.has_full_body ??
-        (selectedConv as any)?.has_full_body,
-      email_body_fetched_at: fetchedEmail?.email_body_fetched_at || selectedConv.email_body_fetched_at,
-      isLazyLoading: isLoadingEmailBody, // Track lazy-loading state
-    };
-  }, [selectedConv, fetchedEmail, isLoadingEmailBody]);
-
-  // Only show error if it's a critical auth issue (not network/timeout)
-  const hasEmailBodyError = isEmailBodyError && 
-    emailBodyError?.message?.includes('reconnect your account');
+  
+  // Fetch messages for selected conversation (contains email body)
+  // Messages cache is independent of conversations cache
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
+
+  // 🔍 DEBUG: Log data sources for troubleshooting
+  if (process.env.NODE_ENV === 'development' && selectedConv) {
+    console.log('[EmailInbox] Data sources:', {
+      conversationId: selectedConv.id,
+      conversationHasPreview: !!selectedConv.preview,
+      messagesCount: messagesForSelected.length,
+      firstMessageHasBody: !!(messagesForSelected[0] as any)?.html_body || !!(messagesForSelected[0] as any)?.text_body,
+    });
+  }
 
   // Calculate engagement score based on message count, response time, and activity
   const calculateEngagementScore = (messageCount: number, lastMessageAt: string | null): number => {
@@ -881,45 +843,31 @@ export default function EmailInbox() {
               isProfileOpen && "pr-[360px]"
             )}
           >
-            {conversationForView ? (
+            {selectedConv ? (
               <div className="h-full flex flex-col">
                 <EmailView 
                   conversation={{
-                    id: conversationForView.id,
-                    senderName: (conversationForView as any).senderName || conversationForView.sender_name || '',
-                    senderEmail: (conversationForView as any).senderEmail || conversationForView.sender_email || '',
-                    subject: conversationForView.subject || '',
-                    status: conversationForView.status,
-                    assigned_to: (conversationForView as any).assigned_to || (conversationForView as any).assignedTo,
-                    custom_stage_id: (conversationForView as any).custom_stage_id || (conversationForView as any).customStageId || null,
-                    is_read: conversationForView.is_read,
-                    email_body: (conversationForView as any).email_body || null,
-                    preview: (conversationForView as any).preview || null,
-                    email_timestamp: (conversationForView as any).emailTimestamp || (conversationForView as any).email_timestamp || conversationForView.last_message_at,
-                    received_account: (conversationForView as any).received_account || (conversationForView as any).receivedAccount || null,
-                  email_attachments: (conversationForView as any).email_attachments || (conversationForView as any).emailAttachments || [],
-                }} 
-                messages={messagesForSelected as any}
-              />
-              {hasEmailBodyError && (
-                <div className="absolute top-4 right-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 shadow-lg flex items-center gap-3 max-w-md">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="font-medium">Account reconnection needed</p>
-                    <p className="text-amber-700 mt-0.5">
-                      Your Outlook account needs to be reconnected to load new emails.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => window.location.href = '/settings?tab=integrations'}
-                    size="sm"
-                    variant="outline"
-                    className="whitespace-nowrap text-xs h-7"
-                  >
-                    Reconnect
-                  </Button>
-                </div>
-              )}
+                    id: selectedConv.id,
+                    senderName: (selectedConv as any).senderName || selectedConv.sender_name || '',
+                    senderEmail: (selectedConv as any).senderEmail || selectedConv.sender_email || '',
+                    subject: selectedConv.subject || '',
+                    status: selectedConv.status,
+                    assigned_to: (selectedConv as any).assigned_to || (selectedConv as any).assignedTo,
+                    custom_stage_id: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
+                    is_read: selectedConv.is_read,
+                    // ✅ MINIMAL FIX: Pass preview for fallback, but EmailView will use messages for body
+                    preview: (selectedConv as any).preview || '',
+                    email_timestamp: (selectedConv as any).emailTimestamp || (selectedConv as any).email_timestamp || selectedConv.last_message_at,
+                    received_account: (selectedConv as any).received_account || (selectedConv as any).receivedAccount || null,
+                    email_folder: (selectedConv as any).email_folder || (selectedConv as any).emailFolder || null,
+                    derived_folder: (selectedConv as any).derived_folder || (selectedConv as any).derivedFolder || null,
+                    folder_name: (selectedConv as any).folder_name || (selectedConv as any).folderName || null,
+                    folder_sender_name: (selectedConv as any).folder_sender_name || (selectedConv as any).folderSenderName || null,
+                    folder_sender_email: (selectedConv as any).folder_sender_email || (selectedConv as any).folderSenderEmail || null,
+                    folder_is_from_lead: (selectedConv as any).folder_is_from_lead ?? (selectedConv as any).folderIsFromLead ?? null,
+                  }} 
+                  messages={messagesForSelected as any}
+                />
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">

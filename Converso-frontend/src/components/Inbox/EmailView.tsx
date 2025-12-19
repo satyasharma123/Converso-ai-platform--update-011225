@@ -93,6 +93,15 @@ interface EmailViewProps {
     folder_sender_name?: string; // Sender name from latest message in folder
     folder_sender_email?: string; // Sender email from latest message in folder
     folder_is_from_lead?: boolean; // If false, it's sent by us
+    // CamelCase variations for compatibility
+    folderName?: string;
+    folderSenderName?: string;
+    folderSenderEmail?: string;
+    folderIsFromLead?: boolean;
+    email_folder?: string | null;
+    emailFolder?: string | null;
+    derived_folder?: string | null;
+    derivedFolder?: string | null;
   };
   messages: Message[];
 }
@@ -157,6 +166,43 @@ export function EmailView({ conversation, messages }: EmailViewProps) {
   const sdrs = teamMembers?.filter(member => member.role === 'sdr') || [];
   const assignedSdr = sdrs.find(sdr => sdr.id === conversation.assigned_to);
   const currentStage = pipelineStages?.find(stage => stage.id === conversation.custom_stage_id);
+
+  const normalizedFolderName =
+    conversation.folder_name ||
+    conversation.folderName ||
+    conversation.derived_folder ||
+    conversation.derivedFolder ||
+    conversation.email_folder ||
+    conversation.emailFolder ||
+    null;
+
+  const isSentFolderView = normalizedFolderName ? ['sent', 'drafts'].includes(normalizedFolderName) : false;
+  const folderSenderName = conversation.folder_sender_name || conversation.folderSenderName || null;
+  const folderSenderEmail = conversation.folder_sender_email || conversation.folderSenderEmail || null;
+  const folderIsFromLead = conversation.folder_is_from_lead ?? conversation.folderIsFromLead ?? null;
+  const firstMessage = messages[0] as any;
+  const firstMessageFromLead = typeof firstMessage?.is_from_lead === 'boolean'
+    ? firstMessage.is_from_lead
+    : typeof firstMessage?.isFromLead === 'boolean'
+      ? firstMessage.isFromLead
+      : undefined;
+
+  const isSentByUs = typeof folderIsFromLead === 'boolean'
+    ? folderIsFromLead === false
+    : typeof firstMessageFromLead === 'boolean'
+      ? firstMessageFromLead === false
+      : isSentFolderView;
+
+  const accountName = conversation.received_account?.account_name || 'Me';
+  const accountEmail = conversation.received_account?.account_email || 'me';
+  const recipientName = conversation.senderName || conversation.senderEmail || 'Recipient';
+  const recipientEmail = conversation.senderEmail || '';
+  const incomingSenderName = folderSenderName || conversation.senderName || recipientName;
+  const incomingSenderEmail = folderSenderEmail || conversation.senderEmail || recipientEmail;
+  const headerFromName = isSentByUs ? accountName : incomingSenderName;
+  const headerFromEmail = isSentByUs ? accountEmail : incomingSenderEmail || accountEmail;
+  const headerToName = isSentByUs ? recipientName : accountName;
+  const headerToEmail = isSentByUs ? (recipientEmail || accountEmail) : accountEmail;
 
   // Helper to check if content is actual HTML vs plain text
   const isActualHtml = (content: string): boolean => {
@@ -345,7 +391,7 @@ const EmailBodyContent = ({
   textBody?: string | null;
   preview?: string | null;
 }) => {
-  // ✅ FINAL FIX: Unwrap JSON if needed, then render HTML directly
+  // ✅ FINAL FIX: Unwrap JSON if needed, then use renderEmailBody utility
   const getActualHtmlBody = (body: string | null | undefined): string | null => {
     if (!body) return null;
     
@@ -365,44 +411,55 @@ const EmailBodyContent = ({
 
   const actualHtmlBody = getActualHtmlBody(htmlBody);
   
-  // Temporary debug log (remove later)
+  // Use the renderEmailBody utility to properly format the email
+  // This handles HTML sanitization and plain text to HTML conversion
+  const renderedBody = renderEmailBody(actualHtmlBody, textBody, preview);
+  
+  // Debug log to help diagnose rendering issues
   React.useEffect(() => {
-    console.log('[EmailBodyContent] HTML unwrapping:', {
-      originalType: typeof htmlBody,
-      wasJsonWrapped: htmlBody?.trim().startsWith('{'),
+    console.log('[EmailBodyContent] Email rendering:', {
+      hasHtmlBody: !!htmlBody,
+      htmlBodyLength: htmlBody?.length || 0,
+      htmlBodyPreview: htmlBody?.slice(0, 150),
       hasActualHtml: !!actualHtmlBody,
-      actualHtmlPreview: actualHtmlBody?.slice(0, 200),
-      hasText: !!textBody,
+      actualHtmlLength: actualHtmlBody?.length || 0,
+      actualHtmlPreview: actualHtmlBody?.slice(0, 150),
+      hasTextBody: !!textBody,
+      textBodyLength: textBody?.length || 0,
+      textBodyPreview: textBody?.slice(0, 150),
       hasPreview: !!preview,
+      previewLength: preview?.length || 0,
+      renderedBodyLength: renderedBody.length,
+      renderedBodyPreview: renderedBody.slice(0, 200),
     });
-  }, [htmlBody, actualHtmlBody, textBody, preview]);
+  }, [htmlBody, actualHtmlBody, textBody, preview, renderedBody]);
 
   return (
     <div className="mt-10 email-body-wrapper">
       <style>{EMAIL_BODY_STYLES}</style>
       
-      {/* Priority 1: Render html_body directly if it exists */}
-      {actualHtmlBody ? (
-        <div 
-          className="email-html-body"
-          dangerouslySetInnerHTML={{ __html: actualHtmlBody }} 
-        />
-      ) : textBody ? (
-        /* Priority 2: Render text_body as plain text */
-        <pre className="email-text-body whitespace-pre-wrap font-sans text-sm leading-relaxed">
-          {textBody}
-        </pre>
-      ) : preview ? (
-        /* Priority 3: Render preview as fallback */
-        <div className="email-preview text-sm text-muted-foreground">
-          {preview}
-        </div>
-      ) : (
-        /* Priority 4: No content available */
-        <div className="text-sm text-muted-foreground italic">
-          No email content available
+      {/* Temporary debug banner - remove after testing */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{ 
+          background: '#fef3c7', 
+          border: '1px solid #f59e0b', 
+          padding: '8px', 
+          marginBottom: '12px', 
+          fontSize: '11px',
+          borderRadius: '4px'
+        }}>
+          <strong>🔧 Debug Info:</strong> {' '}
+          HTML: {actualHtmlBody ? `${actualHtmlBody.length}b` : 'none'} | {' '}
+          Text: {textBody ? `${textBody.length}b` : 'none'} | {' '}
+          Preview: {preview ? `${preview.length}b` : 'none'}
         </div>
       )}
+      
+      {/* Render the properly formatted and sanitized email body */}
+      <div 
+        className="email-html-body"
+        dangerouslySetInnerHTML={{ __html: renderedBody }} 
+      />
     </div>
   );
 };
@@ -1410,10 +1467,10 @@ useEffect(() => {
   return (
     <>
       <div className="flex flex-col h-full">
-        {/* Email Header */}
-        <div className="px-6 py-4 border-b bg-background">
+        {/* Email Header - Sticky */}
+        <div className="flex-shrink-0 border-b bg-background">
           {/* Assign and Stage Dropdowns */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 px-6 pt-4 pb-2">
             <Select value={conversation.assigned_to || 'unassigned'} onValueChange={handleAssign}>
               <SelectTrigger className="w-[140px] h-7 text-xs">
                 <SelectValue placeholder={assignedSdr ? assignedSdr.full_name : 'Assign'} />
@@ -1443,7 +1500,8 @@ useEffect(() => {
             </Select>
           </div>
           
-          <div className="flex items-start justify-between mb-2">
+          {/* Subject and Actions */}
+          <div className="flex items-start justify-between px-6 pb-2">
             <h2 className="text-lg font-semibold">{conversation.subject || "No Subject"}</h2>
             <div className="flex items-center gap-1">
               <Button 
@@ -1487,66 +1545,55 @@ useEffect(() => {
               </DropdownMenu>
             </div>
           </div>
+
+          {/* Sender/Recipient Info - Sticky Header (Outlook Style) */}
+          <div className="px-6 py-3 bg-muted/30 border-t">
+            <div className="flex items-start gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                  {getInitials(conversation.senderName)}
+                </AvatarFallback>
+              </Avatar>
+              
+              <div className="flex-1 min-w-0 flex items-start justify-between">
+                {/* From and To lines */}
+                <div>
+                  <div className="flex items-baseline gap-2 text-sm">
+                    <span className="font-semibold text-foreground">{headerFromName}</span>
+                    <span className="text-muted-foreground text-xs">&lt;{headerFromEmail}&gt;</span>
+                    {isSentByUs && (
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/70 px-1 py-0.5 rounded">
+                        Sent
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-2 text-xs mt-1">
+                    <span className="text-muted-foreground font-medium">To:</span>
+                    <span className="text-foreground flex items-center gap-1">
+                      <span>{headerToName}</span>
+                      {headerToEmail && (
+                        <span className="text-muted-foreground">&lt;{headerToEmail}&gt;</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Date/Time - Right Corner */}
+                <div className="text-xs text-muted-foreground whitespace-nowrap ml-4">
+                  {formatEmailTimestamp(messages[0]?.timestamp || conversation.last_message_at)}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Email Thread */}
-        <ScrollArea className="flex-1 px-6 pt-2 pb-4">
+        {/* Email Thread - Scrollable */}
+        <ScrollArea className="flex-1 px-6 pt-4 pb-4">
           <div className="space-y-0">
             {/* For emails: Display email body from conversation when messages array is empty */}
             {messages.length === 0 && (conversation.email_body || conversation.preview) && (
               <div className="space-y-4 mb-6">
-                <div className="flex items-start gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-base">
-                      {getInitials(conversation.senderName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        {/* ✅ FINAL FIX: Use message-level fields as source of truth */}
-                        {(() => {
-                          // Use folder_is_from_lead from latest message to determine direction
-                          // If folder_is_from_lead === false, it's sent by us
-                          const isSentByUs = conversation.folder_is_from_lead === false;
-                          
-                          if (isSentByUs) {
-                            // SENT EMAIL: From = us, To = recipient (use folder_sender_email from sent message)
-                            const toName = conversation.folder_sender_name || conversation.senderName;
-                            const toEmail = conversation.folder_sender_email || conversation.senderEmail;
-                            return (
-                              <>
-                                <p className="text-base font-semibold text-foreground">
-                                  {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
-                                </p>
-                                <p className="text-sm text-foreground mt-1">
-                                  <span className="font-medium">To:</span> {toName} &lt;{toEmail}&gt;
-                                </p>
-                              </>
-                            );
-                          } else {
-                            // INBOX EMAIL: From = sender (use folder_sender_email from message), To = us
-                            const fromName = conversation.folder_sender_name || conversation.senderName;
-                            const fromEmail = conversation.folder_sender_email || conversation.senderEmail;
-                            return (
-                              <>
-                                <p className="text-base font-semibold text-foreground">
-                                  {fromName} &lt;{fromEmail}&gt;
-                                </p>
-                                <p className="text-sm text-foreground mt-1">
-                                  <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}
-                                </p>
-                              </>
-                            );
-                          }
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* ✅ MINIMAL FIX: Render body from messages[0], not conversation */}
+                {/* Email body directly - sender info now in sticky header */}
                 <EmailBodyContent 
                   htmlBody={(messages[0] as any)?.html_body || null}
                   textBody={(messages[0] as any)?.text_body || null}
@@ -1597,66 +1644,10 @@ useEffect(() => {
             {/* For LinkedIn or emails with messages: Display from messages array */}
             {messages.length > 0 && [...messages].reverse().map((message, index) => (
               <div key={message.id}>
-                {/* Latest message - full display */}
+                {/* Latest message - full display (sender info now in sticky header) */}
                 {index === 0 && (
                   <div className="space-y-4 mb-6">
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarFallback className="bg-primary text-primary-foreground text-base">
-                          {getInitials(message.senderName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            {/* ✅ FINAL FIX: Use message's is_from_lead field as source of truth */}
-                            {(() => {
-                              // Use message.is_from_lead to determine direction
-                              // If is_from_lead === false, it's sent by us
-                              const isSentByUs = (message as any).is_from_lead === false;
-                              
-                              if (isSentByUs) {
-                                // SENT EMAIL: From = us, To = recipient
-                                // Use conversation.folder_sender_email (same as conversation list uses)
-                                // Fallback chain: folder_sender_email -> message.senderEmail -> conversation.senderEmail
-                                const recipientName = conversation.folder_sender_name || message.senderName || conversation.senderName;
-                                const recipientEmail = conversation.folder_sender_email || message.senderEmail || conversation.senderEmail;
-                                return (
-                                  <>
-                                    <p className="text-base font-semibold text-foreground">
-                                      {conversation.received_account?.account_name || 'Me'} &lt;{conversation.received_account?.account_email || 'me'}&gt;
-                                    </p>
-                                    <p className="text-sm text-foreground mt-1">
-                                      <span className="font-medium">To:</span> {recipientName} &lt;{recipientEmail}&gt;
-                                    </p>
-                                  </>
-                                );
-                              } else {
-                                // INBOX EMAIL: From = sender, To = us
-                                // Use conversation.folder_sender_email (same as conversation list uses)
-                                // Fallback chain: folder_sender_email -> message.senderEmail -> conversation.senderEmail
-                                const senderName = conversation.folder_sender_name || message.senderName || conversation.senderName;
-                                const senderEmail = conversation.folder_sender_email || message.senderEmail || conversation.senderEmail;
-                                return (
-                                  <>
-                                    <p className="text-base font-semibold text-foreground">
-                                      {senderName} &lt;{senderEmail}&gt;
-                                    </p>
-                                    <p className="text-sm text-foreground mt-1">
-                                      <span className="font-medium">To:</span> {conversation.received_account?.account_email || 'me'}
-                                    </p>
-                                  </>
-                                );
-                              }
-                            })()}
-                          </div>
-                          <span className="text-sm text-muted-foreground whitespace-nowrap ml-4">{formatEmailTimestamp(message.timestamp)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* ✅ MINIMAL FIX: Render body from message.html_body / text_body */}
+                    {/* Email body directly - no duplicate sender info */}
                     <EmailBodyContent
                       htmlBody={(message as any).html_body || message.email_body || null}
                       textBody={(message as any).text_body || null}

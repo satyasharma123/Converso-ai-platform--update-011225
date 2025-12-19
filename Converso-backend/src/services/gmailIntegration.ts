@@ -99,7 +99,8 @@ export async function fetchGmailEmailMetadata(
       case 'archive':
         query += ' -in:inbox -in:sent -in:drafts -in:trash';
         break;
-      case 'deleted':
+    case 'trash':
+    case 'deleted':
         query += ' in:trash';
         break;
       default:

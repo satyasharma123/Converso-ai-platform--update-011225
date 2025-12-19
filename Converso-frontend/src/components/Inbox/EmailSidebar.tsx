@@ -14,7 +14,7 @@ const folders = [
   { id: "important", label: "Important", icon: Star, countKey: "important" as const },
   { id: "drafts", label: "Drafts", icon: FolderOpen, countKey: "drafts" as const },
   { id: "archive", label: "Archive", icon: Archive, countKey: "archive" as const },
-  { id: "deleted", label: "Deleted Items", icon: Trash2, countKey: "deleted" as const },
+  { id: "deleted", label: "Trash", icon: Trash2, countKey: "deleted" as const },
 ];
 
 export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps) {

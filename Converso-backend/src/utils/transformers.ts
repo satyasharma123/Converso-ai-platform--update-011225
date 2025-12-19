@@ -40,6 +40,25 @@ export function transformConversation(conv: Conversation): any {
     received_on_account_id: conv.received_on_account_id,
     emailFolder: conv.email_folder || 'inbox',
     email_folder: conv.email_folder || 'inbox',
+    derivedFolder: (conv as any).derived_folder || conv.email_folder || 'inbox', // ✅ NEW: From latest message
+    derived_folder: (conv as any).derived_folder || conv.email_folder || 'inbox', // ✅ NEW
+    // Folder-provider truth metadata (only present when folder filter is used)
+    folderName: (conv as any).folder_name || null,
+    folder_name: (conv as any).folder_name || null,
+    folderSenderName: (conv as any).folder_sender_name || null,
+    folder_sender_name: (conv as any).folder_sender_name || null,
+    folderSenderEmail: (conv as any).folder_sender_email || null,
+    folder_sender_email: (conv as any).folder_sender_email || null,
+    folderIsFromLead: typeof (conv as any).folder_is_from_lead === 'boolean'
+      ? (conv as any).folder_is_from_lead
+      : null,
+    folder_is_from_lead: typeof (conv as any).folder_is_from_lead === 'boolean'
+      ? (conv as any).folder_is_from_lead
+      : null,
+    folderPreview: (conv as any).folder_preview || null,
+    folder_preview: (conv as any).folder_preview || null,
+    folderLastMessageAt: (conv as any).folder_last_message_at || null,
+    folder_last_message_at: (conv as any).folder_last_message_at || null,
     companyName: conv.company_name,
     company_name: conv.company_name, // Keep both
     location: conv.location,
@@ -71,6 +90,17 @@ export function transformMessage(msg: Message): any {
     senderName: msg.sender_name,
     content: msg.content,
     email_body: (msg as any).email_body || null,
+    emailBody: (msg as any).email_body || null,
+    html_body: (msg as any).html_body || null,
+    htmlBody: (msg as any).html_body || null,
+    text_body: (msg as any).text_body || null,
+    textBody: (msg as any).text_body || null,
+    gmail_message_id: (msg as any).gmail_message_id || null,
+    gmailMessageId: (msg as any).gmail_message_id || null,
+    outlook_message_id: (msg as any).outlook_message_id || null,
+    outlookMessageId: (msg as any).outlook_message_id || null,
+    provider_folder: (msg as any).provider_folder || null,
+    providerFolder: (msg as any).provider_folder || null,
     isFromLead: msg.is_from_lead,
     createdAt: msg.created_at,
     timestamp: msg.created_at,

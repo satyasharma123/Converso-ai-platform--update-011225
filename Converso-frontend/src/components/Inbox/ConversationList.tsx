@@ -39,6 +39,14 @@ export interface Conversation {
   folder_name?: string; // The folder this message belongs to
   folder_sender_name?: string; // Sender name from latest message in folder
   folder_sender_email?: string; // Sender email from latest message in folder
+  folderName?: string;
+  folderSenderName?: string;
+  folderSenderEmail?: string;
+  folderIsFromLead?: boolean;
+  email_folder?: string | null;
+  emailFolder?: string | null;
+  derived_folder?: string | null;
+  derivedFolder?: string | null;
 }
 
 interface ConversationListProps {
@@ -169,9 +177,17 @@ export function ConversationList({
           // ✅ Use folder-specific preview if available (for email folder views)
           const displayPreview = conversation.folder_preview || conversation.preview;
           
-          // ✅ Use folder-specific sender if available (for email folder views)
-          // This ensures correct sender display when viewing specific folders
-          const displaySenderName = conversation.folder_sender_name || conversation.senderName;
+          const folderName = (conversation as any).folder_name || (conversation as any).folderName || (conversation as any).derived_folder || (conversation as any).derivedFolder || conversation.emailFolder || (conversation as any).email_folder || '';
+          const isSentFolderView = ['sent', 'drafts'].includes(folderName);
+          
+          // ✅ Use recipient info for Sent folder, sender info for others
+          const displaySenderName = isSentFolderView
+            ? ((conversation as any).senderName || conversation.sender_name || conversation.senderEmail || '')
+            : (conversation.folder_sender_name || (conversation as any).folderSenderName || conversation.senderName);
+
+          const displaySenderEmail = isSentFolderView
+            ? ((conversation as any).senderEmail || conversation.sender_email || '')
+            : (conversation.folder_sender_email || (conversation as any).folderSenderEmail || conversation.senderEmail || '');
           
           const initials = (displaySenderName || 'U')
             .split(' ')
@@ -222,6 +238,12 @@ export function ConversationList({
                   )}
                 </div>
               </div>
+
+              {displaySenderEmail && (
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {displaySenderEmail}
+                </div>
+              )}
 
               {/* Second Row: Subject with Action Icon */}
               {conversation.subject && (
