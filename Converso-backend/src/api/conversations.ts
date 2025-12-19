@@ -172,6 +172,7 @@ export async function getConversations(
   console.log(`[EMAIL QUERY RESULT] Found ${conversations.length} conversations BEFORE user state merge`);
   
   // Fetch user-specific state and merge it with conversations
+  // Unread status is user-specific: Admin unread ≠ SDR unread
   if (conversations.length > 0 && userId) {
     const conversationIds = conversations.map(c => c.id);
     const userStates = await getUserConversationStates(userId, conversationIds);
@@ -180,14 +181,14 @@ export async function getConversations(
     conversations = conversations.map(conv => {
       const userState = userStates.get(conv.id);
       if (userState) {
-        // User has specific state - use it
+        // User has specific state - use it (user-specific read/favorite)
         return {
           ...conv,
           is_favorite: userState.is_favorite,
-          is_read: userState.is_read
+          is_read: userState.is_read // User-specific read status
         };
       }
-      // No user-specific state - use conversation defaults
+      // No user-specific state - fallback to conversation defaults (legacy behavior)
       return conv;
     });
   }
@@ -320,6 +321,7 @@ async function getEmailConversationsByFolder(
   console.log(`[EMAIL FOLDER] Filtered to ${filtered.length} conversations with messages in folder: ${folder}`);
   
   // Fetch user-specific state and merge it with conversations
+  // Unread status is user-specific: Admin unread ≠ SDR unread
   let result = filtered as Conversation[];
   if (result.length > 0 && userId) {
     const conversationIds = result.map(c => c.id);
@@ -329,14 +331,14 @@ async function getEmailConversationsByFolder(
     result = result.map(conv => {
       const userState = userStates.get(conv.id);
       if (userState) {
-        // User has specific state - use it
+        // User has specific state - use it (user-specific read/favorite)
         return {
           ...conv,
           is_favorite: userState.is_favorite,
-          is_read: userState.is_read
+          is_read: userState.is_read // User-specific read status
         };
       }
-      // No user-specific state - use conversation defaults
+      // No user-specific state - fallback to conversation defaults (legacy behavior)
       return conv;
     });
   }
@@ -387,7 +389,38 @@ export async function updateConversationStatus(
   if (error) throw error;
 }
 
-export async function markConversationAsRead(conversationId: string): Promise<void> {
+export async function markConversationAsRead(
+  conversationId: string,
+  userId?: string
+): Promise<void> {
+  // If userId provided, use user-specific state (new method)
+  // Admin unread ≠ SDR unread
+  if (userId) {
+    try {
+      const { error } = await supabaseAdmin
+        .from('conversation_user_state')
+        .upsert({
+          conversation_id: conversationId,
+          user_id: userId,
+          is_read: true,
+          is_favorite: false, // Default, will be overwritten if exists
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'conversation_id,user_id',
+          ignoreDuplicates: false
+        });
+      
+      if (!error) {
+        // Success - user-specific read status saved
+        // Do NOT write to conversations.is_read (legacy fallback only)
+        return;
+      }
+    } catch (err) {
+      // Table doesn't exist yet, fall through to legacy method
+    }
+  }
+  
+  // Fallback to legacy method (for backward compatibility or if no userId)
   const { error } = await supabase
     .from('conversations')
     .update({ is_read: true })
@@ -402,7 +435,7 @@ export async function toggleConversationReadStatus(
   isRead: boolean
 ): Promise<void> {
   if (!userId) {
-    // Fallback to old method if no userId
+    // Fallback to legacy method if no userId (backward compatibility)
     const { error } = await supabaseAdmin
       .from('conversations')
       .update({ is_read: isRead })
@@ -411,8 +444,9 @@ export async function toggleConversationReadStatus(
     return;
   }
   
+  // Write to conversation_user_state for user-specific read status
+  // Admin unread ≠ SDR unread
   try {
-    // Try to use conversation_user_state table (new method)
     const { error } = await supabaseAdmin
       .from('conversation_user_state')
       .upsert({
@@ -427,18 +461,16 @@ export async function toggleConversationReadStatus(
       });
     
     if (!error) {
-      // Success with new method
+      // Success - user-specific read status saved
+      // Do NOT write to conversations.is_read (legacy fallback only)
       return;
     }
-    
-    // If error, fall through to old method
-    logger.debug('[Toggle Read] conversation_user_state not available, using fallback');
   } catch (err) {
-    // Table doesn't exist yet, use fallback
-    logger.debug('[Toggle Read] Using fallback method');
+    // Table doesn't exist yet - fallback to legacy method for backward compatibility
   }
   
-  // Fallback to old method
+  // Fallback to legacy method only if conversation_user_state table doesn't exist
+  // This ensures backward compatibility during migration
   const { error } = await supabaseAdmin
     .from('conversations')
     .update({ is_read: isRead })
@@ -451,13 +483,42 @@ export async function markConversationRead(
   conversationId: string,
   userId: string
 ): Promise<void> {
-  // TODO: After migration, use conversation_user_state for user-specific read status
-  // const { error } = await supabaseAdmin.rpc('mark_conversation_read', {
-  //   p_conversation_id: conversationId,
-  //   p_user_id: userId
-  // });
+  if (!userId) {
+    // Fallback to legacy method if no userId (backward compatibility)
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({ is_read: true })
+      .eq('id', conversationId);
+    if (error) throw error;
+    return;
+  }
   
-  // TEMPORARY: Use old method until migration is applied
+  // Write to conversation_user_state for user-specific read status
+  // Admin unread ≠ SDR unread
+  try {
+    const { error } = await supabaseAdmin
+      .from('conversation_user_state')
+      .upsert({
+        conversation_id: conversationId,
+        user_id: userId,
+        is_read: true,
+        is_favorite: false, // Default, will be overwritten if exists
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'conversation_id,user_id',
+        ignoreDuplicates: false
+      });
+    
+    if (!error) {
+      // Success - user-specific read status saved
+      // Do NOT write to conversations.is_read (legacy fallback only)
+      return;
+    }
+  } catch (err) {
+    // Table doesn't exist yet - fallback to legacy method for backward compatibility
+  }
+  
+  // Fallback to legacy method only if conversation_user_state table doesn't exist
   const { error } = await supabaseAdmin
     .from('conversations')
     .update({ is_read: true })
