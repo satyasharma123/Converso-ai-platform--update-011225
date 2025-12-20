@@ -438,6 +438,14 @@ export default function EmailInbox() {
   // This prevents body loss when conversations cache is invalidated
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
   
+  console.log("[LeadProfile Debug] selectedConv:", {
+    id: selectedConv?.id,
+    last_message_at: (selectedConv as any)?.last_message_at,
+    lastMessageAt: (selectedConv as any)?.lastMessageAt,
+    score: (selectedConv as any)?.score,
+    mobile: (selectedConv as any)?.mobile
+  });
+  
   // Fetch messages for selected conversation (contains email body)
   // Messages cache is independent of conversations cache
   const { data: messagesForSelected = [] } = useMessages(selectedConversation);
@@ -521,7 +529,15 @@ export default function EmailInbox() {
     account: getAccountDisplay(selectedConv),
     assignedTo: teamMembers?.find(m => m.id === selectedConv.assigned_to)?.full_name || "Unassigned",
     assignedToId: selectedConv.assigned_to || '',
+    mobile: (selectedConv as any).mobile || null,
+    lastMessageAt: selectedConv.last_message_at || (selectedConv as any).lastMessageAt || null,
+    score: calculateEngagementScore(
+      messagesForSelected.length, 
+      selectedConv.last_message_at || (selectedConv as any).lastMessageAt
+    ),
   } : null;
+
+  console.log("[LeadProfile Debug] leadData:", leadData);
 
   // Generate timeline from actual messages
   const generateTimeline = (conv: typeof selectedConv, messages: typeof messagesForSelected) => {

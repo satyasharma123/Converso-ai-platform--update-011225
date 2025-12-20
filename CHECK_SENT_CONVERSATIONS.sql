@@ -58,3 +58,4 @@ WHERE c.id IN (
     AND provider_folder = 'sent'
 )
 ORDER BY c.id;
+

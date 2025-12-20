@@ -57,3 +57,4 @@ SELECT
   COUNT(*) as count
 FROM messages
 GROUP BY provider;
+

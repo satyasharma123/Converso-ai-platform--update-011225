@@ -191,3 +191,4 @@ This is a **frontend issue**, not backend filtering. The backend is correctly re
 - Only added debug logs to existing filtering logic
 
 The filtering logic was already correct from previous implementation. This patch only adds visibility into what's happening via debug logs.
+

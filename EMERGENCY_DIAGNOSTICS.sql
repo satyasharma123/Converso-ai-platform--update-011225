@@ -76,3 +76,4 @@ JOIN conversations c ON c.id = m.conversation_id
 WHERE c.conversation_type = 'email'
   AND m.created_at >= CURRENT_DATE;
 
+

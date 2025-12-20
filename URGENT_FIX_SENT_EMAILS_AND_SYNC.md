@@ -293,3 +293,4 @@ curl -X POST http://localhost:3001/api/integrations/outlook/sync/YOUR_ACCOUNT_ID
 ---
 
 **Ready to test!** Restart backend, reconnect email account, and watch Terminal 6 for sync logs. The sent email fix will apply during the next sync. 🚀
+

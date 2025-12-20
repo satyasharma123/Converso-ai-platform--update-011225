@@ -26,3 +26,4 @@ curl -s "http://localhost:3001/api/conversations?type=email&userId=$USER_ID" | j
 echo ""
 echo "=== Expected: Different counts for each folder ==="
 echo "=== If all show 612, the fix didn't work ==="
+

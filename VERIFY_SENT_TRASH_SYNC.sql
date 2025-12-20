@@ -111,3 +111,4 @@ WHERE c.conversation_type = 'linkedin';
 -- ✅ Check 7: LinkedIn messages have NO provider_folder (untouched)
 -- ===================================================================
 
+

@@ -22,3 +22,4 @@ FROM conversations c
 WHERE c.conversation_type = 'email'
   AND c.subject LIKE '%McDonald%'
 ORDER BY c.id;
+

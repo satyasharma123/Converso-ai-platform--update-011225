@@ -207,3 +207,4 @@ if (userRole === 'sdr') {
 **PATCH-2 COMPLETE** ✅
 
 Frontend will auto-reload. Test as SDR and Admin to verify assignment controls are properly hidden/shown.
+

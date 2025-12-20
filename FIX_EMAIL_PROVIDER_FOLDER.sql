@@ -115,3 +115,4 @@ LIMIT 10;
 -- 3. ✅ Fixes is_from_lead=FALSE for sent emails (they're from us, not leads)
 -- 4. ❌ NEVER touches LinkedIn messages (provider='linkedin')
 -- ============================================================================
+

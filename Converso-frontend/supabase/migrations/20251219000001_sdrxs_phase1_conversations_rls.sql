@@ -81,3 +81,4 @@ COMMENT ON POLICY "SDRs can view assigned conversations only" ON public.conversa
 --
 -- Test unassigned conversation visibility (SDR should see 0 rows):
 -- SELECT COUNT(*) FROM conversations WHERE assigned_to IS NULL;
+

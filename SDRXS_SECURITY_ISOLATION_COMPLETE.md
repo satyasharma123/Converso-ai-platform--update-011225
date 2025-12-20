@@ -501,3 +501,4 @@ If issues arise during testing, refer to:
 - Individual migration files for SQL schema changes
 - Backend API files for filtering logic
 - Frontend page files for UI changes
+

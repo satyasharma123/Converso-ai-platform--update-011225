@@ -318,3 +318,4 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
     </ScrollArea>
   );
 }
+

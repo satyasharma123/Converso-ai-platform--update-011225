@@ -36,3 +36,4 @@ WHERE c.conversation_type = 'email'
 -- ✅ Expected result: All email messages now have provider_folder
 -- ✅ LinkedIn messages untouched (no conversation_type filter applied to them)
 
+

@@ -43,3 +43,4 @@ ORDER BY column_name;
 -- ✅ Migration applied successfully!
 
 
+

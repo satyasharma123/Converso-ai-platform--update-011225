@@ -42,3 +42,4 @@ COMMENT ON COLUMN public.messages.provider_message_id IS 'Unique message ID from
 COMMENT ON COLUMN public.messages.provider_thread_id IS 'Thread/conversation ID from Gmail/Outlook provider';
 
 
+

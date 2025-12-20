@@ -40,3 +40,4 @@ WHERE provider = 'outlook'
   AND provider_folder = 'sent'
 ORDER BY created_at DESC
 LIMIT 10;
+

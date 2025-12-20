@@ -22,3 +22,4 @@ WHERE provider = 'outlook'
   AND sender_email = 'satya.sharma@live.in'
 ORDER BY created_at DESC
 LIMIT 10;
+

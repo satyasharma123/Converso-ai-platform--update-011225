@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Linkedin, Send, MoreVertical } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useUpdateConversationStage, useUpdateLeadProfile, useAssignConversation } from "@/hooks/useConversations";
@@ -37,6 +37,11 @@ interface LeadProfilePanelProps {
 }
 
 export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps) {
+  // Memoize lead object to force re-render when key fields change
+  const stableLead = useMemo(() => {
+    return lead ? { ...lead } : null;
+  }, [lead?.id, lead?.lastMessageAt, lead?.score, lead?.mobile, lead?.email, lead?.company, lead?.location, lead?.stageId, lead?.assignedToId]);
+
   const { user, userRole } = useAuth();
   const { data: currentUserProfile } = useProfile();
   const [noteText, setNoteText] = useState("");
@@ -55,32 +60,32 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   const [isEditingMobile, setIsEditingMobile] = useState(false);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [isEditingCompany, setIsEditingCompany] = useState(false);
-  const [editedEmail, setEditedEmail] = useState(lead.email || "");
-  const [editedMobile, setEditedMobile] = useState(lead.mobile || "");
-  const [editedLocation, setEditedLocation] = useState(lead.location || "");
-  const [editedCompany, setEditedCompany] = useState(lead.company || "");
+  const [editedEmail, setEditedEmail] = useState(stableLead?.email || "");
+  const [editedMobile, setEditedMobile] = useState(stableLead?.mobile || "");
+  const [editedLocation, setEditedLocation] = useState(stableLead?.location || "");
+  const [editedCompany, setEditedCompany] = useState(stableLead?.company || "");
   
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
   
-  const [selectedStage, setSelectedStage] = useState<string | null>(lead.stageId || null);
-  const [selectedSDR, setSelectedSDR] = useState<string>(lead.assignedToId || "");
+  const [selectedStage, setSelectedStage] = useState<string | null>(stableLead?.stageId || null);
+  const [selectedSDR, setSelectedSDR] = useState<string>(stableLead?.assignedToId || "");
   
   // Sync state with props changes
   useEffect(() => {
-    setEditedEmail(lead.email || "");
-    setEditedMobile(lead.mobile || "");
-    setEditedLocation(lead.location || "");
-    setEditedCompany(lead.company || "");
-  }, [lead.email, lead.mobile, lead.location, lead.company]);
+    setEditedEmail(stableLead?.email || "");
+    setEditedMobile(stableLead?.mobile || "");
+    setEditedLocation(stableLead?.location || "");
+    setEditedCompany(stableLead?.company || "");
+  }, [stableLead?.email, stableLead?.mobile, stableLead?.location, stableLead?.company]);
 
   useEffect(() => {
-    setSelectedSDR(lead.assignedToId || "");
-  }, [lead.assignedToId]);
+    setSelectedSDR(stableLead?.assignedToId || "");
+  }, [stableLead?.assignedToId]);
 
   useEffect(() => {
-    setSelectedStage(lead.stageId || null);
-  }, [lead.stageId]);
+    setSelectedStage(stableLead?.stageId || null);
+  }, [stableLead?.stageId]);
 
   const handleStageChange = (stageId: string) => {
     setSelectedStage(stageId);
@@ -108,7 +113,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   };
 
   const handleSaveEmail = () => {
-    if (conversationId && editedEmail.trim() !== (lead.email || "")) {
+    if (conversationId && editedEmail.trim() !== (stableLead?.email || "")) {
       updateProfileMutation.mutate({
         conversationId,
         updates: { sender_email: editedEmail.trim() || undefined }
@@ -118,7 +123,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   };
 
   const handleSaveMobile = () => {
-    if (conversationId && editedMobile.trim() !== (lead.mobile || "")) {
+    if (conversationId && editedMobile.trim() !== (stableLead?.mobile || "")) {
       updateProfileMutation.mutate({
         conversationId,
         updates: { mobile: editedMobile.trim() || undefined }
@@ -128,7 +133,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   };
 
   const handleSaveLocation = () => {
-    if (conversationId && editedLocation.trim() !== (lead.location || "")) {
+    if (conversationId && editedLocation.trim() !== (stableLead?.location || "")) {
       updateProfileMutation.mutate({
         conversationId,
         updates: { location: editedLocation.trim() || undefined }
@@ -138,7 +143,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   };
 
   const handleSaveCompany = () => {
-    if (conversationId && editedCompany.trim() !== (lead.company || "")) {
+    if (conversationId && editedCompany.trim() !== (stableLead?.company || "")) {
       updateProfileMutation.mutate({
         conversationId,
         updates: { company_name: editedCompany.trim() || undefined }
@@ -187,7 +192,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
     deleteNoteMutation.mutate({ noteId, conversationId });
   };
 
-  const currentSdrId = selectedSDR || lead.assignedToId || "";
+  const currentSdrId = selectedSDR || stableLead?.assignedToId || "";
   const assignedSDR = teamMembers?.find(m => m.id === currentSdrId);
   const assignedSDRName = assignedSDR?.full_name || "Unassigned";
 
@@ -196,17 +201,18 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   const stageName = currentStage?.name || "Prospect";
 
   // Calculate last message time
-  const lastMessageTime = lead.lastMessageAt 
-    ? formatDistanceToNow(new Date(lead.lastMessageAt), { addSuffix: false })
+  const lastMessageTime = stableLead?.lastMessageAt 
+    ? formatDistanceToNow(new Date(stableLead.lastMessageAt), { addSuffix: false })
     : "";
 
   // Get initials for avatar
-  const initials = lead.name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = stableLead?.name
+    ? stableLead.name.split(' ')
+      .map(n => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
+    : "";
 
   // Check if user can edit (both admin and assigned SDR)
   const canEdit = userRole === 'admin' || (userRole === 'sdr' && currentSdrId === user?.id);
@@ -219,9 +225,9 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
           {/* Profile Header */}
           <div className="relative">
             {/* LinkedIn Icon - Top Right */}
-            {lead.linkedinUrl && (
+            {stableLead?.linkedinUrl && (
               <a
-                href={lead.linkedinUrl}
+                href={stableLead.linkedinUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="absolute top-0 right-0 inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#0077B5] hover:bg-[#006399] transition-colors"
@@ -233,13 +239,13 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
             
             <div className="flex flex-col items-center text-center space-y-2">
               <Avatar className="h-12 w-12">
-                <AvatarImage src={lead.profilePictureUrl || undefined} alt={lead.name} />
+                <AvatarImage src={stableLead?.profilePictureUrl || undefined} alt={stableLead?.name} />
                 <AvatarFallback className="bg-muted text-sm font-semibold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="w-full">
-                <h2 className="text-base font-semibold leading-tight">{lead.name}</h2>
+                <h2 className="text-base font-semibold leading-tight">{stableLead?.name}</h2>
                 {isEditingCompany && canEdit ? (
                   <div className="flex items-center justify-center gap-1 mt-0.5">
                     <Input
@@ -250,7 +256,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleSaveCompany();
                         if (e.key === 'Escape') {
-                          setEditedCompany(lead.company || "");
+                          setEditedCompany(stableLead?.company || "");
                           setIsEditingCompany(false);
                         }
                       }}
@@ -263,7 +269,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                     className={`text-xs text-muted-foreground mt-0.5 ${canEdit ? 'cursor-pointer hover:text-foreground' : ''}`}
                     onClick={() => canEdit && setIsEditingCompany(true)}
                   >
-                    {editedCompany || lead.company || "Add company"}
+                    {editedCompany || stableLead?.company || "Add company"}
                   </p>
                 )}
               </div>
@@ -330,7 +336,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveEmail();
                       if (e.key === 'Escape') {
-                        setEditedEmail(lead.email || "");
+                        setEditedEmail(stableLead?.email || "");
                         setIsEditingEmail(false);
                       }
                     }}
@@ -342,9 +348,9 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                 <span 
                   className={`text-xs ${canEdit ? 'cursor-pointer hover:text-foreground' : ''} truncate max-w-[180px]`}
                   onClick={() => canEdit && setIsEditingEmail(true)}
-                  title={editedEmail || lead.email}
+                  title={editedEmail || stableLead?.email}
                 >
-                  {editedEmail || lead.email || "Not set"}
+                  {editedEmail || stableLead?.email || "Not set"}
                 </span>
               )}
             </div>
@@ -361,7 +367,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveMobile();
                       if (e.key === 'Escape') {
-                        setEditedMobile(lead.mobile || "");
+                        setEditedMobile(stableLead?.mobile || "");
                         setIsEditingMobile(false);
                       }
                     }}
@@ -374,7 +380,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                   className={`text-xs ${canEdit ? 'cursor-pointer hover:text-foreground' : ''}`}
                   onClick={() => canEdit && setIsEditingMobile(true)}
                 >
-                  {editedMobile || lead.mobile || "Not set"}
+                  {editedMobile || stableLead?.mobile || "Not set"}
                 </span>
               )}
             </div>
@@ -391,7 +397,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSaveLocation();
                       if (e.key === 'Escape') {
-                        setEditedLocation(lead.location || "");
+                        setEditedLocation(stableLead?.location || "");
                         setIsEditingLocation(false);
                       }
                     }}
@@ -404,7 +410,7 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
                   className={`text-xs ${canEdit ? 'cursor-pointer hover:text-foreground' : ''}`}
                   onClick={() => canEdit && setIsEditingLocation(true)}
                 >
-                  {editedLocation || lead.location || "Not set"}
+                  {editedLocation || stableLead?.location || "Not set"}
                 </span>
               )}
             </div>
@@ -415,19 +421,19 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
             {/* Source */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Source</span>
-              <span className="text-xs font-medium">{lead.source || assignedSDRName}</span>
+              <span className="text-xs font-medium">{stableLead?.source || assignedSDRName}</span>
             </div>
 
             {/* Channel */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Channel</span>
-              <span className="text-xs font-medium capitalize">{lead.channel || (lead.linkedinUrl ? 'LinkedIn' : 'Email')}</span>
+              <span className="text-xs font-medium capitalize">{stableLead?.channel || (stableLead?.linkedinUrl ? 'LinkedIn' : 'Email')}</span>
             </div>
 
             {/* Score */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Score</span>
-              <span className="text-xs font-medium">{lead.score || 50} / 100</span>
+              <span className="text-xs font-medium">{stableLead?.score || 50} / 100</span>
             </div>
           </div>
 

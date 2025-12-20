@@ -58,3 +58,4 @@ WHERE c.conversation_type = 'email'
 GROUP BY c.id, c.subject, c.sender_email
 ORDER BY c.created_at DESC
 LIMIT 10;
+

@@ -17,3 +17,4 @@ ORDER BY provider_folder;
 -- inbox           | 84
 -- sent            | X  ← Should now have messages!
 -- trash           | X  ← Should now have messages!
+

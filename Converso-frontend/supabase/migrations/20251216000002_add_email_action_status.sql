@@ -20,3 +20,4 @@ WHERE conversation_type = 'email' AND email_action_status IS NOT NULL;
 -- The field is never set for conversation_type = 'linkedin'
 
 
+

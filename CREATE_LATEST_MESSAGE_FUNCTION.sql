@@ -28,3 +28,4 @@ SELECT * FROM get_latest_message_folders(
     LIMIT 5
   )
 );
+

@@ -31,3 +31,4 @@ SELECT
   COUNT(*) as total_count
 FROM messages
 WHERE provider = 'outlook';
+

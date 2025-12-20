@@ -198,3 +198,4 @@ DROP FUNCTION IF EXISTS public.get_user_workspace_id(UUID);
 - The `STABLE` function attribute allows query optimization while ensuring correct results
 - Workspace isolation is enforced in addition to role-based access control
 - Future phases will add write operation controls (UPDATE, INSERT, DELETE)
+

@@ -8,3 +8,4 @@ SELECT
   last_synced_at > NOW() - INTERVAL '1 hour' as recently_synced
 FROM connected_accounts
 WHERE oauth_provider = 'microsoft';
+

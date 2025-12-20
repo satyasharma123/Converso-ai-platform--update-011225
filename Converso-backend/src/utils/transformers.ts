@@ -79,6 +79,8 @@ export function transformConversation(conv: Conversation): any {
     emailAttachments: (conv as any).email_attachments || [],
     gmail_message_id: conv.gmail_message_id || (conv as any).gmail_message_id || null,
     outlook_message_id: conv.outlook_message_id || (conv as any).outlook_message_id || null,
+    mobile: (conv as any).mobile ?? null,
+    score: (conv as any).score ?? 50,
   };
 }
 

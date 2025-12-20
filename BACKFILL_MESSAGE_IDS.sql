@@ -64,3 +64,4 @@ WHERE conversation_type = 'email'
   AND (gmail_message_id IS NOT NULL OR outlook_message_id IS NOT NULL)
 LIMIT 5;
 
+

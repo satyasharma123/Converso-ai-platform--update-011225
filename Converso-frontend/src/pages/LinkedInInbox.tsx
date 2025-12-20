@@ -523,17 +523,19 @@ export default function LinkedInInbox() {
   const mockLead = selectedConv ? {
     name: (selectedConv as any).senderName || (selectedConv as any).sender_name || 'Unknown',
     email: (selectedConv as any).senderEmail || (selectedConv as any).sender_email,
-    mobile: (selectedConv as any).mobile,
+    mobile: (selectedConv as any).mobile || null,
     profilePictureUrl: (selectedConv as any).sender_profile_picture_url,
     linkedinUrl: (selectedConv as any).sender_linkedin_url,
     company: (selectedConv as any).company_name || "TechCorp Inc",
     location: (selectedConv as any).location,
     stage: pipelineStages.find(s => s.id === (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id)?.name,
     stageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
-    score: 50,
+    score: Math.min(100, messagesForSelected?.length * 10 || 0),
     source: 'LinkedIn',
     channel: 'LinkedIn',
-    lastMessageAt: (selectedConv as any).last_message_at,
+    lastMessageAt: messagesForSelected?.length
+      ? messagesForSelected[messagesForSelected.length - 1]?.created_at || null
+      : null,
     assignedTo: teamMembers.find(m => m.id === (selectedConv as any).assignedTo || (selectedConv as any).assigned_to)?.full_name,
     assignedToId: (selectedConv as any).assignedTo || (selectedConv as any).assigned_to,
   } : null;

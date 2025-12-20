@@ -13,3 +13,4 @@ FROM messages
 WHERE provider IN ('gmail', 'outlook')
 GROUP BY provider_folder
 ORDER BY count DESC;
+

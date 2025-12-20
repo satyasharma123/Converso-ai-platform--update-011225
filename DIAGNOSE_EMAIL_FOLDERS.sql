@@ -93,3 +93,4 @@ JOIN connected_accounts ca ON c.received_on_account_id = ca.id
 WHERE m.provider IN ('gmail', 'outlook')
   AND m.provider_folder = 'sent'
 GROUP BY validation;
+
