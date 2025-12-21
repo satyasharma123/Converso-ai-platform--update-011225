@@ -9,7 +9,6 @@ interface LeadTileProps {
   onDragStart: (e: React.DragEvent, conversationId: string) => void;
   canDrag: boolean;
   onClick?: () => void;
-  isSelected?: boolean;
 }
 
 // Format date as "Dec 15" or "15 Dec"
@@ -59,6 +58,30 @@ export function LeadTile({ conversation, onDragStart, canDrag, onClick }: LeadTi
       {conversation.preview && (
         <p className="text-xs text-muted-foreground line-clamp-2 max-w-[85%]">{conversation.preview}</p>
       )}
+
+      {/* Counters row */}
+      {(() => {
+        const activityCount = conversation.conversation_type === 'email' 
+          ? (conversation as any).activity_count 
+          : ((conversation as any).activity_count ?? 0);
+        const conversationCount = conversation.conversation_type === 'email'
+          ? (conversation as any).conversation_count
+          : 1;
+        
+        if (activityCount !== undefined || conversationCount !== undefined) {
+          return (
+            <div className="flex items-center gap-2 text-[11px] text-gray-400">
+              {activityCount !== undefined && (
+                <span>Activity · {activityCount}</span>
+              )}
+              {conversationCount !== undefined && (
+                <span>Conversation · {conversationCount}</span>
+              )}
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Increased spacing with pt-3 instead of pt-1 */}
       <div className="flex items-center justify-between pt-3">

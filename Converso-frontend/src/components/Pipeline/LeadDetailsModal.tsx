@@ -54,7 +54,15 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
   const assignedSDR = teamMembers?.find(member => member.id === conversation.assigned_to);
   const currentStage = pipelineStages.find(stage => stage.id === conversation.custom_stage_id);
 
-  // Create lead data for LeadProfilePanel - with safe defaults
+  // Compute counts for pipeline lead details
+  const activityCount = conversation.conversation_type === 'email'
+    ? (conversation as any).activity_count
+    : ((conversation as any).activity_count ?? 0);
+  const conversationCount = conversation.conversation_type === 'email'
+    ? (conversation as any).conversation_count
+    : 1;
+
+  // Create lead data for LeadProfilePanel - match Inbox behavior exactly
   const leadData = {
     name: conversation.sender_name || 'Unknown',
     email: conversation.sender_email || '',
@@ -65,7 +73,7 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
     location: conversation.location || null,
     stage: currentStage?.name || null,
     stageId: conversation.custom_stage_id || null,
-    score: 50,
+    score: (conversation as any).lead_score ?? null, // Use real lead_score or null
     source: conversation.conversation_type === 'linkedin' ? 'LinkedIn' : 'Email',
     channel: conversation.conversation_type === 'linkedin' ? 'LinkedIn' : 'Email',
     lastMessageAt: conversation.last_message_at || null,
@@ -90,10 +98,20 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
               <div className="border-b px-4 pt-2">
                 <TabsList className="w-full justify-start h-12">
                   <TabsTrigger value="activities" className="flex-1 max-w-[200px]">
-                    Activities
+                    <span className="flex items-center gap-2">
+                      Activities
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-muted text-muted-foreground">
+                        {activityCount ?? 0}
+                      </span>
+                    </span>
                   </TabsTrigger>
                   <TabsTrigger value="conversation" className="flex-1 max-w-[200px]">
-                    Conversation History
+                    <span className="flex items-center gap-2">
+                      Conversation History
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-muted text-muted-foreground">
+                        {conversationCount ?? 0}
+                      </span>
+                    </span>
                   </TabsTrigger>
                 </TabsList>
               </div>

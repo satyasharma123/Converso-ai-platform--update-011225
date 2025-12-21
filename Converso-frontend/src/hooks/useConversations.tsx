@@ -48,11 +48,23 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
             received_account: sender.received_account || undefined,
             // Phase-3: Store conversation_ids for bulk update detection
             conversation_ids: sender.conversation_ids,
+            // Counters for pipeline cards
+            activity_count: sender.activity_count,
+            conversation_count: sender.conversation_count,
           } as Conversation;
         });
 
+        // Add counts to LinkedIn conversations
+        const linkedinWithCounts: Conversation[] = linkedinConversations.map((conversation) => ({
+          ...conversation,
+          // LinkedIn conversations are individual threads, not grouped
+          conversation_count: 1,
+          // Activity count defaults to 0 (will be populated by ActivityTimeline if needed)
+          activity_count: (conversation as any).activity_count ?? 0,
+        }));
+
         // Combine email and LinkedIn conversations
-        return [...emailConversations, ...linkedinConversations];
+        return [...emailConversations, ...linkedinWithCounts];
       }
 
       // For specific type requests (used by Inbox):
