@@ -14,6 +14,50 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
     queryKey: ['conversations', type, folder, user?.id],
     queryFn: async () => {
       if (!user) return [];
+      
+      // Phase-2: Conditional data fetching based on conversation_type
+      // For Sales Pipeline (no type specified), fetch email senders + LinkedIn conversations separately
+      if (!type) {
+        // Fetch email senders (grouped by sender_email) and LinkedIn conversations
+        const [emailSenders, linkedinConversations] = await Promise.all([
+          conversationsApi.listEmailSenders().catch(() => []), // Fallback to empty array on error
+          conversationsApi.list('linkedin', folder).catch(() => []), // Fallback to empty array on error
+        ]);
+
+        // Transform SenderPipelineItem[] to Conversation[] format for email
+        const emailConversations: Conversation[] = emailSenders.map((sender) => {
+          // Use first conversation_id as the ID for drag/drop compatibility
+          // This allows existing drag/drop logic to work without changes
+          const primaryConversationId = sender.conversation_ids && sender.conversation_ids.length > 0
+            ? sender.conversation_ids[0]
+            : sender.sender_email; // Fallback to sender_email if no conversation_ids
+
+          return {
+            id: primaryConversationId,
+            sender_name: sender.sender_name,
+            sender_email: sender.sender_email,
+            subject: sender.subject || undefined,
+            preview: sender.preview || '',
+            last_message_at: sender.last_message_at || new Date().toISOString(),
+            conversation_type: 'email' as const,
+            status: 'new' as const, // Default status
+            is_read: false, // Default read status
+            assigned_to: sender.assigned_to || undefined,
+            custom_stage_id: sender.custom_stage_id || undefined,
+            stage_assigned_at: sender.stage_assigned_at || undefined,
+            received_account: sender.received_account || undefined,
+            // Phase-3: Store conversation_ids for bulk update detection
+            conversation_ids: sender.conversation_ids,
+          } as Conversation;
+        });
+
+        // Combine email and LinkedIn conversations
+        return [...emailConversations, ...linkedinConversations];
+      }
+
+      // For specific type requests (used by Inbox):
+      // - Email: use existing endpoint (for inbox, not pipeline)
+      // - LinkedIn: use existing endpoint
       return conversationsApi.list(type, folder);
     },
     enabled: !!user && enabled, // ✅ FIX: Allow conditional enabling
@@ -29,7 +73,28 @@ export function useAssignConversation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ conversationId, sdrId }: { conversationId: string; sdrId: string | null }) => {
+    mutationFn: async ({ 
+      conversationId, 
+      sdrId,
+      conversation 
+    }: { 
+      conversationId: string; 
+      sdrId: string | null;
+      conversation?: Conversation; // Optional: for Phase-3 bulk updates
+    }) => {
+      // Phase-3: Check if this is an email conversation with multiple conversation_ids
+      if (
+        conversation &&
+        conversation.conversation_type === 'email' &&
+        conversation.conversation_ids &&
+        conversation.conversation_ids.length > 1 &&
+        conversation.sender_email
+      ) {
+        // Use bulk endpoint for email senders
+        return conversationsApi.updateEmailSenderAssignment(conversation.sender_email, sdrId);
+      }
+      
+      // Use existing single-conversation endpoint for LinkedIn or single-thread emails
       return conversationsApi.assign(conversationId, sdrId);
     },
     onSuccess: () => {
@@ -135,11 +200,26 @@ export function useUpdateConversationStage() {
   return useMutation({
     mutationFn: async ({ 
       conversationId, 
-      stageId 
+      stageId,
+      conversation 
     }: { 
       conversationId: string; 
       stageId: string | null;
+      conversation?: Conversation; // Optional: for Phase-3 bulk updates
     }) => {
+      // Phase-3: Check if this is an email conversation with multiple conversation_ids
+      if (
+        conversation &&
+        conversation.conversation_type === 'email' &&
+        conversation.conversation_ids &&
+        conversation.conversation_ids.length > 1 &&
+        conversation.sender_email
+      ) {
+        // Use bulk endpoint for email senders
+        return conversationsApi.updateEmailSenderStage(conversation.sender_email, stageId);
+      }
+      
+      // Use existing single-conversation endpoint for LinkedIn or single-thread emails
       return conversationsApi.updateStage(conversationId, stageId);
     },
     onSuccess: () => {

@@ -57,6 +57,8 @@ export interface Conversation {
     oauth_refresh_token?: string | null;
     unipile_account_id?: string | null;
   };
+  // Phase-2: Optional field for email senders grouped by sender_email
+  conversation_ids?: string[]; // Array of conversation IDs for this sender (email only)
 }
 
 export interface Message {
@@ -123,4 +125,27 @@ export interface Profile {
   avatar_url?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SenderPipelineItem {
+  sender_email: string;
+  sender_name: string;
+  channel: 'email';
+  last_message_at: string | null;
+  preview: string | null;
+  subject: string | null;
+  assigned_to: string | null;
+  custom_stage_id: string | null;
+  stage_assigned_at: string | null;
+  conversation_count: number;
+  activity_count: number;
+  received_account: {
+    id: string;
+    account_name: string;
+    account_email: string;
+    account_type: string;
+    oauth_provider: string;
+  } | null;
+  workspace_id: string;
+  conversation_ids: string[];
 }

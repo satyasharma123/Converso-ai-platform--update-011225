@@ -10,6 +10,7 @@ import type {
   PipelineStage,
   TeamMember,
   ConnectedAccount,
+  SenderPipelineItem,
 } from '@backend/src/types';
 
 // ==================== Conversations API ====================
@@ -23,6 +24,13 @@ export const conversationsApi = {
     if (type) params.type = type;
     if (folder) params.folder = folder;
     return apiClient.get<Conversation[]>('/api/conversations', params);
+  },
+
+  /**
+   * Get email senders grouped by sender_email for Sales Pipeline
+   */
+  async listEmailSenders(): Promise<SenderPipelineItem[]> {
+    return apiClient.get<SenderPipelineItem[]>('/api/pipeline/email-senders');
   },
 
   /**
@@ -111,6 +119,26 @@ export const conversationsApi = {
       `/api/conversations/${conversationId}/sync`,
       {}
     );
+  },
+
+  /**
+   * Update stage for all email conversations with a given sender_email (Phase-3: Bulk)
+   */
+  async updateEmailSenderStage(senderEmail: string, stageId: string | null): Promise<{ success: boolean; updated_count: number }> {
+    return apiClient.patch<{ success: boolean; updated_count: number }>('/api/pipeline/email-senders/stage', {
+      sender_email: senderEmail,
+      stage_id: stageId,
+    });
+  },
+
+  /**
+   * Assign SDR for all email conversations with a given sender_email (Phase-3: Bulk)
+   */
+  async updateEmailSenderAssignment(senderEmail: string, assignedTo: string | null): Promise<{ success: boolean; updated_count: number }> {
+    return apiClient.patch<{ success: boolean; updated_count: number }>('/api/pipeline/email-senders/assign', {
+      sender_email: senderEmail,
+      assigned_to: assignedTo,
+    });
   },
 };
 

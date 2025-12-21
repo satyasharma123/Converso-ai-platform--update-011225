@@ -76,11 +76,17 @@ router.get(
  */
 router.patch(
   '/:id/assign',
-  asyncHandler(async (req: Request, res: Response) => {
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { sdrId } = req.body;
+    const userId = req.user?.id || req.headers['x-user-id'] as string || req.query.userId as string;
 
-    await conversationsService.assignConversation(id, sdrId || null);
+    if (!userId) {
+      return res.status(401).json({ error: 'User authentication required' });
+    }
+
+    await conversationsService.assignConversation(id, sdrId || null, userId);
     res.json({ message: 'Conversation assigned successfully' });
   })
 );

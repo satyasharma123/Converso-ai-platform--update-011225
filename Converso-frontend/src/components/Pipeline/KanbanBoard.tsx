@@ -99,9 +99,10 @@ export function KanbanBoard({ filters, onLeadClick }: KanbanBoardProps) {
     // Don't update if it's already in this stage
     if (conversation.custom_stage_id === stageId) return;
 
+    // Phase-3: Pass conversation object for bulk update detection
     // Update the stage
     updateStage.mutate(
-      { conversationId, stageId },
+      { conversationId, stageId, conversation },
       {
         onSuccess: () => {
           const stageName = pipelineStages.find(s => s.id === stageId)?.name || 'stage';

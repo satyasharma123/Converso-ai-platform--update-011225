@@ -15,6 +15,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { formatDistanceToNow } from "date-fns";
 
+import type { Conversation } from "@/hooks/useConversations";
+
 interface LeadProfilePanelProps {
   lead: {
     name: string;
@@ -34,9 +36,10 @@ interface LeadProfilePanelProps {
     assignedToId?: string;
   };
   conversationId?: string;
+  conversation?: Conversation; // Phase-3: For bulk update detection
 }
 
-export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps) {
+export function LeadProfilePanel({ lead, conversationId, conversation }: LeadProfilePanelProps) {
   // Memoize lead object to force re-render when key fields change
   const stableLead = useMemo(() => {
     return lead ? { ...lead } : null;
@@ -90,9 +93,11 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
   const handleStageChange = (stageId: string) => {
     setSelectedStage(stageId);
     if (conversationId) {
+      // Phase-3: Pass conversation object for bulk update detection
       updateStageMutation.mutate({
         conversationId,
-        stageId: stageId === 'none' ? null : stageId
+        stageId: stageId === 'none' ? null : stageId,
+        conversation
       });
     }
   };
@@ -101,9 +106,11 @@ export function LeadProfilePanel({ lead, conversationId }: LeadProfilePanelProps
     const newSdrId = sdrId === 'unassigned' ? '' : sdrId;
     setSelectedSDR(newSdrId);
     if (conversationId) {
+      // Phase-3: Pass conversation object for bulk update detection
       assignMutation.mutate({
         conversationId,
-        sdrId: sdrId === 'unassigned' ? null : sdrId
+        sdrId: sdrId === 'unassigned' ? null : sdrId,
+        conversation
       }, {
         onSuccess: () => {
           setSelectedSDR(newSdrId);

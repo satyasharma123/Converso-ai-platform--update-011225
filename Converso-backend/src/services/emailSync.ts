@@ -338,6 +338,42 @@ export async function initEmailSync(
               conversationData.outlook_message_id = parsed.messageId; // ✅ NEW: For lazy body loading
             }
             
+            // ✅ SENDER-LEVEL INHERITANCE: Inherit assigned_to and custom_stage_id from existing conversations
+            // This ensures new emails from the same sender automatically inherit assignment and stage
+            const normalizedSenderEmail = otherPerson.email?.toLowerCase().trim();
+            
+            if (normalizedSenderEmail) {
+              try {
+                const { data: existingSender } = await supabaseAdmin
+                  .from('conversations')
+                  .select('assigned_to, custom_stage_id')
+                  .eq('conversation_type', 'email')
+                  .eq('workspace_id', workspaceId)
+                  .eq('sender_email', normalizedSenderEmail)
+                  .order('last_message_at', { ascending: false })
+                  .limit(1)
+                  .single();
+                
+                if (existingSender) {
+                  // Inherit assigned_to (even if NULL)
+                  conversationData.assigned_to = existingSender.assigned_to;
+                  
+                  // Inherit custom_stage_id (even if NULL)
+                  conversationData.custom_stage_id = existingSender.custom_stage_id;
+                  
+                  // Set stage_assigned_at only if custom_stage_id is not NULL
+                  if (existingSender.custom_stage_id) {
+                    conversationData.stage_assigned_at = new Date().toISOString();
+                  }
+                  
+                  logger.info(`[Sender Inheritance] New email from ${normalizedSenderEmail} inherits: assigned_to=${existingSender.assigned_to}, stage=${existingSender.custom_stage_id}`);
+                }
+              } catch (inheritError) {
+                // Non-fatal: If inheritance fails, proceed with NULL values
+                logger.warn(`[Sender Inheritance] Failed to fetch existing sender data for ${normalizedSenderEmail}:`, inheritError);
+              }
+            }
+            
             const { data: newConv, error: convError } = await supabaseAdmin
               .from('conversations')
               .insert(conversationData)

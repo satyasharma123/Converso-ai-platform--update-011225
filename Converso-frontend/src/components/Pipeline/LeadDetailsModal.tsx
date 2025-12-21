@@ -185,6 +185,7 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
               <LeadProfilePanel 
                 lead={leadData}
                 conversationId={conversation.id}
+                conversation={conversation}
               />
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">

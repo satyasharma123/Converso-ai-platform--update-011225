@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
+import { getUserWorkspaceId } from '../utils/workspace';
 import type { Conversation } from '../types';
 
 /**
@@ -62,42 +63,7 @@ async function getUserConversationStates(
   return stateMap;
 }
 
-/**
- * Get workspace ID for a user
- */
-async function getUserWorkspaceId(userId: string): Promise<string | null> {
-  try {
-    const { data: profile, error } = await supabaseAdmin
-      .from('profiles')
-      .select('workspace_id')
-      .eq('id', userId)
-      .single();
-
-    if (!error && profile?.workspace_id) {
-      return profile.workspace_id;
-    }
-  } catch (err) {
-    logger.warn('[Conversations] Failed to fetch user workspace, falling back to default', {
-      error: err instanceof Error ? err.message : err,
-      userId,
-    });
-  }
-
-  try {
-    const { data: workspace } = await supabaseAdmin
-      .from('workspaces')
-      .select('id')
-      .limit(1)
-      .single();
-
-    return workspace?.id || null;
-  } catch (err) {
-    logger.error('[Conversations] Failed to determine fallback workspace', {
-      error: err instanceof Error ? err.message : err,
-    });
-    return null;
-  }
-}
+// getUserWorkspaceId moved to utils/workspace.ts
 
 export async function getConversations(
   userId: string,
@@ -349,14 +315,137 @@ async function getEmailConversationsByFolder(
 
 export async function assignConversation(
   conversationId: string,
-  sdrId: string | null
+  sdrId: string | null,
+  userId: string
 ): Promise<void> {
-  const { error } = await supabaseAdmin
+  // Step 1: Fetch conversation to get type, workspace_id, sender_email, and old assigned_to
+  const { data: conversation, error: fetchError } = await supabaseAdmin
+    .from('conversations')
+    .select('id, conversation_type, sender_email, workspace_id, assigned_to')
+    .eq('id', conversationId)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (!conversation) throw new Error('Conversation not found');
+
+  const workspaceId = conversation.workspace_id;
+
+  // Step 2: If not email, use single-conversation update (existing behavior)
+  if (conversation.conversation_type !== 'email') {
+    const oldAssignedTo = conversation.assigned_to;
+
+    // Perform update
+    const { error: updateError } = await supabaseAdmin
+      .from('conversations')
+      .update({ assigned_to: sdrId })
+      .eq('id', conversationId);
+
+    if (updateError) throw updateError;
+
+    // Log activity (non-fatal)
+    const now = new Date().toISOString();
+    const { error: activityError } = await supabaseAdmin
+      .from('conversation_activities')
+      .insert({
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        actor_user_id: userId,
+        activity_type: 'assigned',
+        meta: {
+          from_assigned_to: oldAssignedTo,
+          to_assigned_to: sdrId,
+        },
+        created_at: now,
+      });
+
+    if (activityError) {
+      logger.warn('[Assign Conversation] Error inserting activity (non-fatal):', activityError);
+    }
+    return;
+  }
+
+  // Step 3: For email, update ALL conversations from same sender
+  const normalizedEmail = conversation.sender_email?.toLowerCase().trim();
+  
+  if (!normalizedEmail) {
+    // Fallback to single update if no sender_email
+    const oldAssignedTo = conversation.assigned_to;
+
+    const { error: updateError } = await supabaseAdmin
+      .from('conversations')
+      .update({ assigned_to: sdrId })
+      .eq('id', conversationId);
+
+    if (updateError) throw updateError;
+
+    const now = new Date().toISOString();
+    const { error: activityError } = await supabaseAdmin
+      .from('conversation_activities')
+      .insert({
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        actor_user_id: userId,
+        activity_type: 'assigned',
+        meta: {
+          from_assigned_to: oldAssignedTo,
+          to_assigned_to: sdrId,
+        },
+        created_at: now,
+      });
+
+    if (activityError) {
+      logger.warn('[Assign Conversation] Error inserting activity (non-fatal):', activityError);
+    }
+    return;
+  }
+
+  // Step 4: Fetch ALL email conversations from this sender to capture old values
+  const { data: conversations, error: fetchAllError } = await supabaseAdmin
+    .from('conversations')
+    .select('id, assigned_to')
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .eq('sender_email', normalizedEmail); // Exact match on normalized email
+
+  if (fetchAllError) throw fetchAllError;
+  if (!conversations || conversations.length === 0) {
+    throw new Error('No conversations found for this sender');
+  }
+
+  // Step 5: Update all conversations
+  const { error: updateError } = await supabaseAdmin
     .from('conversations')
     .update({ assigned_to: sdrId })
-    .eq('id', conversationId);
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .eq('sender_email', normalizedEmail); // Exact match on normalized email
 
-  if (error) throw error;
+  if (updateError) throw updateError;
+
+  // Step 6: Log activity for each conversation (batch insert)
+  const now = new Date().toISOString();
+  const activities = conversations.map(conv => ({
+    workspace_id: workspaceId,
+    conversation_id: conv.id,
+    actor_user_id: userId,
+    activity_type: 'assigned',
+    meta: {
+      from_assigned_to: conv.assigned_to,
+      to_assigned_to: sdrId,
+    },
+    created_at: now,
+  }));
+
+  if (activities.length > 0) {
+    const { error: activityError } = await supabaseAdmin
+      .from('conversation_activities')
+      .insert(activities);
+
+    if (activityError) {
+      logger.warn('[Assign Conversation] Error inserting activities (non-fatal):', activityError);
+      // Don't throw - activity logging is not critical for operation
+    }
+  }
 }
 
 /**
@@ -531,12 +620,56 @@ export async function updateConversationStage(
   conversationId: string,
   stageId: string | null
 ): Promise<void> {
-  const { error } = await supabaseAdmin
+  // Step 1: Fetch the conversation to check type and get sender info
+  const { data: conversation, error: fetchError } = await supabaseAdmin
     .from('conversations')
-    .update({ custom_stage_id: stageId })
-    .eq('id', conversationId);
+    .select('id, conversation_type, sender_email, workspace_id')
+    .eq('id', conversationId)
+    .single();
 
-  if (error) throw error;
+  if (fetchError) throw fetchError;
+  if (!conversation) throw new Error('Conversation not found');
+
+  // Step 2: If not email, use single-conversation update (existing behavior)
+  if (conversation.conversation_type !== 'email') {
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({ custom_stage_id: stageId })
+      .eq('id', conversationId);
+
+    if (error) throw error;
+    return;
+  }
+
+  // Step 3: For email, update ALL conversations from same sender
+  const normalizedEmail = conversation.sender_email?.toLowerCase().trim();
+  
+  if (!normalizedEmail) {
+    // Fallback to single update if no sender_email
+    const { error } = await supabaseAdmin
+      .from('conversations')
+      .update({ custom_stage_id: stageId })
+      .eq('id', conversationId);
+
+    if (error) throw error;
+    return;
+  }
+
+  // Update all email conversations from this sender in the workspace
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from('conversations')
+    .update({ 
+      custom_stage_id: stageId,
+      stage_assigned_at: now
+    })
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', conversation.workspace_id)
+    .eq('sender_email', normalizedEmail); // Exact match on normalized email
+
+  if (updateError) throw updateError;
+
+  // Note: Triggers will handle activity logging automatically
 }
 
 export async function getConversationById(conversationId: string): Promise<Conversation | null> {
@@ -729,5 +862,380 @@ export async function updateLeadProfile(
     .eq('id', conversationId);
 
   if (error) throw error;
+}
+
+/**
+ * Get email senders grouped by sender_email for Sales Pipeline
+ * Returns one SenderPipelineItem per unique sender_email
+ */
+export async function getEmailSendersPipelineItems(
+  userId: string,
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string
+): Promise<any[]> {
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required');
+  }
+
+  // Step 1: Get all email conversations for this workspace with role filtering
+  let conversationsQuery = supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      sender_email,
+      sender_name,
+      last_message_at,
+      preview,
+      subject,
+      assigned_to,
+      custom_stage_id,
+      stage_assigned_at,
+      received_on_account_id,
+      workspace_id
+    `)
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .not('sender_email', 'is', null)
+    .order('sender_email', { ascending: true })
+    .order('last_message_at', { ascending: false });
+
+  // SDR filtering: only assigned conversations
+  if (userRole === 'sdr') {
+    conversationsQuery = conversationsQuery.eq('assigned_to', userId);
+  }
+
+  const { data: conversations, error: convError } = await conversationsQuery;
+
+  if (convError) {
+    logger.error('[Email Senders Pipeline] Error fetching conversations:', convError);
+    throw convError;
+  }
+
+  if (!conversations || conversations.length === 0) {
+    return [];
+  }
+
+  // Step 2: Group conversations by sender_email (normalized)
+  const senderMap = new Map<string, any[]>();
+  for (const conv of conversations) {
+    const email = conv.sender_email;
+    if (!email) continue;
+
+    // Normalize sender_email: lowercase and trim
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) continue;
+
+    if (!senderMap.has(normalizedEmail)) {
+      senderMap.set(normalizedEmail, []);
+    }
+    senderMap.get(normalizedEmail)!.push(conv);
+  }
+
+  // Step 3: Get activity counts per sender_email (separate query)
+  // First, get all conversation IDs for these senders
+  const conversationIds = Array.from(senderMap.values()).flat().map(c => c.id);
+  
+  // Build map: conversation_id -> sender_email
+  const convIdToSenderEmail = new Map<string, string>();
+  for (const [senderEmail, convs] of senderMap.entries()) {
+    for (const conv of convs) {
+      convIdToSenderEmail.set(conv.id, senderEmail);
+    }
+  }
+
+  // Initialize activity count map
+  const activityCountMap = new Map<string, number>();
+  
+  if (conversationIds.length > 0) {
+    // Get activities for these conversations
+    // Batch query if too many conversation IDs (Supabase limit ~1000)
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < conversationIds.length; i += BATCH_SIZE) {
+      const batch = conversationIds.slice(i, i + BATCH_SIZE);
+      const { data: activities, error: activityError } = await supabaseAdmin
+        .from('conversation_activities')
+        .select('conversation_id')
+        .in('conversation_id', batch);
+
+      if (activityError) {
+        logger.warn('[Email Senders Pipeline] Error fetching activities batch:', activityError);
+        // Continue with partial counts if some batches fail
+        continue;
+      }
+
+      // Count activities per sender_email
+      for (const act of (activities || [])) {
+        const senderEmail = convIdToSenderEmail.get(act.conversation_id);
+        if (senderEmail) {
+          activityCountMap.set(senderEmail, (activityCountMap.get(senderEmail) || 0) + 1);
+        }
+      }
+    }
+  }
+
+  // Step 4: Batch fetch all received_accounts
+  const accountIds = new Set<string>();
+  for (const convs of senderMap.values()) {
+    for (const conv of convs) {
+      if (conv.received_on_account_id) {
+        accountIds.add(conv.received_on_account_id);
+      }
+    }
+  }
+
+  const accountIdArray = Array.from(accountIds);
+  const accountMap = new Map<string, any>();
+  
+  if (accountIdArray.length > 0) {
+    const { data: accounts } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('id, account_name, account_email, account_type, oauth_provider')
+      .in('id', accountIdArray);
+
+    if (accounts) {
+      for (const account of accounts) {
+        accountMap.set(account.id, {
+          id: account.id,
+          account_name: account.account_name,
+          account_email: account.account_email || '',
+          account_type: account.account_type,
+          oauth_provider: account.oauth_provider || '',
+        });
+      }
+    }
+  }
+
+  // Step 5: Build SenderPipelineItem for each sender_email
+  const senderItems: any[] = [];
+
+  for (const [senderEmail, convs] of senderMap.entries()) {
+    // Sort conversations by last_message_at DESC to get latest
+    const sortedConvs = [...convs].sort((a, b) => {
+      const timeA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const timeB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    const latestConv = sortedConvs[0];
+
+    // Conflict resolution for assigned_to
+    const uniqueAssignedTo = new Set(convs.map(c => c.assigned_to).filter(Boolean));
+    const resolvedAssignedTo = uniqueAssignedTo.size === 1 
+      ? Array.from(uniqueAssignedTo)[0] 
+      : latestConv.assigned_to;
+
+    // Conflict resolution for custom_stage_id
+    const uniqueStageIds = new Set(convs.map(c => c.custom_stage_id).filter(Boolean));
+    const resolvedStageId = uniqueStageIds.size === 1 
+      ? Array.from(uniqueStageIds)[0] 
+      : latestConv.custom_stage_id;
+
+    // stage_assigned_at from the conversation that provided the resolved stage
+    let resolvedStageAssignedAt: string | null = null;
+    if (resolvedStageId) {
+      const stageConv = sortedConvs.find(c => c.custom_stage_id === resolvedStageId) || latestConv;
+      resolvedStageAssignedAt = stageConv.stage_assigned_at || null;
+    }
+
+    // Get received_account for latest conversation
+    const receivedAccount = latestConv.received_on_account_id 
+      ? accountMap.get(latestConv.received_on_account_id) || null
+      : null;
+
+    senderItems.push({
+      sender_email: senderEmail,
+      sender_name: latestConv.sender_name,
+      channel: 'email' as const,
+      last_message_at: latestConv.last_message_at,
+      preview: latestConv.preview,
+      subject: latestConv.subject,
+      assigned_to: resolvedAssignedTo,
+      custom_stage_id: resolvedStageId,
+      stage_assigned_at: resolvedStageAssignedAt,
+      conversation_count: convs.length,
+      activity_count: activityCountMap.get(senderEmail) || 0,
+      received_account: receivedAccount,
+      workspace_id: latestConv.workspace_id,
+      conversation_ids: convs.map(c => c.id),
+    });
+  }
+
+  // Step 6: Sort by last_message_at DESC
+  senderItems.sort((a, b) => {
+    const timeA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const timeB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    return timeB - timeA;
+  });
+
+  return senderItems;
+}
+
+/**
+ * Update stage for all email conversations with a given sender_email
+ * Phase-3: Bulk stage update for email senders
+ */
+export async function updateEmailSenderStage(
+  senderEmail: string,
+  stageId: string | null,
+  userId: string,
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string
+): Promise<{ updated_count: number }> {
+  // Normalize sender_email
+  const normalizedEmail = senderEmail.toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw new Error('Invalid sender_email');
+  }
+
+  // Step 1: Fetch conversation IDs matching criteria
+  let query = supabaseAdmin
+    .from('conversations')
+    .select('id, custom_stage_id, workspace_id')
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .eq('sender_email', normalizedEmail);
+
+  // SDR filtering: only assigned conversations
+  if (userRole === 'sdr') {
+    query = query.eq('assigned_to', userId);
+  }
+
+  const { data: conversations, error: fetchError } = await query;
+
+  if (fetchError) {
+    logger.error('[Update Email Sender Stage] Error fetching conversations:', fetchError);
+    throw fetchError;
+  }
+
+  if (!conversations || conversations.length === 0) {
+    return { updated_count: 0 };
+  }
+
+  const conversationIds = conversations.map(c => c.id);
+
+  // Step 2: Update conversations in batch
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabaseAdmin
+    .from('conversations')
+    .update({
+      custom_stage_id: stageId,
+      stage_assigned_at: now,
+    })
+    .in('id', conversationIds);
+
+  if (updateError) {
+    logger.error('[Update Email Sender Stage] Error updating conversations:', updateError);
+    throw updateError;
+  }
+
+  // Step 3: Insert activity logs in batch
+  const activities = conversations.map(conv => ({
+    workspace_id: workspaceId,
+    conversation_id: conv.id,
+    actor_user_id: userId,
+    activity_type: 'stage_changed',
+    meta: {
+      from_stage: conv.custom_stage_id,
+      to_stage: stageId,
+    },
+    created_at: now,
+  }));
+
+  if (activities.length > 0) {
+    const { error: activityError } = await supabaseAdmin
+      .from('conversation_activities')
+      .insert(activities);
+
+    if (activityError) {
+      logger.warn('[Update Email Sender Stage] Error inserting activities (non-fatal):', activityError);
+      // Don't throw - activities are logged but not critical for operation
+    }
+  }
+
+  return { updated_count: conversationIds.length };
+}
+
+/**
+ * Assign SDR for all email conversations with a given sender_email
+ * Phase-3: Bulk assignment for email senders
+ */
+export async function updateEmailSenderAssignment(
+  senderEmail: string,
+  assignedTo: string | null,
+  userId: string,
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string
+): Promise<{ updated_count: number }> {
+  // Normalize sender_email
+  const normalizedEmail = senderEmail.toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw new Error('Invalid sender_email');
+  }
+
+  // Step 1: Fetch conversation IDs matching criteria
+  let query = supabaseAdmin
+    .from('conversations')
+    .select('id, assigned_to, workspace_id')
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .eq('sender_email', normalizedEmail);
+
+  // SDR filtering: only assigned conversations
+  if (userRole === 'sdr') {
+    query = query.eq('assigned_to', userId);
+  }
+
+  const { data: conversations, error: fetchError } = await query;
+
+  if (fetchError) {
+    logger.error('[Update Email Sender Assignment] Error fetching conversations:', fetchError);
+    throw fetchError;
+  }
+
+  if (!conversations || conversations.length === 0) {
+    return { updated_count: 0 };
+  }
+
+  const conversationIds = conversations.map(c => c.id);
+
+  // Step 2: Update conversations in batch
+  const { error: updateError } = await supabaseAdmin
+    .from('conversations')
+    .update({
+      assigned_to: assignedTo,
+    })
+    .in('id', conversationIds);
+
+  if (updateError) {
+    logger.error('[Update Email Sender Assignment] Error updating conversations:', updateError);
+    throw updateError;
+  }
+
+  // Step 3: Insert activity logs in batch
+  const now = new Date().toISOString();
+  const activities = conversations.map(conv => ({
+    workspace_id: workspaceId,
+    conversation_id: conv.id,
+    actor_user_id: userId,
+    activity_type: 'assigned',
+    meta: {
+      from_assigned_to: conv.assigned_to,
+      to_assigned_to: assignedTo,
+    },
+    created_at: now,
+  }));
+
+  if (activities.length > 0) {
+    const { error: activityError } = await supabaseAdmin
+      .from('conversation_activities')
+      .insert(activities);
+
+    if (activityError) {
+      logger.warn('[Update Email Sender Assignment] Error inserting activities (non-fatal):', activityError);
+      // Don't throw - activities are logged but not critical for operation
+    }
+  }
+
+  return { updated_count: conversationIds.length };
 }
 

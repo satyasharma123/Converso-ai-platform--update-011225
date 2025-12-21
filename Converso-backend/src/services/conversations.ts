@@ -26,12 +26,15 @@ export const conversationsService = {
   /**
    * Assign a conversation to an SDR
    */
-  async assignConversation(conversationId: string, sdrId: string | null): Promise<void> {
+  async assignConversation(conversationId: string, sdrId: string | null, userId: string): Promise<void> {
     if (!conversationId) {
       throw new Error('Conversation ID is required');
     }
+    if (!userId) {
+      throw new Error('User ID is required for activity logging');
+    }
 
-    return conversationsApi.assignConversation(conversationId, sdrId);
+    return conversationsApi.assignConversation(conversationId, sdrId, userId);
   },
 
   /**
@@ -154,6 +157,90 @@ export const conversationsService = {
     }
 
     return conversationsApi.getMailboxCounts(userId, userRole);
+  },
+
+  /**
+   * Get email senders grouped by sender_email for Sales Pipeline
+   * Returns one SenderPipelineItem per unique sender_email
+   */
+  async getEmailSendersPipelineItems(
+    userId: string,
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string
+  ): Promise<any[]> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.getEmailSendersPipelineItems(userId, userRole, workspaceId);
+  },
+
+  /**
+   * Update stage for all email conversations with a given sender_email
+   * Phase-3: Bulk stage update
+   */
+  async updateEmailSenderStage(
+    senderEmail: string,
+    stageId: string | null,
+    userId: string,
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string
+  ): Promise<{ updated_count: number }> {
+    if (!senderEmail) {
+      throw new Error('Sender email is required');
+    }
+
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.updateEmailSenderStage(
+      senderEmail,
+      stageId,
+      userId,
+      userRole,
+      workspaceId
+    );
+  },
+
+  /**
+   * Assign SDR for all email conversations with a given sender_email
+   * Phase-3: Bulk assignment
+   */
+  async updateEmailSenderAssignment(
+    senderEmail: string,
+    assignedTo: string | null,
+    userId: string,
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string
+  ): Promise<{ updated_count: number }> {
+    if (!senderEmail) {
+      throw new Error('Sender email is required');
+    }
+
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.updateEmailSenderAssignment(
+      senderEmail,
+      assignedTo,
+      userId,
+      userRole,
+      workspaceId
+    );
   },
 };
 
