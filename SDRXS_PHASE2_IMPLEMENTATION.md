@@ -457,3 +457,4 @@ DROP TABLE IF EXISTS public.conversation_activities CASCADE;
 - The trigger uses `SECURITY DEFINER` to ensure consistent permission checks
 - Field comparison uses `IS DISTINCT FROM` to handle NULL values correctly
 
+

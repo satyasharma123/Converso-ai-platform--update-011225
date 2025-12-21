@@ -9,3 +9,4 @@ WHERE provider = 'outlook'
 GROUP BY provider_folder
 ORDER BY provider_folder;
 
+

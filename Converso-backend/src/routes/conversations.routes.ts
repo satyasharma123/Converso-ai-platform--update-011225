@@ -317,5 +317,29 @@ router.post(
   })
 );
 
+/**
+ * GET /api/conversations/email-sender-activities
+ * Get activities for all email conversations from a sender
+ * Read-only endpoint for Sales Pipeline sender-grouped views
+ */
+router.get(
+  '/email-sender-activities',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { workspaceId, senderEmail } = req.query;
+
+    if (!workspaceId || typeof workspaceId !== 'string') {
+      return res.status(400).json({ error: 'workspaceId is required' });
+    }
+
+    if (!senderEmail || typeof senderEmail !== 'string') {
+      return res.status(400).json({ error: 'senderEmail is required' });
+    }
+
+    const activities = await conversationsService.getEmailSenderActivities(workspaceId, senderEmail);
+    res.json({ activities });
+  })
+);
+
 export default router;
 

@@ -29,3 +29,4 @@ SELECT * FROM get_latest_message_folders(
   )
 );
 
+

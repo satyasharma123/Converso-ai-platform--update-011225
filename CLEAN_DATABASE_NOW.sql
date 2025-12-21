@@ -59,3 +59,4 @@ WHERE provider = 'linkedin';
 -- After running this, go to Settings → Integrations → Reconnect email accounts
 -- ============================================================================
 
+

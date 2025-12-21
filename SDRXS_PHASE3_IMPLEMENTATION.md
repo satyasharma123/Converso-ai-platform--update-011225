@@ -361,3 +361,4 @@ LeadDetailsModal
 - Integrate activity timeline into inbox conversation view
 - Add activity notifications/alerts
 
+

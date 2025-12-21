@@ -387,6 +387,25 @@ export async function initEmailSync(
             
             conversationId = newConv.id;
             logger.info(`Created new conversation for thread: ${parsed.threadId}`);
+
+            // ✅ SEED ACTIVITY: Create initial "message_received" activity for first email
+            // This ensures every lead has at least one activity in ActivityTimeline
+            try {
+              await supabaseAdmin
+                .from('conversation_activities')
+                .insert({
+                  conversation_id: conversationId,
+                  workspace_id: workspaceId,
+                  actor_user_id: null, // System-generated
+                  activity_type: 'message_received',
+                  meta: { channel: 'email' },
+                  created_at: parsed.timestamp.toISOString(),
+                });
+              logger.info(`[Seed Activity] Created initial message_received activity for conversation: ${conversationId}`);
+            } catch (activityError: any) {
+              // Non-fatal: Log error but don't interrupt email sync
+              logger.warn(`[Seed Activity] Failed to create initial activity for conversation ${conversationId}:`, activityError.message);
+            }
           }
           
           // STEP 2: Check if message already exists (by provider_message_id)

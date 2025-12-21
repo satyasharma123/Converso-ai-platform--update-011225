@@ -37,3 +37,4 @@ WHERE c.conversation_type = 'email'
 -- ✅ LinkedIn messages untouched (no conversation_type filter applied to them)
 
 
+

@@ -21,3 +21,4 @@ WHERE conversation_type = 'email' AND email_action_status IS NOT NULL;
 
 
 
+

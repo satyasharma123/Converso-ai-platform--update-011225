@@ -32,3 +32,4 @@ FROM conversations c
 JOIN latest_folders lf ON lf.conversation_id = c.id
 ORDER BY lf.created_at DESC;
 
+

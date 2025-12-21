@@ -77,3 +77,4 @@ WHERE c.conversation_type = 'email'
   AND m.created_at >= CURRENT_DATE;
 
 
+

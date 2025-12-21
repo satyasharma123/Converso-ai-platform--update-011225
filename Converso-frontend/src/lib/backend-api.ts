@@ -140,6 +140,19 @@ export const conversationsApi = {
       assigned_to: assignedTo,
     });
   },
+
+  /**
+   * Get activities for all email conversations from a sender (Sales Pipeline sender-grouped view)
+   */
+  async getEmailSenderActivities(workspaceId: string, senderEmail: string): Promise<any[]> {
+    const response = await apiClient.get<{ activities: any[] }>('/api/conversations/email-sender-activities', {
+      params: {
+        workspaceId,
+        senderEmail: senderEmail.toLowerCase().trim(), // Normalize before sending
+      },
+    });
+    return response.activities;
+  },
 };
 
 // ==================== Messages API ====================

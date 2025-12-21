@@ -1239,3 +1239,72 @@ export async function updateEmailSenderAssignment(
   return { updated_count: conversationIds.length };
 }
 
+/**
+ * Get activities for all email conversations from a sender
+ * Read-only endpoint for Sales Pipeline sender-grouped views
+ */
+export async function getEmailSenderActivities(
+  workspaceId: string,
+  senderEmail: string
+): Promise<any[]> {
+  // Normalize sender email
+  const normalizedEmail = senderEmail.toLowerCase().trim();
+
+  logger.info(`[Email Sender Activities] Fetching for sender: ${normalizedEmail}, workspace: ${workspaceId}`);
+
+  // Step 1: Get all conversation IDs for this sender
+  const { data: conversations, error: convError } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId)
+    .eq('sender_email', normalizedEmail);
+
+  if (convError) {
+    logger.error('[Email Sender Activities] Error fetching conversations:', convError);
+    throw convError;
+  }
+
+  // If no conversations found, return empty array
+  if (!conversations || conversations.length === 0) {
+    logger.info('[Email Sender Activities] No conversations found for sender');
+    return [];
+  }
+
+  const conversationIds = conversations.map(c => c.id);
+  logger.info(`[Email Sender Activities] Found ${conversationIds.length} conversations for sender`);
+
+  // Step 2: Fetch activities for all those conversations
+  const { data: activities, error: actError } = await supabaseAdmin
+    .from('conversation_activities')
+    .select(`
+      id,
+      activity_type,
+      meta,
+      created_at,
+      actor_user_id,
+      profiles!conversation_activities_actor_user_id_fkey (
+        full_name
+      )
+    `)
+    .in('conversation_id', conversationIds)
+    .order('created_at', { ascending: false });
+
+  if (actError) {
+    logger.error('[Email Sender Activities] Error fetching activities:', actError);
+    throw actError;
+  }
+
+  // Transform to include actor_name at top level
+  const transformedActivities = (activities || []).map((activity: any) => ({
+    id: activity.id,
+    activity_type: activity.activity_type,
+    meta: activity.meta || {},
+    created_at: activity.created_at,
+    actor_user_id: activity.actor_user_id,
+    actor_name: activity.profiles?.full_name || 'Unknown User'
+  }));
+
+  logger.info(`[Email Sender Activities] Returning ${transformedActivities.length} activities`);
+  return transformedActivities;
+}

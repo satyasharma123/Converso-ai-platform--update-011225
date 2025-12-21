@@ -282,3 +282,4 @@ score: Math.min(100, messagesForSelected?.length * 10 || 0),
 - LinkedIn Score ✅
 
 **All Lead Profile fields now working correctly!**
+

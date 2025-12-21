@@ -9,3 +9,4 @@ SELECT
 FROM connected_accounts
 WHERE oauth_provider = 'microsoft';
 
+

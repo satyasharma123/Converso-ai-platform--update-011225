@@ -3,6 +3,9 @@ import { Clock, GitBranch, UserCheck, Mail, Linkedin, MessageSquare, FileEdit, S
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { conversationsApi } from "@/lib/backend-api";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
+import type { Conversation } from "@/hooks/useConversations";
 
 interface Activity {
   id: string;
@@ -16,6 +19,12 @@ interface Activity {
 interface ActivityTimelineProps {
   conversationId: string;
   className?: string;
+  // Optional: For email sender-grouped pipeline leads
+  channel?: 'email' | 'linkedin';
+  senderEmail?: string;
+  workspaceId?: string;
+  // Optional: For fallback activity
+  conversation?: Conversation;
 }
 
 // Icon mapping for activity types
@@ -54,25 +63,33 @@ const formatFieldName = (field: string): string => {
   return fieldMap[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
-// Helper function to format stage ID for display
-const formatStageId = (stageId: string | null | undefined): string => {
+// Helper function to resolve stage name from ID
+const resolveStageName = (
+  stageId: string | null | undefined,
+  stages: Array<{ id: string; name: string }> | undefined
+): string => {
   if (!stageId) return 'None';
-  // If it's a UUID, show last 6 characters
-  if (stageId.length > 20 && stageId.includes('-')) {
-    return stageId.slice(-6);
-  }
-  return stageId;
+  
+  // Try to find stage by ID
+  const stage = stages?.find(s => s.id === stageId);
+  if (stage) return stage.name;
+  
+  // Fallback: Unknown stage (don't show UUID)
+  return 'Unknown stage';
 };
 
 // Generate human-readable description from activity
-const getActivityDescription = (activity: Activity): { title: string; details?: string } => {
+const getActivityDescription = (
+  activity: Activity,
+  stages: Array<{ id: string; name: string }> | undefined
+): { title: string; details?: string } => {
   const meta = activity.meta || {};
   
   switch (activity.activity_type) {
     case 'stage_changed':
       if (meta.from_stage !== undefined && meta.to_stage !== undefined) {
-        const fromStage = formatStageId(meta.from_stage);
-        const toStage = formatStageId(meta.to_stage);
+        const fromStage = resolveStageName(meta.from_stage, stages);
+        const toStage = resolveStageName(meta.to_stage, stages);
         return {
           title: `Moved from ${fromStage} → ${toStage}`,
           details: undefined
@@ -135,6 +152,13 @@ const getActivityDescription = (activity: Activity): { title: string; details?: 
         details: meta.assigned_to_name ? `Assigned to ${meta.assigned_to_name}` : undefined
       };
     
+    case 'system':
+      // UI-only fallback activity
+      return {
+        title: meta.label || 'System activity',
+        details: undefined
+      };
+    
     default:
       return {
         title: activity.activity_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -143,10 +167,20 @@ const getActivityDescription = (activity: Activity): { title: string; details?: 
   }
 };
 
-export function ActivityTimeline({ conversationId, className = "" }: ActivityTimelineProps) {
+export function ActivityTimeline({ 
+  conversationId, 
+  className = "",
+  channel,
+  senderEmail,
+  workspaceId,
+  conversation
+}: ActivityTimelineProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Fetch pipeline stages for stage name resolution
+  const { data: pipelineStages = [] } = usePipelineStages();
 
   useEffect(() => {
     if (!conversationId) return;
@@ -156,19 +190,29 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
         setLoading(true);
         setError(null);
 
-        // Fetch activities from conversation_activities table
+        // IF channel === 'email' AND sender_email is provided:
+        // Use backend API to fetch activities for ALL conversations from this sender
+        if (channel === 'email' && senderEmail && workspaceId) {
+          console.log('[ActivityTimeline] Fetching sender-grouped activities via backend API');
+          const activities = await conversationsApi.getEmailSenderActivities(workspaceId, senderEmail);
+          
+          // Early exit: If backend returns empty array, stop immediately
+          if (!activities || activities.length === 0) {
+            setActivities([]);
+            setLoading(false);
+            return;
+          }
+          
+          setActivities(activities);
+          setLoading(false);
+          return;
+        }
+
+        // ELSE: Keep existing Supabase behavior (fetch by conversation_id)
+        // Step 1: Fetch activities without profiles join
         const { data, error: fetchError } = await supabase
           .from('conversation_activities')
-          .select(`
-            id,
-            activity_type,
-            meta,
-            created_at,
-            actor_user_id,
-            profiles!conversation_activities_actor_user_id_fkey (
-              full_name
-            )
-          `)
+          .select('id, activity_type, meta, created_at, actor_user_id')
           .eq('conversation_id', conversationId)
           .order('created_at', { ascending: false });
 
@@ -178,14 +222,57 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
           return;
         }
 
-        // Transform data to include actor name
-        const transformedActivities = (data || []).map((activity: any) => ({
+        // Early exit: If no activities, add fallback activity
+        if (!data || data.length === 0) {
+          // Add UI-only fallback activity if conversation exists
+          if (conversation) {
+            const fallbackActivity: Activity = {
+              id: 'fallback-system',
+              activity_type: 'system',
+              meta: {
+                label: channel === 'linkedin' 
+                  ? 'Lead created via LinkedIn'
+                  : 'Conversation created via email'
+              },
+              created_at: conversation.created_at || conversation.last_message_at || new Date().toISOString(),
+              actor_user_id: '',
+              actor_name: 'System'
+            };
+            setActivities([fallbackActivity]);
+          } else {
+            setActivities([]);
+          }
+          setLoading(false);
+          return;
+        }
+
+        // Step 2: Get unique actor user IDs
+        const actorUserIds = [...new Set(data.map(a => a.actor_user_id).filter(Boolean))];
+
+        // Step 3: Fetch actor names separately if we have actor IDs (parallel optimization)
+        let actorNamesMap: Record<string, string> = {};
+        if (actorUserIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', actorUserIds);
+
+          if (profiles) {
+            actorNamesMap = profiles.reduce((acc, profile) => {
+              acc[profile.id] = profile.full_name || 'Unknown User';
+              return acc;
+            }, {} as Record<string, string>);
+          }
+        }
+
+        // Step 4: Transform data to include actor name
+        const transformedActivities = data.map((activity: any) => ({
           id: activity.id,
           activity_type: activity.activity_type,
           meta: activity.meta || {},
           created_at: activity.created_at,
           actor_user_id: activity.actor_user_id,
-          actor_name: activity.profiles?.full_name || 'Unknown User'
+          actor_name: actorNamesMap[activity.actor_user_id] || 'Unknown User'
         }));
 
         setActivities(transformedActivities);
@@ -200,8 +287,14 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
     fetchActivities();
 
     // Set up real-time subscription for new activities
-    const channel = supabase
-      .channel(`activities:${conversationId}`)
+    // For sender-grouped email views, we refetch all activities on INSERT
+    // For single conversation views, we add the new activity directly
+    const channelName = channel === 'email' && senderEmail 
+      ? `activities:sender:${senderEmail}:${workspaceId}`
+      : `activities:${conversationId}`;
+    
+    const subscriptionChannel = supabase
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -213,7 +306,13 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
         async (payload) => {
           console.log('[ActivityTimeline] New activity:', payload);
           
-          // Fetch actor name for new activity
+          // For sender-grouped email views, refetch all activities
+          if (channel === 'email' && senderEmail && workspaceId) {
+            fetchActivities();
+            return;
+          }
+          
+          // For single conversation views, add new activity directly
           const { data: profile } = await supabase
             .from('profiles')
             .select('full_name')
@@ -235,9 +334,9 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(subscriptionChannel);
     };
-  }, [conversationId]);
+  }, [conversationId, channel, senderEmail, workspaceId]);
 
   if (loading) {
     return (
@@ -269,11 +368,11 @@ export function ActivityTimeline({ conversationId, className = "" }: ActivityTim
 
   return (
     <ScrollArea className={`h-full ${className}`}>
-      <div className="px-4 py-4">
+      <div className="px-6 py-4">
         <div className="space-y-2">
           {activities.map((activity, index) => {
             const Icon = getActivityIcon(activity.activity_type);
-            const { title, details } = getActivityDescription(activity);
+            const { title, details } = getActivityDescription(activity, pipelineStages);
             const timeAgo = formatDistanceToNow(new Date(activity.created_at), { addSuffix: true });
 
             return (

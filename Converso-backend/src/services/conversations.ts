@@ -242,5 +242,20 @@ export const conversationsService = {
       workspaceId
     );
   },
+
+  /**
+   * Get activities for email sender (all conversations from sender)
+   * Read-only endpoint for Sales Pipeline
+   */
+  async getEmailSenderActivities(workspaceId: string, senderEmail: string): Promise<any[]> {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+    if (!senderEmail) {
+      throw new Error('Sender email is required');
+    }
+
+    return conversationsApi.getEmailSenderActivities(workspaceId, senderEmail);
+  },
 };
 

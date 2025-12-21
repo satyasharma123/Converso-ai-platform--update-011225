@@ -94,3 +94,4 @@ WHERE m.provider IN ('gmail', 'outlook')
   AND m.provider_folder = 'sent'
 GROUP BY validation;
 
+

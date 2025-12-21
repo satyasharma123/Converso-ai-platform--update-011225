@@ -18,3 +18,4 @@ ORDER BY provider_folder;
 -- sent            | X  ← Should now have messages!
 -- trash           | X  ← Should now have messages!
 
+

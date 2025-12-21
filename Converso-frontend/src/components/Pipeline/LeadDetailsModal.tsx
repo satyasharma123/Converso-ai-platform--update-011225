@@ -101,7 +101,13 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
               {/* Activities Tab */}
               <TabsContent value="activities" className="flex-1 m-0 p-0 overflow-hidden">
                 {conversation?.id ? (
-                  <ActivityTimeline conversationId={conversation.id} />
+                  <ActivityTimeline 
+                    conversationId={conversation.id}
+                    channel={conversation.conversation_type === 'email' ? 'email' : 'linkedin'}
+                    senderEmail={conversation.conversation_type === 'email' ? conversation.sender_email : undefined}
+                    workspaceId={conversation.workspace_id}
+                    conversation={conversation}
+                  />
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <p className="text-sm text-muted-foreground">Unable to load activities</p>

@@ -43,3 +43,4 @@ COMMENT ON COLUMN public.messages.provider_thread_id IS 'Thread/conversation ID 
 
 
 
+

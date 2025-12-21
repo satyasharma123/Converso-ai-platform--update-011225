@@ -513,6 +513,29 @@ export async function syncLinkedInMessagesForAccount(
           })
           .eq('id', convo.id);
 
+        // ✅ SEED ACTIVITY: Create initial "message_received" activity for LinkedIn conversation
+        // This ensures every LinkedIn lead has at least one activity in ActivityTimeline
+        try {
+          const firstMessageTimestamp = messages.length > 0 
+            ? (safeTimestamp(messages[0]) || convo.last_message_at || new Date().toISOString())
+            : (convo.last_message_at || new Date().toISOString());
+
+          await supabaseAdmin
+            .from('conversation_activities')
+            .insert({
+              conversation_id: convo.id,
+              workspace_id: convo.workspace_id,
+              actor_user_id: null, // System-generated
+              activity_type: 'message_received',
+              meta: { channel: 'linkedin' },
+              created_at: firstMessageTimestamp,
+            });
+          logger.info(`[Seed Activity] Created initial message_received activity for LinkedIn conversation: ${convo.id}`);
+        } catch (activityError: any) {
+          // Non-fatal: Log error but don't interrupt LinkedIn sync
+          logger.warn(`[Seed Activity] Failed to create initial activity for conversation ${convo.id}:`, activityError.message);
+        }
+
         conversationsCount++;
         logger.info(`[Action 4] Successfully synced ${messages.length} messages for chat ${convo.chat_id}`, {
           hasPreview: !!previewText,

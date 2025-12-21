@@ -214,3 +214,4 @@ Followed the same pattern as other components:
 
 Frontend will auto-reload. Test as SDR and Admin to verify assignment dropdown is properly hidden/shown in Email body header.
 
+

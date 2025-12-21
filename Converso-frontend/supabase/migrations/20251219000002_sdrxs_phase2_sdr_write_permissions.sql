@@ -325,3 +325,4 @@ COMMENT ON COLUMN public.conversation_activities.activity_type IS
 COMMENT ON COLUMN public.conversation_activities.meta IS 
 'Activity metadata in JSONB format. For stage_changed: {from_stage, to_stage}. For lead_updated: {field_name: {old, new}}';
 
+
