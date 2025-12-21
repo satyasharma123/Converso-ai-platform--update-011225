@@ -53,6 +53,110 @@ router.get(
 );
 
 /**
+ * GET /api/conversations/email-sender-activities
+ * Get activities for all email conversations from a sender
+ * Read-only endpoint for Sales Pipeline sender-grouped views
+ */
+router.get(
+  '/email-sender-activities',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { workspaceId, senderEmail } = req.query;
+
+    if (!workspaceId || typeof workspaceId !== 'string') {
+      return res.status(400).json({ error: 'workspaceId is required' });
+    }
+
+    if (!senderEmail || typeof senderEmail !== 'string') {
+      return res.status(400).json({ error: 'senderEmail is required' });
+    }
+
+    const activities = await conversationsService.getEmailSenderActivities(workspaceId, senderEmail);
+    res.json({ activities });
+  })
+);
+
+/**
+ * GET /api/conversations/work-queue
+ * DEPRECATED: This endpoint is no longer supported
+ * Use /api/conversations/work-queue-view instead
+ */
+router.get(
+  '/work-queue',
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    // Return HTTP 410 Gone
+    res.status(410).json({
+      error: 'This endpoint is deprecated. Use /api/conversations/work-queue-view'
+    });
+  })
+);
+
+/**
+ * GET /api/conversations/work-queue-view
+ * Get work queue from SQL view conversation_work_queue
+ * Sprint 5.1: Read-only endpoint using database view
+ * 
+ * Query Parameters:
+ * - filter: 'all' | 'pending' | 'overdue' | 'idle' (default: 'all')
+ * 
+ * Filters:
+ * - all: No additional filter (all conversations in workspace)
+ * - pending: pending_reply = true (we owe a response)
+ * - overdue: overdue = true (pending + >24 hours)
+ * - idle: idle_days > 0 (some idle time)
+ * 
+ * Role-based filtering:
+ * - Admin: All conversations in workspace
+ * - SDR: Only conversations assigned to this SDR
+ * 
+ * Default sort: overdue DESC, last_inbound_at ASC
+ */
+router.get(
+  '/work-queue-view',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.id || req.headers['x-user-id'] as string || req.query.userId as string;
+    const userRole = req.user?.role || req.headers['x-user-role'] as 'admin' | 'sdr' | null || 
+                     (req.query.userRole as 'admin' | 'sdr' | null) || null;
+    
+    // Extract filter parameter (default: 'all')
+    const filter = (req.query.filter as 'all' | 'pending' | 'overdue' | 'idle') || 'all';
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    // Validate filter parameter
+    const validFilters = ['all', 'pending', 'overdue', 'idle'];
+    if (!validFilters.includes(filter)) {
+      return res.status(400).json({ 
+        error: 'Invalid filter parameter',
+        valid_filters: validFilters 
+      });
+    }
+
+    // Get user's workspace
+    const { getUserWorkspaceId } = await import('../utils/workspace');
+    const workspaceId = await getUserWorkspaceId(userId);
+    
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'Workspace ID is required' });
+    }
+
+    // Fetch work queue from view
+    const workQueue = await conversationsService.getWorkQueueFromView(
+      userId, 
+      userRole, 
+      workspaceId, 
+      filter
+    );
+    
+    // Return JSON array directly
+    res.json(workQueue);
+  })
+);
+
+/**
  * GET /api/conversations/:id
  * Get a single conversation by ID
  */
@@ -314,30 +418,6 @@ router.post(
       logger.error(`[Conversation Sync] Failed to sync conversation ${id}`, err);
       return res.status(500).json({ error: err.message || 'Failed to sync messages' });
     }
-  })
-);
-
-/**
- * GET /api/conversations/email-sender-activities
- * Get activities for all email conversations from a sender
- * Read-only endpoint for Sales Pipeline sender-grouped views
- */
-router.get(
-  '/email-sender-activities',
-  optionalAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { workspaceId, senderEmail } = req.query;
-
-    if (!workspaceId || typeof workspaceId !== 'string') {
-      return res.status(400).json({ error: 'workspaceId is required' });
-    }
-
-    if (!senderEmail || typeof senderEmail !== 'string') {
-      return res.status(400).json({ error: 'senderEmail is required' });
-    }
-
-    const activities = await conversationsService.getEmailSenderActivities(workspaceId, senderEmail);
-    res.json({ activities });
   })
 );
 

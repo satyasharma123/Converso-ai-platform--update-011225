@@ -1308,3 +1308,275 @@ export async function getEmailSenderActivities(
   logger.info(`[Email Sender Activities] Returning ${transformedActivities.length} activities`);
   return transformedActivities;
 }
+
+/**
+ * Get work queue with operational metrics
+ * Derives last_inbound_at, last_outbound_at, pending_reply, idle_days, overdue
+ * Phase 1.1: Backend-only, read-only endpoint
+ * 
+ * OPERATIONAL DEFINITIONS (STRICT):
+ * - last_inbound_at: Most recent message FROM lead (is_from_lead = true)
+ * - last_outbound_at: Most recent message FROM us (is_from_lead = false)
+ * - pending_reply: TRUE if last_inbound_at exists AND (last_outbound_at is NULL OR last_inbound_at > last_outbound_at)
+ * - last_activity_at: MAX(last_inbound_at, last_outbound_at)
+ * - idle_days: Days since last_activity_at
+ * - overdue: TRUE if pending_reply AND hours since last_inbound_at > SLA_HOURS
+ */
+export async function getWorkQueue(
+  userId: string,
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string
+): Promise<any[]> {
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required');
+  }
+
+  const SLA_HOURS = 24;
+  const now = new Date();
+
+  // Step 1: Get all conversations for this workspace with role filtering
+  let conversationsQuery = supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      conversation_type,
+      sender_name,
+      sender_email,
+      sender_linkedin_url,
+      subject,
+      preview,
+      last_message_at,
+      assigned_to,
+      custom_stage_id,
+      stage_assigned_at,
+      workspace_id,
+      created_at,
+      chat_id
+    `)
+    .eq('workspace_id', workspaceId)
+    .order('last_message_at', { ascending: false });
+
+  // SDR filtering: only assigned conversations
+  if (userRole === 'sdr') {
+    conversationsQuery = conversationsQuery.eq('assigned_to', userId);
+  }
+
+  const { data: conversations, error: convError } = await conversationsQuery;
+
+  if (convError) {
+    logger.error('[Work Queue] Error fetching conversations:', convError);
+    throw convError;
+  }
+
+  if (!conversations || conversations.length === 0) {
+    return [];
+  }
+
+  // Step 2: Separate conversations by type for channel-specific message fetching
+  const emailConversations = conversations.filter(c => c.conversation_type === 'email');
+  const linkedinConversations = conversations.filter(c => c.conversation_type === 'linkedin');
+
+  // Step 3: Fetch messages for all conversations
+  // Note: Both email and LinkedIn use the same 'messages' table
+  // The 'is_from_lead' field determines message direction for both channels
+  const conversationIds = conversations.map(c => c.id);
+
+  const { data: messages, error: msgError } = await supabaseAdmin
+    .from('messages')
+    .select('conversation_id, created_at, is_from_lead')
+    .in('conversation_id', conversationIds)
+    .order('created_at', { ascending: false });
+
+  if (msgError) {
+    logger.error('[Work Queue] Error fetching messages:', msgError);
+    throw msgError;
+  }
+
+  // Step 4: Build message maps per conversation
+  const messagesByConversation = new Map<string, any[]>();
+  for (const msg of (messages || [])) {
+    if (!messagesByConversation.has(msg.conversation_id)) {
+      messagesByConversation.set(msg.conversation_id, []);
+    }
+    messagesByConversation.get(msg.conversation_id)!.push(msg);
+  }
+
+  // Step 5: Derive operational metrics for each conversation
+  const workQueueItems = conversations.map((conv) => {
+    const convMessages = messagesByConversation.get(conv.id) || [];
+
+    // DERIVATION 1: last_inbound_at
+    // Find most recent message FROM lead (is_from_lead = true)
+    const lastInbound = convMessages.find(m => m.is_from_lead === true);
+    const last_inbound_at = lastInbound?.created_at || null;
+
+    // DERIVATION 2: last_outbound_at
+    // Find most recent message FROM us (is_from_lead = false)
+    const lastOutbound = convMessages.find(m => m.is_from_lead === false);
+    const last_outbound_at = lastOutbound?.created_at || null;
+
+    // DERIVATION 3: pending_reply (TIMESTAMP-BASED ONLY)
+    // TRUE if:
+    // - last_inbound_at exists
+    // - AND (last_outbound_at is NULL OR last_inbound_at > last_outbound_at)
+    let pending_reply = false;
+    if (last_inbound_at) {
+      if (!last_outbound_at) {
+        // Lead sent message, we never replied
+        pending_reply = true;
+      } else {
+        // Compare timestamps: if inbound is more recent, we owe a reply
+        const inboundTime = new Date(last_inbound_at).getTime();
+        const outboundTime = new Date(last_outbound_at).getTime();
+        pending_reply = inboundTime > outboundTime;
+      }
+    }
+
+    // DERIVATION 4: last_activity_at
+    // MAX(last_inbound_at, last_outbound_at)
+    let last_activity_at: string | null = null;
+    if (last_inbound_at && last_outbound_at) {
+      const inboundTime = new Date(last_inbound_at).getTime();
+      const outboundTime = new Date(last_outbound_at).getTime();
+      last_activity_at = inboundTime > outboundTime ? last_inbound_at : last_outbound_at;
+    } else if (last_inbound_at) {
+      last_activity_at = last_inbound_at;
+    } else if (last_outbound_at) {
+      last_activity_at = last_outbound_at;
+    }
+
+    // DERIVATION 5: idle_days
+    // Days since last_activity_at (any direction)
+    let idle_days = 0;
+    if (last_activity_at) {
+      const lastActivityDate = new Date(last_activity_at);
+      const diffMs = now.getTime() - lastActivityDate.getTime();
+      idle_days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    }
+
+    // DERIVATION 6: overdue
+    // TRUE if pending_reply AND hours since last_inbound_at > SLA_HOURS
+    let overdue = false;
+    if (pending_reply && last_inbound_at) {
+      const inboundDate = new Date(last_inbound_at);
+      const hoursSinceInbound = (now.getTime() - inboundDate.getTime()) / (1000 * 60 * 60);
+      overdue = hoursSinceInbound > SLA_HOURS;
+    }
+
+    return {
+      conversation_id: conv.id,
+      conversation_type: conv.conversation_type,
+      channel: conv.conversation_type, // 'email' or 'linkedin'
+      sender_name: conv.sender_name,
+      sender_email: conv.sender_email || null,
+      sender_linkedin_url: conv.sender_linkedin_url || null,
+      subject: conv.subject || null,
+      preview: conv.preview || null,
+      last_message_at: conv.last_message_at,
+      assigned_to: conv.assigned_to || null,
+      custom_stage_id: conv.custom_stage_id || null,
+      stage_assigned_at: conv.stage_assigned_at || null,
+      workspace_id: conv.workspace_id,
+      created_at: conv.created_at,
+      // Operational metrics (derived from messages table)
+      last_inbound_at,
+      last_outbound_at,
+      pending_reply,
+      idle_days,
+      overdue,
+    };
+  });
+
+  logger.info(`[Work Queue] Returning ${workQueueItems.length} items`);
+  return workQueueItems;
+}
+
+/**
+ * Get work queue from SQL view
+ * Sprint 5.1: Read from conversation_work_queue view
+ * 
+ * @param userId - Current user ID
+ * @param userRole - User role (admin or sdr)
+ * @param workspaceId - Workspace ID (mandatory)
+ * @param filter - Filter type: 'all' | 'pending' | 'overdue' | 'idle'
+ * @returns Array of work queue items from view
+ */
+export async function getWorkQueueFromView(
+  userId: string,
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string,
+  filter: 'all' | 'pending' | 'overdue' | 'idle' = 'all'
+): Promise<any[]> {
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required');
+  }
+
+  // Enforce explicit role handling
+  if (userRole !== 'admin' && userRole !== 'sdr') {
+    throw new Error('Invalid or missing user role');
+  }
+
+  logger.info(`[Work Queue View] Fetching for user=${userId}, role=${userRole}, workspace=${workspaceId}, filter=${filter}`);
+
+  // Step 1: Build base query from conversation_work_queue view
+  let query = supabaseAdmin
+    .from('conversation_work_queue')
+    .select('*');
+
+  // Step 2: Filter by workspace_id (MANDATORY)
+  query = query.eq('workspace_id', workspaceId);
+
+  // Step 3: Role-based filtering (EXPLICIT)
+  if (userRole === 'sdr') {
+    // SDR: Only show conversations assigned to this SDR
+    query = query.eq('assigned_sdr_id', userId);
+    logger.info(`[Work Queue View] Applying SDR filter: assigned_sdr_id = ${userId}`);
+  } else if (userRole === 'admin') {
+    // Admin: No additional filtering (sees all conversations in workspace)
+    logger.info('[Work Queue View] Admin access: no additional filtering');
+  }
+
+  // Step 4: Apply filter parameter
+  switch (filter) {
+    case 'pending':
+      // Show only conversations where we owe a reply
+      query = query.eq('pending_reply', true);
+      logger.info('[Work Queue View] Filter: pending_reply = true');
+      break;
+
+    case 'overdue':
+      // Show only conversations that are overdue (pending + >24 hours)
+      query = query.eq('overdue', true);
+      logger.info('[Work Queue View] Filter: overdue = true');
+      break;
+
+    case 'idle':
+      // Show only conversations with some idle time (idle_days > 0)
+      query = query.gt('idle_days', 0);
+      logger.info('[Work Queue View] Filter: idle_days > 0');
+      break;
+
+    case 'all':
+    default:
+      // No additional filter - show all conversations in workspace
+      logger.info('[Work Queue View] Filter: all (no additional filter)');
+      break;
+  }
+
+  // Step 5: Apply default sorting
+  // Sort by overdue DESC (overdue items first), then by last_inbound_at ASC (oldest first)
+  query = query
+    .order('overdue', { ascending: false })
+    .order('last_inbound_at', { ascending: true });
+
+  // Step 6: Execute query
+  const { data, error } = await query;
+
+  if (error) {
+    logger.error('[Work Queue View] Error fetching from view:', error);
+    throw error;
+  }
+
+  logger.info(`[Work Queue View] Returning ${data?.length || 0} items`);
+  return data || [];
+}

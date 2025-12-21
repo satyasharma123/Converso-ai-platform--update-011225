@@ -17,21 +17,27 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { LeadDetailsModal } from "@/components/Pipeline/LeadDetailsModal";
 import type { Conversation } from "@/hooks/useConversations";
+import { useSearchParams } from "react-router-dom";
 
 export default function WorkQueue() {
   const { user, userRole } = useAuth();
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
+  const [searchParams] = useSearchParams();
   
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
 
+  // Read URL parameters for initial filter state
+  const urlFilter = searchParams.get('filter') as 'all' | 'pending' | 'overdue' | 'idle' | null;
+  const urlLeadsOnly = searchParams.get('leadsOnly') === 'true';
+
   const [workQueueItems, setWorkQueueItems] = useState<WorkQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'overdue' | 'idle'>('all');
-  const [showLeadsOnly, setShowLeadsOnly] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'overdue' | 'idle'>(urlFilter || 'all');
+  const [showLeadsOnly, setShowLeadsOnly] = useState(urlLeadsOnly || true);
   const [channelFilter, setChannelFilter] = useState<'all' | 'email' | 'linkedin'>('all');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [assignedSdrFilter, setAssignedSdrFilter] = useState<string>('all');

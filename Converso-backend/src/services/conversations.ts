@@ -257,5 +257,44 @@ export const conversationsService = {
 
     return conversationsApi.getEmailSenderActivities(workspaceId, senderEmail);
   },
+
+  /**
+   * Get work queue with operational metrics
+   * Phase 1.1: Backend-only, read-only endpoint
+   */
+  async getWorkQueue(
+    userId: string,
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string
+  ): Promise<any[]> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.getWorkQueue(userId, userRole, workspaceId);
+  },
+
+  /**
+   * Get work queue from SQL view
+   * Sprint 5.1: Read from conversation_work_queue view
+   */
+  async getWorkQueueFromView(
+    userId: string,
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string,
+    filter: 'all' | 'pending' | 'overdue' | 'idle' = 'all'
+  ): Promise<any[]> {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.getWorkQueueFromView(userId, userRole, workspaceId, filter);
+  },
 };
 

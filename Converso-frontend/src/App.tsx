@@ -13,6 +13,7 @@ import Team from "./pages/Team";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import SalesPipeline from "./pages/SalesPipeline";
+import WorkQueue from "./pages/WorkQueue";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -39,8 +40,10 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/inbox/email" element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
             <Route path="/inbox/linkedin" element={<ProtectedRoute><LinkedInInbox /></ProtectedRoute>} />
+            <Route path="/work-queue" element={<ProtectedRoute><WorkQueue /></ProtectedRoute>} />
             <Route path="/pipeline" element={<ProtectedRoute><SalesPipeline /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute requiredRole="admin"><Team /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

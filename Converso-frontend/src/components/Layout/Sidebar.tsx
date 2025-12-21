@@ -1,4 +1,4 @@
-import { Inbox, Users, Settings, BarChart3, Linkedin, Mail, KanbanSquare, LogOut } from "lucide-react";
+import { Inbox, Users, Settings, BarChart3, Linkedin, Mail, KanbanSquare, LogOut, LayoutDashboard, ListTodo } from "lucide-react";
 import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import {
   Sidebar as ShadcnSidebar,
@@ -16,6 +16,8 @@ import { useNavigate } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 
 // Navigation structure grouped by section
+const dashboardItem = { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard };
+
 const communicationItems = [
   { title: "Email Inbox", url: "/inbox/email", icon: Mail },
   { title: "LinkedIn Inbox", url: "/inbox/linkedin", icon: Linkedin },
@@ -23,11 +25,13 @@ const communicationItems = [
 
 const salesItemsAdmin = [
   { title: "Sales Pipeline", url: "/pipeline", icon: KanbanSquare },
+  { title: "Work Queue", url: "/work-queue", icon: ListTodo },
   { title: "Team", url: "/team", icon: Users },
 ];
 
 const salesItemsSdr = [
   { title: "Sales Pipeline", url: "/pipeline", icon: KanbanSquare },
+  { title: "Work Queue", url: "/work-queue", icon: ListTodo },
 ];
 
 const analyticsItems = [
@@ -83,6 +87,10 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
 
   // Check if a path is active
   const isActive = (url: string) => {
+    if (url === '/dashboard') {
+      // Dashboard is active for both /dashboard and /
+      return location.pathname === '/dashboard' || location.pathname === '/';
+    }
     if (url === '/') {
       return location.pathname === '/';
     }
@@ -140,6 +148,15 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
             </h2>
           )}
         </div>
+
+        {/* Dashboard - Top Level Item */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {renderNavItem(dashboardItem)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* COMMUNICATION Section */}
         <SidebarGroup>

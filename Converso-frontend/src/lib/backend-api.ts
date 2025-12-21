@@ -502,3 +502,39 @@ export const emailTemplatesApi = {
   },
 };
 
+// ==================== Work Queue API ====================
+
+export interface WorkQueueItem {
+  conversation_id: string;
+  conversation_type: 'email' | 'linkedin';
+  sender_name: string;
+  sender_email: string | null;
+  sender_linkedin_url: string | null;
+  subject: string | null;
+  preview: string | null;
+  assigned_sdr_id: string | null;
+  custom_stage_id: string | null;
+  stage_assigned_at: string | null;
+  workspace_id: string;
+  created_at: string;
+  last_message_at: string | null;
+  last_inbound_at: string | null;
+  last_outbound_at: string | null;
+  pending_reply: boolean;
+  idle_days: number | null;
+  overdue: boolean;
+}
+
+export const workQueueApi = {
+  /**
+   * Get work queue items from conversation_work_queue view
+   * @param filter - Filter type: 'all' | 'pending' | 'overdue' | 'idle'
+   * @returns Array of work queue items
+   */
+  async getWorkQueue(
+    filter: 'all' | 'pending' | 'overdue' | 'idle' = 'all'
+  ): Promise<WorkQueueItem[]> {
+    return apiClient.get<WorkQueueItem[]>('/api/conversations/work-queue-view', { filter });
+  },
+};
+
