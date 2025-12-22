@@ -5,6 +5,144 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY;
+const UNIPILE_BASE_URL = process.env.UNIPILE_BASE_URL || 'https://api.unipile.com/v1';
+
+/**
+ * LinkedIn Message Attachment Download
+ * Fetches attachment using Unipile's official attachment API
+ *
+ * Endpoint:
+ * GET /api/linkedin/media/messages/:message_id/attachments/:attachment_id
+ */
+router.get('/messages/:message_id/attachments/:attachment_id', async (req, res) => {
+  try {
+    const { message_id, attachment_id } = req.params;
+    const account_id = req.query.account_id as string | undefined;
+
+    if (!message_id || !attachment_id) {
+      return res.status(400).json({ error: 'Missing message_id or attachment_id' });
+    }
+
+    if (!account_id) {
+      return res.status(400).json({ error: 'Missing account_id parameter' });
+    }
+
+    if (!UNIPILE_API_KEY) {
+      return res.status(500).json({ error: 'UNIPILE_API_KEY missing' });
+    }
+
+    // Call Unipile Attachment API
+    const response = await axios.get(
+      `${UNIPILE_BASE_URL}/messages/${encodeURIComponent(message_id)}/attachments/${encodeURIComponent(attachment_id)}`,
+      {
+        responseType: 'arraybuffer',
+        headers: {
+          'X-API-KEY': UNIPILE_API_KEY,
+        },
+        params: {
+          account_id: account_id,
+        },
+        timeout: 30000,
+      }
+    );
+
+    // Set Content-Type from upstream response
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    // Set Content-Length if available
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+
+    // Always use inline disposition
+    res.setHeader('Content-Disposition', 'inline');
+
+    return res.send(Buffer.from(response.data));
+  } catch (err: any) {
+    logger.error('[MEDIA] Error fetching attachment', {
+      error: err.message,
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      message_id: req.params.message_id,
+      attachment_id: req.params.attachment_id,
+    });
+
+    const statusCode = err.response?.status || 500;
+    const errorMessage = err.response?.status === 404
+      ? 'Attachment not found'
+      : err.response?.status === 401 || err.response?.status === 403
+      ? 'Unauthorized to access attachment'
+      : 'Failed to load attachment';
+
+    return res.status(statusCode).json({ error: errorMessage });
+  }
+});
+
+/**
+ * LinkedIn Media Download by Media ID
+ * Direct download using Unipile media_id
+ *
+ * Endpoint:
+ * GET /api/linkedin/media/:media_id
+ */
+router.get('/:media_id', async (req, res) => {
+  try {
+    const mediaId = req.params.media_id;
+
+    if (!mediaId) {
+      return res.status(400).json({ error: 'Missing media_id parameter' });
+    }
+
+    if (!UNIPILE_API_KEY) {
+      return res.status(500).json({ error: 'UNIPILE_API_KEY missing' });
+    }
+
+    // Call Unipile Media Download API
+    const response = await axios.get(
+      `https://api.unipile.com/v1/media/${encodeURIComponent(mediaId)}/download`,
+      {
+        responseType: 'arraybuffer',
+        headers: {
+          'X-API-KEY': UNIPILE_API_KEY,
+        },
+        timeout: 30000,
+      }
+    );
+
+    // Set Content-Type from upstream response
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    // Set Content-Length if available
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+
+    // Always use inline disposition for direct media_id access
+    res.setHeader('Content-Disposition', 'inline');
+
+    return res.send(Buffer.from(response.data));
+  } catch (err: any) {
+    logger.error('[MEDIA] Error fetching media by media_id', {
+      error: err.message,
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      media_id: req.params.media_id,
+    });
+
+    const statusCode = err.response?.status || 500;
+    const errorMessage = err.response?.status === 404
+      ? 'Media not found'
+      : err.response?.status === 401 || err.response?.status === 403
+      ? 'Unauthorized to access media'
+      : 'Failed to load media';
+
+    return res.status(statusCode).json({ error: errorMessage });
+  }
+});
 
 /**
  * LinkedIn Media Proxy
@@ -16,7 +154,6 @@ const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY;
 router.get('/', async (req, res) => {
   try {
     const rawUrl = req.query.url as string | undefined;
-    const accountId = req.query.account_id as string | undefined;
 
     // =======================
     // AUDIT ONLY — DO NOT SHIP
@@ -26,8 +163,8 @@ router.get('/', async (req, res) => {
     // END AUDIT
     // =======================
 
-    if (!rawUrl || !accountId) {
-      return res.status(400).json({ error: 'Missing parameters' });
+    if (!rawUrl) {
+      return res.status(400).json({ error: 'Missing url parameter' });
     }
 
     if (!UNIPILE_API_KEY) {
@@ -38,7 +175,7 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid attachment reference' });
     }
 
-    // att://<account_id>/<base64_encoded_https_url>
+    // att://<unipile_account_id>/<base64_encoded_https_url>
     const attRef = rawUrl.replace('att://', '');
     const parts = attRef.split('/', 2);
 
@@ -54,6 +191,7 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'Malformed att reference' });
     }
 
+    const unipileAccountIdFromAtt = parts[0];
     const base64Payload = parts[1];
 
     // =======================
@@ -97,16 +235,20 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid decoded media URL' });
     }
 
-    const response = await axios.get(decodedUrl, {
-      responseType: 'arraybuffer',
-      headers: {
-        'X-API-KEY': UNIPILE_API_KEY,
-      },
-      params: {
-        account_id: accountId,
-      },
-      timeout: 30000,
-    });
+    const response = await axios.get(
+      'https://api.unipile.com/v1/media/download',
+      {
+        responseType: 'arraybuffer',
+        headers: {
+          'X-API-KEY': UNIPILE_API_KEY,
+        },
+        params: {
+          account_id: unipileAccountIdFromAtt,
+          url: decodedUrl,
+        },
+        timeout: 30000,
+      }
+    );
 
     // =======================
     // AUDIT ONLY — DO NOT SHIP

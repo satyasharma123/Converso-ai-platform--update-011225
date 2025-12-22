@@ -55,6 +55,26 @@ const isImageAttachment = (att: any): boolean => {
   return false;
 };
 
+/**
+ * Helper: Determine attachment kind by MIME type (primary) or file extension (fallback)
+ * Used for rendering different attachment card styles
+ */
+function getAttachmentKind(att: any) {
+  const mime = att?.mime_type || att?.media?.type || '';
+  const name = (att?.name || '').toLowerCase();
+
+  // Primary check: MIME type (LinkedIn correct way)
+  if (mime.startsWith('image/')) return 'image';
+  if (mime === 'application/pdf') return 'pdf';
+
+  // Fallback: filename extension (safety)
+  if (name.match(/\.(png|jpg|jpeg|gif|webp)$/)) return 'image';
+  if (name.endsWith('.pdf')) return 'pdf';
+  if (name.match(/\.(doc|docx|ppt|pptx|xls|xlsx)$/)) return 'document';
+
+  return 'other';
+}
+
 interface Message {
   id: string;
   senderName: string;
@@ -65,6 +85,8 @@ interface Message {
   isFromLead: boolean;
   reactions?: any[];
   attachments?: any[];
+  media_id?: string | null;
+  linkedin_message_id?: string | null;
   deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'failed';
   tempId?: string;
   serverId?: string | null;
@@ -687,39 +709,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                     {message.attachments && message.attachments.length > 0 && (
                       <div className="mt-2 flex flex-col gap-2">
                         {message.attachments.map((att: any, idx: number) => {
-                          // Normalize URL from various LinkedIn schema fields
-                          const url = getAttachmentUrl(att);
-                          if (!url) return null;
-
-                          const accountId = conversation.received_on_account_id;
-
-                          // IMAGE ATTACHMENT
-                          if (isImageAttachment({ ...att, url })) {
-                            // Proxy LinkedIn media through backend (requires auth)
-                            if (!accountId) {
-                              return (
-                                <span key={idx} className="text-sm text-muted-foreground">
-                                  Attachment unavailable
-                                </span>
-                              );
-                            }
-
-                            const proxiedUrl = `/api/linkedin/media?url=${encodeURIComponent(url)}&account_id=${encodeURIComponent(accountId)}`;
-
-                            return (
-                              <img
-                                key={idx}
-                                src={proxiedUrl}
-                                alt={att.name || 'image'}
-                                className="max-w-xs rounded-lg border"
-                                loading="lazy"
-                              />
-                            );
-                          }
-
-                          // NON-IMAGE ATTACHMENT FALLBACK
-                          // Also proxy non-image attachments for authenticated access
-                          if (!accountId) {
+                          if (!message.linkedin_message_id || !att.id || !conversation.received_on_account_id) {
                             return (
                               <span key={idx} className="text-sm text-muted-foreground">
                                 Attachment unavailable
@@ -727,18 +717,95 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                             );
                           }
 
-                          const proxiedUrl = `/api/linkedin/media?url=${encodeURIComponent(url)}&account_id=${encodeURIComponent(accountId)}`;
+                          const attachmentUrl =
+                            `/api/linkedin/media/messages/${encodeURIComponent(message.linkedin_message_id)}` +
+                            `/attachments/${encodeURIComponent(att.id)}` +
+                            `?account_id=${encodeURIComponent(conversation.received_on_account_id)}`;
 
+                          const kind = getAttachmentKind(att);
+
+                          // IMAGE → show inline thumbnail (LinkedIn style)
+                          if (kind === 'image') {
+                            return (
+                              <a
+                                key={idx}
+                                href={attachmentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-block"
+                              >
+                                <img
+                                  src={attachmentUrl}
+                                  alt={att.name || 'image'}
+                                  className="max-w-xs rounded-lg border cursor-pointer hover:opacity-90 transition"
+                                  loading="lazy"
+                                />
+                              </a>
+                            );
+                          }
+
+                          // PDF → show PDF preview card
+                          if (kind === 'pdf') {
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-3 border rounded-lg p-3 max-w-sm bg-white"
+                              >
+                                <div className="flex items-center justify-center w-10 h-10 rounded bg-red-100 text-red-600 font-bold">
+                                  PDF
+                                </div>
+
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium truncate">
+                                    {att.name}
+                                  </div>
+                                  {typeof att.size === 'number' && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {(att.size / 1024).toFixed(0)} KB
+                                    </div>
+                                  )}
+                                  <a
+                                    href={attachmentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600"
+                                  >
+                                    Open file
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // DOC / PPT / XLS → show file card
                           return (
-                            <a
+                            <div
                               key={idx}
-                              href={proxiedUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-blue-600 underline"
+                              className="flex items-center gap-3 border rounded-lg p-3 max-w-sm bg-white"
                             >
-                              {att.name || 'View attachment'}
-                            </a>
+                              <div className="flex items-center justify-center w-10 h-10 rounded bg-gray-200 text-gray-700">
+                                📄
+                              </div>
+
+                              <div className="flex-1">
+                                <div className="text-sm font-medium truncate">
+                                  {att.name}
+                                </div>
+                                {typeof att.size === 'number' && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {(att.size / 1024).toFixed(0)} KB
+                                  </div>
+                                )}
+                                <a
+                                  href={attachmentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600"
+                                >
+                                  Open file
+                                </a>
+                              </div>
+                            </div>
                           );
                         })}
                       </div>

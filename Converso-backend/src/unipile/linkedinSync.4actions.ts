@@ -455,6 +455,17 @@ export async function syncLinkedInMessagesForAccount(
             const messageId = deterministicId(`msg-${message.id}`);
             const createdAt = safeTimestamp(message) || new Date().toISOString();
 
+            // Extract media_id from first attachment with media.id (Unipile official payload)
+            let media_id: string | null = null;
+            if (Array.isArray(message.attachments)) {
+              const mediaAttachment = message.attachments.find(
+                (att) => att?.media?.id
+              );
+              if (mediaAttachment) {
+                media_id = mediaAttachment.media.id;
+              }
+            }
+
             // Insert message into Supabase
             const { error } = await supabaseAdmin
               .from('messages')
@@ -472,6 +483,7 @@ export async function syncLinkedInMessagesForAccount(
                   is_from_lead: !message.is_sender,
                   attachments: message.attachments || null,
                   reactions: message.reactions || null,
+                  media_id: media_id,
                   provider: 'linkedin',
                 },
                 { onConflict: 'linkedin_message_id' }
@@ -708,6 +720,17 @@ export async function syncChatIncremental(
         const messageId = deterministicId(`msg-${message.id}`);
         const createdAt = safeTimestamp(message) || new Date().toISOString();
 
+        // Extract media_id from first attachment with media.id (Unipile official payload)
+        let media_id: string | null = null;
+        if (Array.isArray(message.attachments)) {
+          const mediaAttachment = message.attachments.find(
+            (att) => att?.media?.id
+          );
+          if (mediaAttachment) {
+            media_id = mediaAttachment.media.id;
+          }
+        }
+
         await supabaseAdmin
           .from('messages')
           .upsert(
@@ -724,6 +747,7 @@ export async function syncChatIncremental(
               is_from_lead: !message.is_sender,
               attachments: message.attachments || null,
               reactions: message.reactions || null,
+              media_id: media_id,
               provider: 'linkedin',
             },
             { onConflict: 'linkedin_message_id' }

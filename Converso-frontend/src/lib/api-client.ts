@@ -25,8 +25,12 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     
+    // Detect FormData - browser will set Content-Type with boundary automatically
+    const isFormData = options.body instanceof FormData;
+    
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      // Only set JSON Content-Type if NOT FormData
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     };
 
@@ -116,6 +120,17 @@ class ApiClient {
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'DELETE',
+    });
+  }
+
+  /**
+   * POST with FormData (for file uploads)
+   * Browser automatically sets Content-Type with multipart boundary
+   */
+  async postFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: formData,
     });
   }
 }

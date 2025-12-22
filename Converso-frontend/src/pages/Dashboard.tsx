@@ -351,7 +351,7 @@ export default function Dashboard() {
                       <TableCell className="align-middle whitespace-nowrap">
                         <Button 
                           variant="ghost" 
-                          size="xs" 
+                          size="sm" 
                           className="text-[11px] font-medium h-7 px-2"
                           onClick={() => {
                             const conversation: Conversation = {

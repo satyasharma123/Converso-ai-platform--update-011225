@@ -30,6 +30,7 @@ export interface Conversation {
   derived_folder?: string | null; // ✅ Derived from latest message's provider_folder
   company_name?: string | null;
   location?: string | null;
+  created_at?: string;
   // LinkedIn-specific fields
   chat_id?: string | null;
   sender_attendee_id?: string | null;

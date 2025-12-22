@@ -18,6 +18,7 @@ import linkedinAccountsRoutes from './linkedin.accounts.routes';
 import linkedinWebhookRoutes from './linkedinWebhook.routes';
 import linkedinSyncRoutes from './linkedin.sync.routes';
 import linkedinFixRoutes from './linkedin.fix.routes';
+import linkedinMediaRoutes from './linkedin.media.routes';
 import unipileWebhookRoutes from './unipile.webhook.routes';
 import emailSyncRoutes from './emailSync.routes';
 import emailTemplatesRoutes from './emailTemplates.routes';
@@ -45,6 +46,7 @@ router.use('/integrations', integrationsRoutes);
 router.use('/emails', emailSyncRoutes);
 router.use('/email-templates', emailTemplatesRoutes);
 router.use('/linkedin/messages', linkedinMessagesRoutes);
+router.use('/linkedin/media', linkedinMediaRoutes);
 // Mount accounts under /api/linkedin/... (no double "accounts" segment)
 router.use('/linkedin', linkedinAccountsRoutes);
 router.use('/linkedin/sync', linkedinSyncRoutes);

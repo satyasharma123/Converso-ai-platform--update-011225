@@ -288,7 +288,7 @@ export default function WorkQueue() {
                       <Switch
                         id="leads-only"
                         checked={showLeadsOnly}
-                        onCheckedChange={setShowLeadsOnly}
+                        onCheckedChange={(checked) => setShowLeadsOnly(checked as any)}
                       />
                       <Label htmlFor="leads-only" className="cursor-pointer">
                         Leads only

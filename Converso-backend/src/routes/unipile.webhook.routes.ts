@@ -273,7 +273,30 @@ async function handleNewMessage(
   // Process the message
   if (payload.message) {
     // Direct message in payload
-    await insertMessage(payload.message, conversationId, conversation);
+    const message = payload.message;
+    
+    // Check if message has any content before inserting
+    const hasText =
+      Boolean(message.text && message.text.trim()) ||
+      Boolean(message.body_text && message.body_text.trim());
+
+    const hasAttachments =
+      Array.isArray(message.attachments) &&
+      message.attachments.length > 0;
+
+    const hasReactions =
+      Array.isArray(message.reactions) &&
+      message.reactions.length > 0;
+
+    // Skip event-only / empty messages
+    if (!hasText && !hasAttachments && !hasReactions) {
+      logger.info('[Unipile Webhook] Skipping empty event-only message', {
+        messageId: message.id,
+        chatId: message.chat_id,
+      });
+    } else {
+      await insertMessage(message, conversationId, conversation);
+    }
   } else {
     // Fetch latest messages from Unipile
     try {
@@ -282,6 +305,28 @@ async function handleNewMessage(
       );
 
       for (const message of messagesResponse.items || []) {
+        // Check if message has any content before inserting
+        const hasText =
+          Boolean(message.text && message.text.trim()) ||
+          Boolean(message.body_text && message.body_text.trim());
+
+        const hasAttachments =
+          Array.isArray(message.attachments) &&
+          message.attachments.length > 0;
+
+        const hasReactions =
+          Array.isArray(message.reactions) &&
+          message.reactions.length > 0;
+
+        // Skip event-only / empty messages
+        if (!hasText && !hasAttachments && !hasReactions) {
+          logger.info('[Unipile Webhook] Skipping empty event-only message', {
+            messageId: message.id,
+            chatId: message.chat_id,
+          });
+          continue;
+        }
+
         await insertMessage(message, conversationId, conversation);
       }
     } catch (err) {

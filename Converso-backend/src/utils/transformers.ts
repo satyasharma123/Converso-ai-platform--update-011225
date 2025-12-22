@@ -109,6 +109,9 @@ export function transformMessage(msg: Message): any {
     createdAt: msg.created_at,
     timestamp: msg.created_at,
     linkedinMessageId: msg.linkedin_message_id || null,
+    // LinkedIn attachments & reactions
+    attachments: (msg as any).attachments ?? [],
+    reactions: (msg as any).reactions ?? [],
     // Keep snake_case for compatibility
     conversation_id: msg.conversation_id,
     sender_id: msg.sender_id,

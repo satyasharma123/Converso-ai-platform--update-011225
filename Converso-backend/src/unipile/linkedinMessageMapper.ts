@@ -28,6 +28,7 @@ export interface MessageRecord {
   is_from_lead: boolean;
   attachments?: any[] | null;
   reactions?: any[] | null;
+  media_id?: string | null;
 }
 
 export function deterministicId(seed: string) {
@@ -53,6 +54,17 @@ export function mapMessage(
     message.date ||
     new Date().toISOString();
 
+  // Extract media_id from first attachment with media.id (Unipile official payload)
+  let media_id: string | null = null;
+  if (Array.isArray(message.attachments)) {
+    const mediaAttachment = message.attachments.find(
+      (att) => att?.media?.id
+    );
+    if (mediaAttachment) {
+      media_id = mediaAttachment.media.id;
+    }
+  }
+
   return {
     id: deterministicId(`msg-${message.id}`),
     conversation_id: conversationId,
@@ -66,5 +78,6 @@ export function mapMessage(
     is_from_lead: !message.is_sender,
     attachments: message.attachments ?? null,
     reactions: message.reactions ?? null,
+    media_id: media_id,
   };
 }
