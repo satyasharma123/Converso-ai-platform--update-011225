@@ -29,6 +29,7 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { useUrlState } from "@/hooks/useUrlState";
 
 const VALID_FOLDERS = [
   "inbox",
@@ -44,12 +45,27 @@ export default function EmailInbox() {
   const { folder, conversationId } = useParams();
   const navigate = useNavigate();
   
+  // URL state management for filters
+  const urlState = useUrlState<{
+    tab: string;
+    account: string;
+    sdr: string;
+    stage: string;
+    q: string;
+  }>();
+  
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [tabValue, setTabValue] = useState<'all' | 'unread' | 'favorites'>('all');
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const [filterState, setFilterState] = useState<{ sdr: string; stage: string }>({
+    sdr: 'all',
+    stage: 'all',
+  });
   
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
@@ -104,6 +120,30 @@ export default function EmailInbox() {
       console.error('Error saving sidebar collapse state:', error);
     }
   }, [isSidebarCollapsed]);
+  
+  // Hydrate filters from URL on mount (once)
+  useEffect(() => {
+    setTabValue(urlState.get("tab", "all") as 'all' | 'unread' | 'favorites');
+    setAccountFilter(urlState.get("account", "all"));
+    setSearchQuery(urlState.get("q", ""));
+    setFilterState({
+      sdr: urlState.get("sdr", "all"),
+      stage: urlState.get("stage", "all"),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Sync UI state -> URL (non-default values only)
+  useEffect(() => {
+    urlState.set({
+      tab: tabValue !== "all" ? tabValue : undefined,
+      account: accountFilter !== "all" ? accountFilter : undefined,
+      sdr: filterState.sdr !== "all" ? filterState.sdr : undefined,
+      stage: filterState.stage !== "all" ? filterState.stage : undefined,
+      q: searchQuery || undefined,
+    });
+  }, [tabValue, accountFilter, filterState, searchQuery, urlState]);
+  
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   
@@ -123,12 +163,6 @@ export default function EmailInbox() {
   const { data: stages = [] } = usePipelineStages();
   const toggleFavoriteConversation = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
-  const [tabValue, setTabValue] = useState<'all' | 'unread' | 'favorites'>('all');
-  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
-  const [filterState, setFilterState] = useState<{ sdr: string; stage: string }>({
-    sdr: 'all',
-    stage: 'all',
-  });
 
   const activeFilterCount =
     (filterState.sdr !== 'all' ? 1 : 0) +
