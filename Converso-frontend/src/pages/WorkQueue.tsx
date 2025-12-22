@@ -191,124 +191,131 @@ export default function WorkQueue() {
 
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">
-            Work Queue
-          </h1>
-          <p className="text-muted-foreground mt-1">Leads that need your action</p>
-        </div>
+      <div className="flex flex-col h-[calc(100vh-56px-48px)]">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-background border-b pb-4">
+          {/* Page Header */}
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold text-foreground">
+              Work Queue
+            </h1>
+            <p className="text-muted-foreground mt-1">Leads that need your action</p>
+          </div>
 
-        {/* Filter Bar */}
-        <Card className="border shadow-sm">
-          <div className="p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={activeFilter === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleFilterChange('all')}
-                >
-                  All
-                </Button>
-                <Button
-                  variant={activeFilter === 'pending' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleFilterChange('pending')}
-                >
-                  Pending Reply
-                </Button>
-                <Button
-                  variant={activeFilter === 'overdue' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleFilterChange('overdue')}
-                >
-                  Overdue
-                </Button>
-                <Button
-                  variant={activeFilter === 'idle' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleFilterChange('idle')}
-                >
-                  Idle
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Channel Filter Dropdown */}
-                <Select value={channelFilter} onValueChange={(value: 'all' | 'email' | 'linkedin') => setChannelFilter(value)}>
-                  <SelectTrigger className="w-[140px] h-9">
-                    <SelectValue placeholder="All Channels" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Channels</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="linkedin">LinkedIn</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Stage Filter Dropdown */}
-                <Select value={stageFilter} onValueChange={setStageFilter}>
-                  <SelectTrigger className="w-[140px] h-9">
-                    <SelectValue placeholder="All Stages" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Stages</SelectItem>
-                    {pipelineStages.map((stage) => (
-                      <SelectItem key={stage.id} value={stage.id}>
-                        {stage.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Assigned SDR Filter (Admin only) */}
-                {userRole === 'admin' && (
-                  <Select value={assignedSdrFilter} onValueChange={setAssignedSdrFilter}>
-                    <SelectTrigger className="w-[140px] h-9">
-                      <SelectValue placeholder="All SDRs" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All SDRs</SelectItem>
-                      {teamMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          {member.full_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {/* Leads Only Toggle */}
+          {/* Filter Bar with integrated Search */}
+          <Card className="border shadow-sm">
+            <div className="px-4 py-2">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <Switch
-                    id="leads-only"
-                    checked={showLeadsOnly}
-                    onCheckedChange={setShowLeadsOnly}
-                  />
-                  <Label htmlFor="leads-only" className="cursor-pointer">
-                    Leads only
-                  </Label>
+                  <Button
+                    variant={activeFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handleFilterChange('all')}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'pending' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handleFilterChange('pending')}
+                  >
+                    Pending Reply
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'overdue' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handleFilterChange('overdue')}
+                  >
+                    Overdue
+                  </Button>
+                  <Button
+                    variant={activeFilter === 'idle' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handleFilterChange('idle')}
+                  >
+                    Idle
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {/* Channel Filter Dropdown */}
+                    <Select value={channelFilter} onValueChange={(value: 'all' | 'email' | 'linkedin') => setChannelFilter(value)}>
+                      <SelectTrigger className="w-[140px] h-9">
+                        <SelectValue placeholder="All Channels" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Channels</SelectItem>
+                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="linkedin">LinkedIn</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Stage Filter Dropdown */}
+                    <Select value={stageFilter} onValueChange={setStageFilter}>
+                      <SelectTrigger className="w-[140px] h-9">
+                        <SelectValue placeholder="All Stages" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Stages</SelectItem>
+                        {pipelineStages.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            {stage.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Assigned SDR Filter (Admin only) */}
+                    {userRole === 'admin' && (
+                      <Select value={assignedSdrFilter} onValueChange={setAssignedSdrFilter}>
+                        <SelectTrigger className="w-[140px] h-9">
+                          <SelectValue placeholder="All SDRs" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All SDRs</SelectItem>
+                          {teamMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {/* Leads Only Toggle */}
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="leads-only"
+                        checked={showLeadsOnly}
+                        onCheckedChange={setShowLeadsOnly}
+                      />
+                      <Label htmlFor="leads-only" className="cursor-pointer">
+                        Leads only
+                      </Label>
+                    </div>
+                  </div>
+
+                  {/* Search Bar - Integrated into Filter Card */}
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search leads..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </Card>
-
-        {/* Search Bar */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+          </Card>
         </div>
 
-        {/* Table */}
-        <Card className="border shadow-sm">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Table */}
+          <Card className="border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -503,6 +510,7 @@ export default function WorkQueue() {
             </TableBody>
           </Table>
         </Card>
+        </div>
       </div>
 
       {/* Lead Details Modal */}

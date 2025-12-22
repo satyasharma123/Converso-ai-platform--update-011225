@@ -158,26 +158,32 @@ export default function Dashboard() {
   
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
-      <div className="space-y-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground mt-1">Real-time overview of your SDR operations</p>
-          </div>
-          
-          {/* Leads Only Toggle */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Leads only</span>
-            <Switch
-              checked={showLeadsOnly}
-              onCheckedChange={setShowLeadsOnly}
-            />
+      <div className="flex flex-col h-[calc(100vh-56px)] min-h-0">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-background border-b pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">
+                Dashboard
+              </h1>
+              <p className="text-muted-foreground mt-1">Real-time overview of your SDR operations</p>
+            </div>
+            
+            {/* Leads Only Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Leads only</span>
+              <Switch
+                checked={showLeadsOnly}
+                onCheckedChange={setShowLeadsOnly}
+              />
+            </div>
           </div>
         </div>
 
-        {/* KPI Cards - Work Queue Metrics */}
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="space-y-6">
+            {/* KPI Cards - Work Queue Metrics */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card 
             className="border shadow-sm cursor-pointer transition-colors hover:bg-muted/50"
@@ -501,6 +507,8 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+          </div>
+        </div>
       </div>
 
       {/* Lead Details Modal */}

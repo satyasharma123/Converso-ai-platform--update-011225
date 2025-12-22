@@ -583,7 +583,7 @@ export default function LinkedInInbox() {
     <AppLayout role={userRole} userName={userDisplayName}>
       <div className="flex flex-col lg:flex-row gap-2 h-[calc(100vh-120px)]">
         <div className="overflow-hidden flex flex-col lg:w-[27%]">
-          <div className="space-y-2 mb-3">
+          <div className="sticky top-0 z-10 bg-background space-y-2 mb-3">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
                 <TabsTrigger 

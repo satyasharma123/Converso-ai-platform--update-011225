@@ -112,24 +112,30 @@ export default function Analytics() {
   
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Analytics & Performance</h1>
-            <p className="text-xs text-muted-foreground mt-1">Performance metrics and insights</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={leadsOnly}
-              onCheckedChange={setLeadsOnly}
-            />
-            <span className="text-sm text-muted-foreground">
-              Leads only
-            </span>
+      <div className="flex flex-col h-[calc(100vh-56px)] min-h-0">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-background border-b pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Analytics & Performance</h1>
+              <p className="text-xs text-muted-foreground mt-1">Performance metrics and insights</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={leadsOnly}
+                onCheckedChange={setLeadsOnly}
+              />
+              <span className="text-sm text-muted-foreground">
+                Leads only
+              </span>
+            </div>
           </div>
         </div>
 
-        <PerformanceMetrics 
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="space-y-6">
+            <PerformanceMetrics 
           sdrLeaderboardData={sdrLeaderboardData}
           leadFunnelData={leadFunnelData}
           loading={loading}
@@ -381,6 +387,8 @@ export default function Analytics() {
               )}
             </CardContent>
           </Card>
+        </div>
+          </div>
         </div>
       </div>
     </AppLayout>

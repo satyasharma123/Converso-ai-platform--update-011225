@@ -727,7 +727,7 @@ export default function EmailInbox() {
 
             {/* Conversation List */}
             <div className="w-[320px] h-full border-r bg-background flex flex-col flex-shrink-0">
-              <div className="p-3 space-y-2 border-b flex-shrink-0">
+              <div className="sticky top-0 z-10 bg-background p-3 space-y-2 border-b flex-shrink-0">
                 <Tabs value={tabValue} onValueChange={(value) => setTabValue(value as 'all' | 'unread' | 'favorites')} className="w-full">
                   <TabsList className="bg-transparent border-b rounded-none w-full justify-start h-auto p-0">
                     <TabsTrigger 

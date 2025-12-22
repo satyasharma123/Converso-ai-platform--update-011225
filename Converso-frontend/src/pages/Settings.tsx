@@ -406,30 +406,37 @@ export default function Settings() {
 
   return (
     <AppLayout role={userRole} userName={userDisplayName}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-xs text-muted-foreground">Manage integrations, automation, and workspace settings</p>
+      <div className="flex flex-col h-[calc(100vh-56px)] min-h-0">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-background border-b pb-4">
+          <div>
+            <h1 className="text-2xl font-bold">Settings</h1>
+            <p className="text-xs text-muted-foreground">Manage integrations, automation, and workspace settings</p>
+          </div>
         </div>
 
-        <Tabs 
-          value={activeTab} 
-          onValueChange={(value) => setSearchParams({ tab: value })}
-          className="w-full"
-        >
-          <TabsList>
-            {userRole === 'admin' && (
-              <>
-                <TabsTrigger value="rules">Routing Rules</TabsTrigger>
-                <TabsTrigger value="integrations">Integrations</TabsTrigger>
-                <TabsTrigger value="pipeline">Pipeline Stages</TabsTrigger>
-                <TabsTrigger value="workspace">Workspace</TabsTrigger>
-              </>
-            )}
-            <TabsTrigger value="profile">My Profile</TabsTrigger>
-          </TabsList>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <Tabs 
+            value={activeTab} 
+            onValueChange={(value) => setSearchParams({ tab: value })}
+            className="w-full"
+          >
+            <div className="sticky top-0 z-10 bg-background border-b pb-2 pt-4">
+              <TabsList>
+                {userRole === 'admin' && (
+                  <>
+                    <TabsTrigger value="rules">Routing Rules</TabsTrigger>
+                    <TabsTrigger value="integrations">Integrations</TabsTrigger>
+                    <TabsTrigger value="pipeline">Pipeline Stages</TabsTrigger>
+                    <TabsTrigger value="workspace">Workspace</TabsTrigger>
+                  </>
+                )}
+                <TabsTrigger value="profile">My Profile</TabsTrigger>
+              </TabsList>
+            </div>
 
-          {userRole === 'admin' && (
+            {userRole === 'admin' && (
             <>
               <TabsContent value="rules" className="mt-6">
                 <RulesEngine />
@@ -1011,7 +1018,8 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        </div>
       </div>
     </AppLayout>
   );
