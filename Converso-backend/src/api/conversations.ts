@@ -1577,6 +1577,68 @@ export async function getWorkQueueFromView(
     throw error;
   }
 
-  logger.info(`[Work Queue View] Returning ${data?.length || 0} items`);
-  return data || [];
+  if (!data || data.length === 0) {
+    logger.info('[Work Queue View] No items found');
+    return [];
+  }
+
+  // Step 7: Group email conversations by sender_email (same logic as Sales Pipeline)
+  // LinkedIn conversations remain ungrouped (one row per conversation)
+  const emailItems = data.filter(item => item.conversation_type === 'email' && item.sender_email);
+  const linkedinItems = data.filter(item => item.conversation_type === 'linkedin');
+
+  // Group email items by sender_email
+  const senderMap = new Map<string, any[]>();
+  for (const item of emailItems) {
+    const email = item.sender_email;
+    if (!email) continue;
+
+    // Normalize sender_email: lowercase and trim
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) continue;
+
+    if (!senderMap.has(normalizedEmail)) {
+      senderMap.set(normalizedEmail, []);
+    }
+    senderMap.get(normalizedEmail)!.push(item);
+  }
+
+  // Build grouped email items (one per sender_email)
+  const groupedEmailItems: any[] = [];
+  for (const [senderEmail, items] of senderMap.entries()) {
+    // Sort by last_message_at DESC to get latest
+    const sortedItems = [...items].sort((a, b) => {
+      const timeA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const timeB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    const latestItem = sortedItems[0];
+
+    // Use latest conversation's data
+    // This ensures status, idle_days, etc. reflect the most recent communication
+    groupedEmailItems.push({
+      ...latestItem,
+      sender_email: senderEmail, // Use normalized email
+      conversation_count: items.length, // Number of email threads with this sender
+    });
+  }
+
+  // Combine grouped emails + ungrouped LinkedIn items
+  const result = [...groupedEmailItems, ...linkedinItems];
+
+  // Re-sort by original sort order (overdue DESC, last_inbound_at ASC)
+  result.sort((a, b) => {
+    // First sort by overdue (true first)
+    if (a.overdue !== b.overdue) {
+      return a.overdue ? -1 : 1;
+    }
+    // Then by last_inbound_at (oldest first)
+    const timeA = a.last_inbound_at ? new Date(a.last_inbound_at).getTime() : 0;
+    const timeB = b.last_inbound_at ? new Date(b.last_inbound_at).getTime() : 0;
+    return timeA - timeB;
+  });
+
+  logger.info(`[Work Queue View] Returning ${result.length} items (${groupedEmailItems.length} email senders, ${linkedinItems.length} LinkedIn conversations)`);
+  return result;
 }
