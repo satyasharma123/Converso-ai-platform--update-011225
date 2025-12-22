@@ -20,6 +20,7 @@ import { useConversations, useToggleRead, useAssignConversation, useUpdateConver
 import { useMessages } from "@/hooks/useMessages";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { useUrlState } from "@/hooks/useUrlState";
 import {
   Popover,
   PopoverContent,
@@ -35,9 +36,18 @@ import {
 
 export default function LinkedInInbox() {
   const location = useLocation();
+  
+  // URL state management for filters
+  const urlState = useUrlState<{
+    tab: string;
+    account: string;
+    q: string;
+  }>();
+  
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('all');
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -63,6 +73,35 @@ export default function LinkedInInbox() {
   const clearFilters = () => {
     setFilterState({ sdr: 'all', stage: 'all' });
   };
+  
+  // Hydrate filters from URL on mount (once)
+  useEffect(() => {
+    setActiveTab(urlState.get("tab", "all"));
+    setAccountFilter(urlState.get("account", "all"));
+    const urlSearch = urlState.get("q", "");
+    setSearchQuery(urlSearch);
+    setDebouncedSearch(urlSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  
+  // Sync UI state -> URL (non-default values only)
+  useEffect(() => {
+    urlState.set({
+      tab: activeTab !== "all" ? activeTab : undefined,
+      account: accountFilter !== "all" ? accountFilter : undefined,
+      q: debouncedSearch || undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, accountFilter, debouncedSearch]);
   
   // Handle navigation from Sales Pipeline
   useEffect(() => {
