@@ -77,3 +77,4 @@ export function startEmailSyncJob() {
     runBackgroundEmailSync();
   }, 5 * 60 * 1000);
 }
+

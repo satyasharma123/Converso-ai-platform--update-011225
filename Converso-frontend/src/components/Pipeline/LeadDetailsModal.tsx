@@ -99,7 +99,7 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
                 <TabsList className="w-full justify-start h-12">
                   <TabsTrigger value="activities" className="flex-1 max-w-[200px]">
                     <span className="flex items-center gap-2">
-                      Activities
+                    Activities
                       <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-muted text-muted-foreground">
                         {activityCount ?? 0}
                       </span>
@@ -107,7 +107,7 @@ export function LeadDetailsModal({ conversation, open, onOpenChange }: LeadDetai
                   </TabsTrigger>
                   <TabsTrigger value="conversation" className="flex-1 max-w-[200px]">
                     <span className="flex items-center gap-2">
-                      Conversation History
+                    Conversation History
                       <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-medium rounded-full bg-muted text-muted-foreground">
                         {conversationCount ?? 0}
                       </span>

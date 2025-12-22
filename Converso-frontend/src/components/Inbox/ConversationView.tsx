@@ -26,7 +26,7 @@ interface Message {
   isFromLead: boolean;
   reactions?: any[];
   attachments?: any[];
-  deliveryStatus?: 'sending' | 'sent' | 'delivered';
+  deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'failed';
   tempId?: string;
   serverId?: string | null;
   isOptimistic?: boolean;
@@ -73,6 +73,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
+  const sendLockRef = useRef(false);
 
   const combinedMessages = useMemo(() => {
     const confirmedIds = new Set(
@@ -178,14 +179,18 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
   const isAccountDisconnected = conversation.is_account_connected === false;
   const isSending = sendMessage.isPending;
-  const inputDisabled = isAccountDisconnected || isSending;
+  const inputDisabled = isAccountDisconnected;
 
   const handleSendReply = async () => {
-    if (isSending) {
+    if (sendLockRef.current) {
       return;
     }
+    sendLockRef.current = true;
 
-    if (!reply.trim() && attachments.length === 0) {
+    const hasText = Boolean(reply.trim());
+    const hasAttachments = attachments.length > 0;
+
+    if (!hasText && !hasAttachments) {
       toast.error('Please enter a message or attach a file');
       return;
     }
@@ -199,12 +204,19 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       return;
     }
 
+    // Capture text at send-time
+    const textToSend = reply.trim();
+
+    // IMPORTANT: Clear immediately so user can type next message,
+    // and so we never wipe the next draft on success.
+    setReply('');
+
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
       id: tempId,
       tempId,
       senderName: 'You',
-      content: reply.trim(),
+      content: textToSend,
       timestamp: new Date().toISOString(),
       isFromLead: false,
       senderProfilePictureUrl: null,
@@ -218,12 +230,15 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       isOptimistic: true,
     };
     setPendingMessages(prev => [...prev, optimisticMessage]);
+    
+    // IMPORTANT: unlock immediately so next message can be sent
+    sendLockRef.current = false;
 
     try {
       const response = await sendMessage.mutateAsync({
         chat_id: conversation.chat_id,
         account_id: conversation.unipile_account_id,
-        text: reply.trim() || undefined,
+        text: textToSend || undefined,
         attachments: attachments.length > 0 ? attachments.map(att => ({
           name: att.name,
           type: att.type,
@@ -231,7 +246,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
         })) : undefined,
       });
 
-      setReply('');
+      // DO NOT setReply("") here (user may already be typing a new message)
       setAttachments([]);
       toggleRead.mutate({ conversationId: conversation.id, isRead: true });
 
@@ -249,7 +264,17 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
     } catch (error) {
       // Error is handled by the mutation
       console.error('Failed to send message:', error);
-      setPendingMessages(prev => prev.filter(msg => msg.tempId !== tempId));
+      // Keep the optimistic message in the UI and mark as failed
+      setPendingMessages(prev =>
+        prev.map(msg =>
+          msg.tempId === tempId
+            ? {
+                ...msg,
+                deliveryStatus: 'failed',
+              }
+            : msg
+        )
+      );
     }
   };
 
@@ -319,7 +344,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
   const handleAssignSDR = (sdrId: string | null) => {
     assignConversation.mutate(
-      { conversationId: conversation.id, assignedTo: sdrId },
+      { conversationId: conversation.id, sdrId },
       {
         onSuccess: () => {
           toast.success(sdrId ? 'SDR assigned successfully' : 'Conversation unassigned');
@@ -655,15 +680,20 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                     <div className="flex items-center justify-end gap-1 mt-2 text-xs text-muted-foreground">
                       {message.deliveryStatus === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       {message.deliveryStatus === 'sent' && <Check className="h-3.5 w-3.5" />}
+                      {message.deliveryStatus === 'failed' && (
+                        <X className="h-3.5 w-3.5 text-destructive" />
+                      )}
                       {(message.deliveryStatus === 'delivered' || !message.deliveryStatus) && (
                         <CheckCheck className="h-3.5 w-3.5" />
                       )}
-                      <span>
+                      <span className={message.deliveryStatus === 'failed' ? 'text-destructive' : ''}>
                         {message.deliveryStatus === 'sending'
                           ? 'Sending'
                           : message.deliveryStatus === 'sent'
                             ? 'Sent'
-                            : 'Delivered'}
+                            : message.deliveryStatus === 'failed'
+                              ? 'Failed'
+                              : 'Delivered'}
                       </span>
                     </div>
                   )}
@@ -822,14 +852,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
             disabled={(!reply.trim() && attachments.length === 0) || inputDisabled}
             className="h-10 w-10 flex-shrink-0 rounded-full"
           >
-            {sendMessage.isPending ? (
-              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            <Send className="h-4 w-4" />
           </Button>
         </div>
 

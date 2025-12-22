@@ -39,3 +39,4 @@ export function useUrlState<T extends Record<string, any>>() {
 
   return { get, set };
 }
+
