@@ -280,6 +280,9 @@ export const conversationsService = {
   /**
    * Get work queue from SQL view
    * Sprint 5.1: Read from conversation_work_queue view
+   * 
+   * Applies email grouping for Work Queue display only.
+   * Sales Pipeline uses raw data from getWorkQueueFromView directly.
    */
   async getWorkQueueFromView(
     userId: string,
@@ -294,7 +297,85 @@ export const conversationsService = {
       throw new Error('Workspace ID is required');
     }
 
-    return conversationsApi.getWorkQueueFromView(userId, userRole, workspaceId, filter);
+    // Get raw rows from view (no grouping)
+    const rows = await conversationsApi.getWorkQueueFromView(userId, userRole, workspaceId, filter);
+    
+    // Apply Work Queue-specific email grouping
+    const grouped = groupWorkQueueEmails(rows);
+    
+    return grouped;
   },
 };
+
+/**
+ * Group Work Queue email rows by sender_email
+ * Work Queue ONLY - do not use elsewhere
+ * 
+ * Groups email conversations by sender_email (normalized: lowercase + trim)
+ * Selects latest conversation per sender for status/metrics
+ * Preserves LinkedIn conversations (no grouping - already correct)
+ */
+function groupWorkQueueEmails(rows: any[]): any[] {
+  const emailItems = rows.filter(
+    r => r.conversation_type === 'email' && r.sender_email
+  );
+
+  const linkedinItems = rows.filter(
+    r => r.conversation_type === 'linkedin'
+  );
+
+  const senderMap = new Map<string, any[]>();
+
+  for (const item of emailItems) {
+    const email = item.sender_email;
+    if (!email) continue;
+
+    // Normalize sender_email: lowercase and trim
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!normalizedEmail) continue;
+
+    if (!senderMap.has(normalizedEmail)) {
+      senderMap.set(normalizedEmail, []);
+    }
+    senderMap.get(normalizedEmail)!.push(item);
+  }
+
+  // Build grouped email items (one per sender_email)
+  const groupedEmailItems: any[] = [];
+  for (const [senderEmail, items] of senderMap.entries()) {
+    // Sort by last_message_at DESC to get latest
+    const sortedItems = [...items].sort((a, b) => {
+      const timeA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const timeB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    const latestItem = sortedItems[0];
+
+    // Use latest conversation's data
+    // This ensures status, idle_days, etc. reflect the most recent communication
+    groupedEmailItems.push({
+      ...latestItem,
+      sender_email: senderEmail, // Use normalized email
+      conversation_count: items.length, // Number of email threads with this sender
+    });
+  }
+
+  // Combine grouped emails + ungrouped LinkedIn items
+  const result = [...groupedEmailItems, ...linkedinItems];
+
+  // Re-sort by original sort order (overdue DESC, last_inbound_at ASC)
+  result.sort((a, b) => {
+    // First sort by overdue (true first)
+    if (a.overdue !== b.overdue) {
+      return a.overdue ? -1 : 1;
+    }
+    // Then by last_inbound_at (oldest first)
+    const timeA = a.last_inbound_at ? new Date(a.last_inbound_at).getTime() : 0;
+    const timeB = b.last_inbound_at ? new Date(b.last_inbound_at).getTime() : 0;
+    return timeA - timeB;
+  });
+
+  return result;
+}
 
