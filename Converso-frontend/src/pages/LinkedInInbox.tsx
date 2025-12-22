@@ -3,7 +3,7 @@ import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversatio
 import { ConversationView } from "@/components/Inbox/ConversationView";
 import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, RefreshCcw, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,6 +36,8 @@ import {
 
 export default function LinkedInInbox() {
   const location = useLocation();
+  const { conversationId } = useParams();
+  const navigate = useNavigate();
   
   // URL state management for filters
   const urlState = useUrlState<{
@@ -103,14 +105,21 @@ export default function LinkedInInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, accountFilter, debouncedSearch]);
   
-  // Handle navigation from Sales Pipeline
+  // Sync URL conversationId -> state
   useEffect(() => {
-    if (location.state?.selectedConversationId) {
-      setSelectedConversation(location.state.selectedConversationId);
-      // Clear the state after using it
+    setSelectedConversation(conversationId || null);
+  }, [conversationId]);
+  
+  // Handle navigation from Sales Pipeline (preserve existing behavior)
+  // Priority: URL conversationId > location.state > null
+  useEffect(() => {
+    if (!conversationId && location.state?.selectedConversationId) {
+      const convId = location.state.selectedConversationId;
+      setSelectedConversation(convId);
+      navigate(`/inbox/linkedin/${convId}`, { replace: true });
       window.history.replaceState({}, document.title);
     }
-  }, [location]);
+  }, [conversationId, location.state, navigate]);
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
@@ -298,6 +307,7 @@ export default function LinkedInInbox() {
   const handleConversationClick = useCallback(
     async (conversationId: string) => {
       setSelectedConversation(conversationId);
+      navigate(`/inbox/linkedin/${conversationId}`);
 
       // Find the conversation and mark as read if it's unread
       const conv = normalizedConversations.find((c) => c.id === conversationId);
@@ -314,7 +324,7 @@ export default function LinkedInInbox() {
       // Force-refresh messages for the selected conversation (WhatsApp-style)
       await queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
     },
-    [markReadLocally, normalizedConversations, queryClient, toggleRead]
+    [markReadLocally, navigate, normalizedConversations, queryClient, toggleRead]
   );
 
   const handleManualRefresh = useCallback(async () => {
