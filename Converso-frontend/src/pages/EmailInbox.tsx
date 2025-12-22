@@ -57,6 +57,7 @@ export default function EmailInbox() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -125,13 +126,24 @@ export default function EmailInbox() {
   useEffect(() => {
     setTabValue(urlState.get("tab", "all") as 'all' | 'unread' | 'favorites');
     setAccountFilter(urlState.get("account", "all"));
-    setSearchQuery(urlState.get("q", ""));
+    const urlSearch = urlState.get("q", "");
+    setSearchQuery(urlSearch);
+    setDebouncedSearch(urlSearch);
     setFilterState({
       sdr: urlState.get("sdr", "all"),
       stage: urlState.get("stage", "all"),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   
   // Sync UI state -> URL (non-default values only)
   useEffect(() => {
@@ -140,9 +152,10 @@ export default function EmailInbox() {
       account: accountFilter !== "all" ? accountFilter : undefined,
       sdr: filterState.sdr !== "all" ? filterState.sdr : undefined,
       stage: filterState.stage !== "all" ? filterState.stage : undefined,
-      q: searchQuery || undefined,
+      q: debouncedSearch || undefined,
     });
-  }, [tabValue, accountFilter, filterState, searchQuery, urlState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabValue, accountFilter, filterState, debouncedSearch]);
   
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();

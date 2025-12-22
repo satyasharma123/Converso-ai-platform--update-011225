@@ -13,11 +13,19 @@ export function useUrlState<T extends Record<string, any>>() {
   );
 
   const set = useCallback(
-    (state: Partial<T>, options: { replace?: boolean } = { replace: true }) => {
+    (
+      state: Partial<T>,
+      options: { replace?: boolean } = { replace: true }
+    ) => {
       const params = new URLSearchParams(searchParams);
 
       Object.entries(state).forEach(([key, value]) => {
-        if (value === undefined || value === null || value === "" || value === "all") {
+        if (
+          value === undefined ||
+          value === null ||
+          value === "" ||
+          value === "all"
+        ) {
           params.delete(key);
         } else {
           params.set(key, String(value));
