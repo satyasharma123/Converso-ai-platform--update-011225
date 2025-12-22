@@ -106,8 +106,17 @@ export function useInitEmailSync() {
   const { data: workspace } = useWorkspace();
   
   return useMutation({
-    mutationFn: async (accountId: string) => {
-      return apiClient.post('/api/emails/init-sync', { account_id: accountId });
+    mutationFn: async ({ 
+      accountId, 
+      syncMode = 'incremental' 
+    }: { 
+      accountId: string; 
+      syncMode?: 'initial' | 'incremental' | 'manual-recent';
+    }) => {
+      return apiClient.post('/api/emails/init-sync', { 
+        account_id: accountId,
+        sync_mode: syncMode,
+      });
     },
     onSuccess: () => {
       // Invalidate sync status to refetch

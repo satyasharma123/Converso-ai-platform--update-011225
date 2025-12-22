@@ -80,7 +80,7 @@ router.post(
   '/init-sync',
   optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { account_id } = req.body;
+    const { account_id, sync_mode } = req.body;
     const userId = req.user?.id || req.headers['x-user-id'] as string;
 
     if (!account_id) {
@@ -91,14 +91,21 @@ router.post(
       return res.status(401).json({ error: 'User not authenticated' });
     }
 
+    // Validate sync_mode if provided
+    const validSyncModes = ['initial', 'incremental', 'manual-recent'];
+    const syncMode = sync_mode && validSyncModes.includes(sync_mode) 
+      ? sync_mode as 'initial' | 'incremental' | 'manual-recent'
+      : 'incremental'; // Default to incremental
+
     // Start sync in background (don't wait for completion)
-    initEmailSync(account_id, userId).catch(error => {
+    initEmailSync(account_id, userId, syncMode).catch(error => {
       logger.error('Background sync error:', error);
     });
 
     res.json({ 
       message: 'Email sync initiated',
       account_id,
+      sync_mode: syncMode,
     });
   })
 );

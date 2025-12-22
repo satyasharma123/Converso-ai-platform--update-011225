@@ -9,7 +9,7 @@ import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody
 import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody } from './outlookIntegration';
 import { upsertSyncStatus, getSyncStatus, updateSyncProgress } from '../api/syncStatus';
 import type { ConnectedAccount, EmailAttachment } from '../types';
-import { EMAIL_INITIAL_SYNC_DAYS } from '../config/unipile';
+import { EMAIL_INITIAL_SYNC_DAYS, EMAIL_MANUAL_SYNC_DAYS } from '../config/unipile';
 
 interface EmailMetadata {
   messageId: string;
@@ -84,12 +84,13 @@ async function getWorkspaceId(userId: string): Promise<string> {
 
 /**
  * Initialize email sync for a connected account
- * Fetches emails based on EMAIL_INITIAL_SYNC_DAYS (default 30) and stores METADATA ONLY
- * Bodies and attachment binaries are fetched lazily when user opens the email
+ * Supports three sync modes: initial, incremental, manual-recent
+ * Bodies are fetched during sync and stored in messages table
  */
 export async function initEmailSync(
   accountId: string,
-  userId: string
+  userId: string,
+  syncMode: 'initial' | 'incremental' | 'manual-recent' = 'incremental'
 ): Promise<void> {
   let account: any = null;
   
@@ -110,12 +111,41 @@ export async function initEmailSync(
     
     account = accountData;
     
-    // Determine if this is incremental sync (has last_synced_at) or initial sync
-    const isIncrementalSync = !!account.last_synced_at;
-    const sinceDate = isIncrementalSync ? new Date(account.last_synced_at) : null;
-    const syncType = isIncrementalSync 
-      ? `INCREMENTAL (since ${sinceDate?.toISOString()})` 
-      : `INITIAL (last ${EMAIL_INITIAL_SYNC_DAYS} days)`;
+    // Determine sync window based on sync mode
+    let sinceDate: Date | null = null;
+    let daysBack: number | null = null;
+
+    if (syncMode === 'initial') {
+      daysBack = EMAIL_INITIAL_SYNC_DAYS;
+    }
+
+    if (syncMode === 'incremental') {
+      if (account.last_synced_at) {
+        sinceDate = new Date(account.last_synced_at);
+      } else {
+        daysBack = EMAIL_INITIAL_SYNC_DAYS;
+      }
+    }
+
+    if (syncMode === 'manual-recent') {
+      daysBack = EMAIL_MANUAL_SYNC_DAYS;
+    }
+
+    console.log(
+      '[EMAIL SYNC]',
+      'account=', accountId,
+      'mode=', syncMode,
+      'sinceDate=', sinceDate,
+      'daysBack=', daysBack
+    );
+    
+    const syncType = syncMode === 'initial'
+      ? `INITIAL (last ${daysBack} days)`
+      : syncMode === 'manual-recent'
+      ? `MANUAL-RECENT (last ${daysBack} days)`
+      : sinceDate
+      ? `INCREMENTAL (since ${sinceDate.toISOString()})`
+      : `INCREMENTAL-FALLBACK (last ${daysBack} days)`;
     
     logger.info(`[Email Sync] ${syncType} - Account: ${account.account_email} (${account.oauth_provider})`);
 
@@ -164,10 +194,10 @@ export async function initEmailSync(
         if (isGmail) {
           const result = await fetchGmailEmailMetadata(
             account as ConnectedAccount,
-            EMAIL_INITIAL_SYNC_DAYS, // Used for initial sync only
+            daysBack || EMAIL_INITIAL_SYNC_DAYS,
             pageToken,
             folder,
-            sinceDate || undefined // For incremental sync - fetch since last_synced_at
+            sinceDate || undefined
           );
           messages = result.messages;
           nextPageToken = result.nextPageToken;
@@ -175,10 +205,10 @@ export async function initEmailSync(
           try {
             const result = await fetchOutlookEmailMetadata(
               account as ConnectedAccount,
-              EMAIL_INITIAL_SYNC_DAYS, // Used for initial sync only
+              daysBack || EMAIL_INITIAL_SYNC_DAYS,
               skipToken,
               folder,
-              sinceDate || undefined // For incremental sync - fetch since last_synced_at
+              sinceDate || undefined
             );
             messages = result.messages;
             nextSkipToken = result.nextSkipToken;
@@ -212,7 +242,7 @@ export async function initEmailSync(
                   const updatedAccount = { ...account, oauth_access_token: newTokens.access_token };
                   const result = await fetchOutlookEmailMetadata(
                     updatedAccount as ConnectedAccount,
-                    EMAIL_INITIAL_SYNC_DAYS,
+                    daysBack || EMAIL_INITIAL_SYNC_DAYS,
                     skipToken,
                     folder,
                     sinceDate || undefined

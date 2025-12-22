@@ -21,11 +21,13 @@ import { ConnectedAccountFilter } from "@/components/Inbox/ConnectedAccountFilte
 import { toast } from "sonner";
 import { useAssignConversation, useUpdateConversationStage, useToggleRead, useToggleFavoriteConversation, useDeleteConversation } from "@/hooks/useConversations";
 import { useMessages } from "@/hooks/useMessages";
-import { useEmailSyncStatus, useInitEmailSync } from "@/hooks/useEmailSync";
+import { useEmailSyncStatus, useInitEmailSync, type SyncStatus } from "@/hooks/useEmailSync";
 import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 export default function EmailInbox() {
@@ -54,8 +56,7 @@ export default function EmailInbox() {
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   
-  // ✅ MULTI-FOLDER SUPPORT: Fetch conversations for selected folder only
-  // Backend filters by folder using message-level provider_folder
+  // Fetch conversations for selected folder
   const { data: conversations = [], isLoading, error: conversationsError } = useConversations('email', selectedFolder);
   
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
@@ -66,6 +67,7 @@ export default function EmailInbox() {
   const { data: connectedAccounts = [] } = useConnectedAccounts();
   const { data: syncStatuses = [] } = useEmailSyncStatus();
   const initSync = useInitEmailSync();
+  const queryClient = useQueryClient();
   const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
   const { data: stages = [] } = usePipelineStages();
   const toggleFavoriteConversation = useToggleFavoriteConversation();
@@ -177,9 +179,20 @@ export default function EmailInbox() {
     accountsToSync.forEach((account, index) => {
       console.log(`${isManual ? '🔄 Manual' : '🚀 Auto'} syncing account: ${account.account_name || account.account_email} (${account.id})`);
       
-      initSync.mutate(account.id, {
+      initSync.mutate({ 
+        accountId: account.id, 
+        syncMode: isManual ? 'manual-recent' : 'incremental' 
+      }, {
         onSuccess: () => {
           console.log(`✅ Sync initiated for ${account.account_name || account.account_email}`);
+          
+          // For manual sync, refetch conversations after 3 seconds
+          if (isManual) {
+            setTimeout(() => {
+              queryClient.invalidateQueries({ queryKey: ['conversations', 'email', selectedFolder] });
+              queryClient.invalidateQueries({ queryKey: ['email-folder-counts'] });
+            }, 3000);
+          }
         },
         onError: (error: any) => {
           console.error(`❌ Failed to initiate sync for ${account.id}:`, error);
@@ -210,7 +223,7 @@ export default function EmailInbox() {
     });
   };
 
-  // Auto-trigger sync for all connected email accounts on mount (only if not already synced)
+  // Auto-trigger sync on mount
   useEffect(() => {
     if (!user || !connectedAccounts.length || !workspace) return;
     
@@ -218,13 +231,11 @@ export default function EmailInbox() {
     
     if (emailAccounts.length === 0) return;
     
-    // Wait for sync statuses to load, then check and trigger sync only if needed
     const timeoutId = setTimeout(() => {
-      triggerEmailSync(false); // Auto sync on mount
+      triggerEmailSync(false);
     }, 2000);
     
     return () => clearTimeout(timeoutId);
-    // ✅ FIX: Remove syncStatuses.length and connectedAccounts.length from deps to prevent refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, workspace?.id]);
 
@@ -232,32 +243,30 @@ export default function EmailInbox() {
   useEffect(() => {
     if (!user || !workspace) return;
     
-    // Set up interval for auto-sync every 15 minutes (900000 ms)
     const syncInterval = setInterval(() => {
       console.log('⏰ Auto-sync triggered (15-minute interval)');
       triggerEmailSync(false);
-    }, 15 * 60 * 1000); // 15 minutes
+    }, 15 * 60 * 1000);
     
     return () => clearInterval(syncInterval);
-    // ✅ FIX: Remove connectedAccounts.length from deps to prevent refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, workspace?.id]);
 
-  // ✅ FIX: Removed debug useEffect that was causing refetch loops on conversations changes
-  // Debug: Log all conversations with their stage IDs when filter is active
-  // (Commenting out to prevent refetch loops - enable only for debugging)
-  // useEffect(() => {
-  //   if (filterState.stage !== 'all') {
-  //     console.log('[Filter Debug] All conversations with stages:', conversations.map(conv => ({
-  //       id: conv.id,
-  //       subject: (conv as any).subject?.substring(0, 40),
-  //       custom_stage_id: (conv as any).custom_stage_id,
-  //       customStageId: (conv as any).customStageId,
-  //       assignedStageId: (conv as any).custom_stage_id || (conv as any).customStageId || 'NULL'
-  //     })));
-  //     console.log('[Filter Debug] Active stage filter:', filterState.stage);
-  //   }
-  // }, [filterState.stage, conversations]);
+  // Auto-refresh conversations every 45 seconds
+  useEffect(() => {
+    if (!user || !workspace || isLoading) return;
+    
+    const pollInterval = setInterval(() => {
+      if (!document.hidden) {
+        queryClient.invalidateQueries({ queryKey: ['conversations', 'email', selectedFolder] });
+        queryClient.invalidateQueries({ queryKey: ['email-folder-counts'] });
+      }
+    }, 45 * 1000);
+    
+    return () => clearInterval(pollInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, workspace?.id, selectedFolder]);
+
 
   // Apply filters
   const filteredConversations = conversations
@@ -275,8 +284,7 @@ export default function EmailInbox() {
         searchQuery === '' ||
         searchTarget.includes(searchQuery.toLowerCase());
 
-      // ✅ NO FOLDER FILTERING: Backend already filtered by folder
-      // Conversations returned are already for the selected folder
+      // Backend already filtered by folder
 
       const isUnread = !(conv.is_read ?? (conv as any).isRead ?? false);
       const isFavorite = Boolean((conv as any).is_favorite ?? (conv as any).isFavorite);
@@ -319,16 +327,6 @@ export default function EmailInbox() {
       }
 
       const allMatches = matchesAccount && matchesSearch && matchesTab && matchesSdr && matchesStage;
-      
-      // Log when a conversation matches all filters (only when stage filter is active)
-      if (filterState.stage !== 'all' && allMatches) {
-        console.log('[Filter] ✅ Conversation passed all filters:', {
-          id: conv.id,
-          subject: (conv as any).subject?.substring(0, 30),
-          stageId: normalizedStageId,
-          matches: { account: matchesAccount, search: matchesSearch, tab: matchesTab, sdr: matchesSdr, stage: matchesStage }
-        });
-      }
       
       return allMatches;
     })
@@ -879,7 +877,6 @@ export default function EmailInbox() {
                     assigned_to: (selectedConv as any).assigned_to || (selectedConv as any).assignedTo,
                     custom_stage_id: (selectedConv as any).custom_stage_id || (selectedConv as any).customStageId || null,
                     is_read: selectedConv.is_read,
-                    // ✅ MINIMAL FIX: Pass preview for fallback, but EmailView will use messages for body
                     preview: (selectedConv as any).preview || '',
                     email_timestamp: (selectedConv as any).emailTimestamp || (selectedConv as any).email_timestamp || selectedConv.last_message_at,
                     received_account: (selectedConv as any).received_account || (selectedConv as any).receivedAccount || null,
@@ -960,7 +957,6 @@ export default function EmailInbox() {
                   {selectedConv && leadData ? (
                     <LeadProfilePanel 
                       lead={leadData} 
-                      timeline={timeline}
                       conversationId={selectedConv.id}
                     />
                   ) : (

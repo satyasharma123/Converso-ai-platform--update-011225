@@ -4,6 +4,7 @@ import cors from 'cors';
 import apiRoutes from './routes';
 import { errorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
+import { startEmailSyncJob } from './jobs/emailSync.job';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -79,6 +80,8 @@ app.listen(PORT, () => {
   logger.info(`📊 Health check available at http://localhost:${PORT}/health`);
   logger.info(`📡 API routes available at http://localhost:${PORT}/api`);
   logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
-
+  
+  // Start background email sync job (if enabled)
+  startEmailSyncJob();
 });
 

@@ -127,6 +127,9 @@ router.get(
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + (tokens.expires_in || 3600));
 
+      // Check if user wants to reset sync state
+      const resetSync = req.query.reset_sync === 'true';
+
       // Check if account already exists for this user and email
       const { data: existingAccounts } = await supabaseAdmin
         .from('connected_accounts')
@@ -141,17 +144,23 @@ router.get(
       if (existingAccounts && existingAccounts.length > 0) {
         // Update existing account with OAuth tokens and workspace_id
         accountId = existingAccounts[0].id;
+        const updatePayload: any = {
+          oauth_access_token: tokens.access_token,
+          oauth_refresh_token: tokens.refresh_token,
+          oauth_token_expires_at: expiresAt.toISOString(),
+          oauth_provider: 'google',
+          sync_status: 'pending',
+          workspace_id: workspaceId, // Update workspace_id if missing
+        };
+        
+        // Only reset last_synced_at if explicitly requested
+        if (resetSync) {
+          updatePayload.last_synced_at = null;
+        }
+        
         await supabaseAdmin
           .from('connected_accounts')
-          .update({
-            oauth_access_token: tokens.access_token,
-            oauth_refresh_token: tokens.refresh_token,
-            oauth_token_expires_at: expiresAt.toISOString(),
-            oauth_provider: 'google',
-            sync_status: 'pending',
-            last_synced_at: null,
-            workspace_id: workspaceId, // Update workspace_id if missing
-          })
+          .update(updatePayload)
           .eq('id', accountId);
 
         logger.info(`Updated existing Gmail account: ${accountId}`);
@@ -178,7 +187,7 @@ router.get(
 
       // Trigger email sync immediately in background (automatic sync on account creation)
       logger.info(`🚀 Starting automatic email sync for Gmail account: ${accountId} (${userInfo.email})`);
-      initEmailSync(accountId, userId).catch(error => {
+      initEmailSync(accountId, userId, 'initial').catch(error => {
         logger.error(`❌ Error initiating automatic email sync for Gmail account ${accountId}:`, error);
       });
 
@@ -207,7 +216,7 @@ router.post(
     }
 
     // Start sync in background
-    initEmailSync(accountId, userId).catch(error => {
+    initEmailSync(accountId, userId, 'manual-recent').catch(error => {
       logger.error('Error during manual sync:', error);
     });
     
@@ -327,6 +336,9 @@ router.get(
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + (tokens.expires_in || 3600));
 
+      // Check if user wants to reset sync state
+      const resetSync = req.query.reset_sync === 'true';
+
       // Check if account already exists for this user and email
       const { data: existingAccounts } = await supabaseAdmin
         .from('connected_accounts')
@@ -341,17 +353,23 @@ router.get(
       if (existingAccounts && existingAccounts.length > 0) {
         // Update existing account with OAuth tokens and workspace_id
         accountId = existingAccounts[0].id;
+        const updatePayload: any = {
+          oauth_access_token: tokens.access_token,
+          oauth_refresh_token: tokens.refresh_token,
+          oauth_token_expires_at: expiresAt.toISOString(),
+          oauth_provider: 'microsoft',
+          sync_status: 'pending',
+          workspace_id: workspaceId, // Update workspace_id if missing
+        };
+        
+        // Only reset last_synced_at if explicitly requested
+        if (resetSync) {
+          updatePayload.last_synced_at = null;
+        }
+        
         await supabaseAdmin
           .from('connected_accounts')
-          .update({
-            oauth_access_token: tokens.access_token,
-            oauth_refresh_token: tokens.refresh_token,
-            oauth_token_expires_at: expiresAt.toISOString(),
-            oauth_provider: 'microsoft',
-            sync_status: 'pending',
-            last_synced_at: null,
-            workspace_id: workspaceId, // Update workspace_id if missing
-          })
+          .update(updatePayload)
           .eq('id', accountId);
 
         logger.info(`Updated existing Outlook account: ${accountId}`);
@@ -377,7 +395,7 @@ router.get(
 
       // Trigger email sync immediately in background (automatic sync on account creation)
       logger.info(`🚀 Starting automatic email sync for Outlook account: ${accountId} (${userEmail})`);
-      initEmailSync(accountId, userId).catch(error => {
+      initEmailSync(accountId, userId, 'initial').catch(error => {
         logger.error(`❌ Error initiating automatic email sync for Outlook account ${accountId}:`, error);
       });
 
@@ -406,7 +424,7 @@ router.post(
     }
 
     // Start sync in background
-    initEmailSync(accountId, userId).catch(error => {
+    initEmailSync(accountId, userId, 'manual-recent').catch(error => {
       logger.error('Error during manual sync:', error);
     });
     

@@ -6,6 +6,7 @@
 
 import { google } from 'googleapis';
 import { logger } from '../utils/logger';
+import { supabaseAdmin } from '../lib/supabase';
 import type { ConnectedAccount, EmailAttachment } from '../types';
 
 interface GmailMessage {
@@ -37,12 +38,29 @@ export interface GmailEmailBodyResult {
 }
 
 /**
- * Get Gmail API client using OAuth token
+ * Get Gmail API client using OAuth token with refresh token support
+ * Returns both gmail client and oauth2Client for token refresh handling
  */
-function getGmailClient(accessToken: string) {
-  const oauth2Client = new google.auth.OAuth2();
-  oauth2Client.setCredentials({ access_token: accessToken });
-  return google.gmail({ version: 'v1', auth: oauth2Client });
+function getGmailClient(account: ConnectedAccount) {
+  if (!account.oauth_access_token) {
+    throw new Error('OAuth access token not found for this account');
+  }
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_OAUTH_CLIENT_ID,
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET
+  );
+
+  oauth2Client.setCredentials({
+    access_token: account.oauth_access_token,
+    refresh_token: account.oauth_refresh_token || undefined,
+  });
+
+  return {
+    gmail: google.gmail({ version: 'v1', auth: oauth2Client }),
+    oauth2Client,
+    accountId: account.id,
+  };
 }
 
 /**
@@ -74,7 +92,7 @@ export async function fetchGmailEmailMetadata(
   }
 
   try {
-    const gmail = getGmailClient(account.oauth_access_token);
+    const { gmail, oauth2Client, accountId } = getGmailClient(account);
     
     // Use sinceDate for incremental sync, or daysBack for initial sync
     const afterTimestamp = sinceDate 
@@ -115,6 +133,18 @@ export async function fetchGmailEmailMetadata(
       pageToken,
     });
 
+    // Persist refreshed access token if it was refreshed
+    const credentials = oauth2Client.credentials;
+    if (credentials.access_token && credentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: credentials.access_token,
+          oauth_token_expires_at: new Date(credentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
+
     if (!response.data.messages || response.data.messages.length === 0) {
       return { messages: [], nextPageToken: response.data.nextPageToken || undefined };
     }
@@ -140,6 +170,18 @@ export async function fetchGmailEmailMetadata(
       })
     );
 
+    // Persist refreshed access token after all API calls (check again in case it was refreshed during message.get calls)
+    const finalCredentials = oauth2Client.credentials;
+    if (finalCredentials.access_token && finalCredentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: finalCredentials.access_token,
+          oauth_token_expires_at: new Date(finalCredentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
+
     return {
       messages,
       nextPageToken: response.data.nextPageToken || undefined,
@@ -163,7 +205,7 @@ export async function fetchGmailEmailBody(
   }
 
   try {
-    const gmail = getGmailClient(account.oauth_access_token);
+    const { gmail, oauth2Client, accountId } = getGmailClient(account);
     
     // Fetch full message
     const message = await gmail.users.messages.get({
@@ -171,6 +213,18 @@ export async function fetchGmailEmailBody(
       id: messageId,
       format: 'full',
     });
+
+    // Persist refreshed access token if it was refreshed
+    const credentials = oauth2Client.credentials;
+    if (credentials.access_token && credentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: credentials.access_token,
+          oauth_token_expires_at: new Date(credentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
 
     const payload = message.data.payload;
     if (!payload) {
@@ -281,12 +335,24 @@ export async function downloadGmailAttachment(
     throw new Error('OAuth access token not found for this account');
   }
 
-  const gmail = getGmailClient(account.oauth_access_token);
+  const { gmail, oauth2Client, accountId } = getGmailClient(account);
   const response = await gmail.users.messages.attachments.get({
     userId: 'me',
     messageId,
     id: attachmentId,
   });
+
+  // Persist refreshed access token if it was refreshed
+  const credentials = oauth2Client.credentials;
+  if (credentials.access_token && credentials.expiry_date) {
+    await supabaseAdmin
+      .from('connected_accounts')
+      .update({
+        oauth_access_token: credentials.access_token,
+        oauth_token_expires_at: new Date(credentials.expiry_date).toISOString(),
+      })
+      .eq('id', accountId);
+  }
 
   if (!response.data.data) {
     return Buffer.alloc(0);
@@ -308,7 +374,7 @@ export async function fetchGmailEmails(
   }
 
   try {
-    const gmail = getGmailClient(account.oauth_access_token);
+    const { gmail, oauth2Client, accountId } = getGmailClient(account);
     
     // List messages
     const response = await gmail.users.messages.list({
@@ -316,6 +382,18 @@ export async function fetchGmailEmails(
       maxResults,
       q: 'is:unread OR in:inbox',
     });
+
+    // Persist refreshed access token if it was refreshed
+    const credentials = oauth2Client.credentials;
+    if (credentials.access_token && credentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: credentials.access_token,
+          oauth_token_expires_at: new Date(credentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
 
     if (!response.data.messages || response.data.messages.length === 0) {
       return [];
@@ -332,6 +410,18 @@ export async function fetchGmailEmails(
         return message.data as GmailMessage;
       })
     );
+
+    // Persist refreshed access token after all API calls (check again in case it was refreshed during message.get calls)
+    const finalCredentials = oauth2Client.credentials;
+    if (finalCredentials.access_token && finalCredentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: finalCredentials.access_token,
+          oauth_token_expires_at: new Date(finalCredentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
 
     return messages;
   } catch (error: any) {
@@ -457,7 +547,7 @@ export async function sendGmailEmail(
   }
 
   try {
-    const gmail = getGmailClient(account.oauth_access_token);
+    const { gmail, oauth2Client, accountId } = getGmailClient(account);
 
     // Convert arrays to comma-separated strings
     const toAddresses = Array.isArray(params.to) ? params.to.join(', ') : params.to;
@@ -509,6 +599,18 @@ export async function sendGmailEmail(
         threadId: params.threadId, // Maintains thread for replies
       },
     });
+
+    // Persist refreshed access token if it was refreshed
+    const credentials = oauth2Client.credentials;
+    if (credentials.access_token && credentials.expiry_date) {
+      await supabaseAdmin
+        .from('connected_accounts')
+        .update({
+          oauth_access_token: credentials.access_token,
+          oauth_token_expires_at: new Date(credentials.expiry_date).toISOString(),
+        })
+        .eq('id', accountId);
+    }
 
     logger.info(`[Gmail] Email sent successfully: ${response.data.id}`);
 
