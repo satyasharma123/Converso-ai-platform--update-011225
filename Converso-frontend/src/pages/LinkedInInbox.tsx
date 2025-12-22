@@ -778,7 +778,7 @@ export default function LinkedInInbox() {
                     assignedTo: (selectedConv as any).assignedTo || (selectedConv as any).assigned_to,
                     customStageId: (selectedConv as any).customStageId || (selectedConv as any).custom_stage_id,
                     chat_id: (selectedConv as any).chat_id,
-                    unipile_account_id: selectedConv.received_account?.unipile_account_id,
+                    received_on_account_id: (selectedConv as any).received_on_account_id || (selectedConv as any).receivedOnAccountId,
                     is_favorite: (selectedConv as any).is_favorite,
                     isFavorite: (selectedConv as any).isFavorite,
                   }} 

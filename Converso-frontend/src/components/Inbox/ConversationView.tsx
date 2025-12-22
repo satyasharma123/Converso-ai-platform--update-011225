@@ -16,6 +16,45 @@ import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 
+/**
+ * Helper: Normalize attachment URL from various LinkedIn schema fields
+ * LinkedIn uses: url, preview_url, asset_url, href
+ */
+const getAttachmentUrl = (att: any): string | null => {
+  return (
+    att?.url ||
+    att?.preview_url ||
+    att?.asset_url ||
+    att?.href ||
+    null
+  );
+};
+
+/**
+ * Helper: Detect if attachment is an image by any heuristic
+ * Handles varying LinkedIn attachment schemas (type, mime_type, url)
+ */
+const isImageAttachment = (att: any): boolean => {
+  if (!att) return false;
+
+  // Check mime_type field (e.g., "image/png", "image/jpeg")
+  if (att.mime_type && att.mime_type.startsWith('image/')) {
+    return true;
+  }
+
+  // Check type field (e.g., "image")
+  if (att.type && att.type.toLowerCase() === 'image') {
+    return true;
+  }
+
+  // Check URL extension as fallback
+  if (att.url && /\.(png|jpe?g|gif|webp)$/i.test(att.url)) {
+    return true;
+  }
+
+  return false;
+};
+
 interface Message {
   id: string;
   senderName: string;
@@ -46,7 +85,7 @@ interface ConversationViewProps {
     assignedTo?: string | null;
     customStageId?: string | null;
     chat_id?: string | null;
-    unipile_account_id?: string | null;
+    received_on_account_id?: string | null;
     is_favorite?: boolean;
     isFavorite?: boolean;
   };
@@ -195,11 +234,11 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
       return;
     }
 
-    if (!conversation.chat_id || !conversation.unipile_account_id) {
-      toast.error(`Cannot send message: Missing ${!conversation.chat_id ? 'chat_id' : 'unipile_account_id'}`);
+    if (!conversation.chat_id || !conversation.received_on_account_id) {
+      toast.error(`Cannot send message: Missing ${!conversation.chat_id ? 'chat_id' : 'received_on_account_id'}`);
       console.error('❌ Missing required fields:', {
         has_chat_id: !!conversation.chat_id,
-        has_unipile_account_id: !!conversation.unipile_account_id
+        has_received_on_account_id: !!conversation.received_on_account_id
       });
       return;
     }
@@ -237,7 +276,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
     try {
       const response = await sendMessage.mutateAsync({
         chat_id: conversation.chat_id,
-        account_id: conversation.unipile_account_id,
+        account_id: conversation.received_on_account_id,
         text: textToSend || undefined,
         attachments: attachments.length > 0 ? attachments.map(att => ({
           name: att.name,
@@ -584,13 +623,26 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
               </div>
             )}
 
-            {combinedMessages.map((message) => (
-              <div
-                key={message.id}
-                className="flex items-start gap-3"
-              >
-                {/* Avatar (only for lead messages) */}
-                {message.isFromLead && (
+            {combinedMessages.map((message) => {
+              // 🔒 Skip failed optimistic messages with no visible content
+              const isEmptyFailedOptimistic =
+                message.deliveryStatus === 'failed' &&
+                (!message.content || message.content.trim().length === 0) &&
+                (!message.attachments || message.attachments.length === 0) &&
+                (!message.reactions || message.reactions.length === 0);
+
+              if (isEmptyFailedOptimistic) {
+                console.debug('[UI] Skipping empty failed optimistic message', message.id);
+                return null;
+              }
+
+              return (
+                <div
+                  key={message.id}
+                  className="flex items-start gap-3"
+                >
+                  {/* Avatar (only for lead messages) */}
+                  {message.isFromLead && (
                   <div className="h-10 w-10 rounded-full bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center text-xs font-semibold">
                     {message.senderProfilePictureUrl ? (
                       <img
@@ -624,38 +676,70 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                       </span>
                     </div>
 
-                    {/* Message Text */}
-                    <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.isFromLead ? 'text-foreground' : 'text-white'}`}>
-                      {message.content}
-                    </p>
+                    {/* Message Text - Only render if content exists */}
+                    {message.content && message.content.trim().length > 0 && (
+                      <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.isFromLead ? 'text-foreground' : 'text-white'}`}>
+                        {message.content}
+                      </p>
+                    )}
 
-                    {/* Display Images Inline */}
+                    {/* Attachments (Images + Files) */}
                     {message.attachments && message.attachments.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {message.attachments.map((att: any, idx) => {
-                          const isImage = att.type?.includes?.('image') || 
-                                        att.contentType?.includes?.('image') ||
-                                        /\.(jpg|jpeg|png|gif|webp)$/i.test(att.url || att.name || '');
-                          
-                          if (isImage) {
+                      <div className="mt-2 flex flex-col gap-2">
+                        {message.attachments.map((att: any, idx: number) => {
+                          // Normalize URL from various LinkedIn schema fields
+                          const url = getAttachmentUrl(att);
+                          if (!url) return null;
+
+                          const accountId = conversation.received_on_account_id;
+
+                          // IMAGE ATTACHMENT
+                          if (isImageAttachment({ ...att, url })) {
+                            // Proxy LinkedIn media through backend (requires auth)
+                            if (!accountId) {
+                              return (
+                                <span key={idx} className="text-sm text-muted-foreground">
+                                  Attachment unavailable
+                                </span>
+                              );
+                            }
+
+                            const proxiedUrl = `/api/linkedin/media?url=${encodeURIComponent(url)}&account_id=${encodeURIComponent(accountId)}`;
+
                             return (
-                              <a
+                              <img
                                 key={idx}
-                                href={att.url || att.href || '#'}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block rounded-lg overflow-hidden"
-                              >
-                                <img
-                                  src={att.url || att.href}
-                                  alt={att.name || 'Image'}
-                                  className="w-full rounded-lg"
-                                  loading="lazy"
-                                />
-                              </a>
+                                src={proxiedUrl}
+                                alt={att.name || 'image'}
+                                className="max-w-xs rounded-lg border"
+                                loading="lazy"
+                              />
                             );
                           }
-                          return null;
+
+                          // NON-IMAGE ATTACHMENT FALLBACK
+                          // Also proxy non-image attachments for authenticated access
+                          if (!accountId) {
+                            return (
+                              <span key={idx} className="text-sm text-muted-foreground">
+                                Attachment unavailable
+                              </span>
+                            );
+                          }
+
+                          const proxiedUrl = `/api/linkedin/media?url=${encodeURIComponent(url)}&account_id=${encodeURIComponent(accountId)}`;
+
+                          return (
+                            <a
+                              key={idx}
+                              href={proxiedUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 underline"
+                            >
+                              {att.name || 'View attachment'}
+                            </a>
+                          );
                         })}
                       </div>
                     )}
@@ -699,7 +783,8 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {/* Scroll anchor - this element is used to auto-scroll to bottom */}
             <div ref={messagesEndRef} />
           </div>

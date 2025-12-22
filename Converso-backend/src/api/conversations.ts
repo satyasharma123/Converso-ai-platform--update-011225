@@ -97,7 +97,7 @@ export async function getConversations(
     .select(`
       *,
       unread_count,
-      received_account:connected_accounts(
+      received_account:connected_accounts!received_on_account_id(
         id,
         account_name,
         account_email,
@@ -677,7 +677,7 @@ export async function getConversationById(conversationId: string): Promise<Conve
     .from('conversations')
     .select(`
       *,
-      received_account:connected_accounts(
+      received_account:connected_accounts!received_on_account_id(
         id,
         account_name,
         account_email,

@@ -7,33 +7,52 @@ import { logger } from '../utils/logger';
 import axios from 'axios';
 import { syncChatIncremental } from '../unipile/linkedinSync.4actions';
 import { sendSseEvent } from '../utils/sse';
+import multer from 'multer';
 const FormData = require('form-data');
 
 const router = Router();
 
+// Configure multer for memory storage (files as Buffer)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15MB max (Unipile limit)
+  },
+});
+
 // Send LinkedIn message via Unipile and store locally
 // Supports text, attachments (files, images, videos)
-router.post('/send-message', async (req, res) => {
+router.post('/send-message', upload.array('attachments'), async (req, res) => {
   const { chat_id, account_id, text, attachments } = req.body;
+  const files = req.files as Express.Multer.File[] | undefined;
   
   if (!chat_id || !account_id) {
     return res.status(400).json({ error: 'chat_id and account_id are required' });
   }
 
-  if (!text && (!attachments || attachments.length === 0)) {
+  // Check for files from multer OR legacy JSON attachments
+  const hasFiles = files && files.length > 0;
+  const hasAttachments = attachments && Array.isArray(attachments) && attachments.length > 0;
+  
+  if (!text && !hasFiles && !hasAttachments) {
     return res.status(400).json({ error: 'Either text or attachments must be provided' });
   }
 
   const { data: account, error: accountError } = await supabaseAdmin
     .from('connected_accounts')
-    .select('id, workspace_id')
-    .eq('account_type', 'linkedin')
-    .eq('unipile_account_id', account_id)
+    .select('id, workspace_id, unipile_account_id')
+    .eq('id', account_id)
     .single();
 
   if (accountError || !account) {
     return res.status(404).json({ error: 'LinkedIn account not found for the provided account_id' });
   }
+
+  if (!account.unipile_account_id) {
+    return res.status(400).json({ error: 'LinkedIn account missing unipile_account_id' });
+  }
+
+  const unipileAccountId = account.unipile_account_id;
 
   try {
     // Get Unipile configuration
@@ -43,25 +62,33 @@ router.post('/send-message', async (req, res) => {
     // Build request payload
     let sendResp: any;
     
-    if (attachments && attachments.length > 0) {
+    if (hasFiles || hasAttachments) {
       // Use multipart/form-data for attachments
       const formData = new FormData();
+      
       if (text) {
         formData.append('text', text);
       }
       
-      // Add attachments to form data
-      for (const attachment of attachments) {
-        if (attachment.file) {
-          // If attachment has a file buffer/stream
-          formData.append('attachments', attachment.file, attachment.name);
-        } else if (attachment.url) {
-          // If attachment has a URL, fetch it and add to form
-          try {
-            const fileResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
-            formData.append('attachments', Buffer.from(fileResponse.data), attachment.name);
-          } catch (err) {
-            logger.error('[LinkedIn] Failed to fetch attachment from URL', { url: attachment.url, error: err });
+      // PRIMARY PATH — FILE UPLOADS from multer
+      if (hasFiles) {
+        for (const file of files) {
+          formData.append('attachments', file.buffer, {
+            filename: file.originalname,
+            contentType: file.mimetype,
+          });
+        }
+      }
+      // FALLBACK — URL ATTACHMENTS (legacy)
+      else if (hasAttachments) {
+        for (const attachment of attachments) {
+          if (attachment.url) {
+            try {
+              const fileResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+              formData.append('attachments', Buffer.from(fileResponse.data), attachment.name || 'attachment');
+            } catch (err) {
+              logger.error('[LinkedIn] Failed to fetch attachment from URL', { url: attachment.url, error: err });
+            }
           }
         }
       }
@@ -74,12 +101,12 @@ router.post('/send-message', async (req, res) => {
           ...formData.getHeaders(),
           'X-API-KEY': UNIPILE_API_KEY,
         },
-        params: { account_id },
+        params: { account_id: unipileAccountId },
       });
       sendResp = response.data;
     } else {
       // Simple text-only message (unipilePost already adds /api/v1 prefix)
-      const unipilePath = `/chats/${encodeURIComponent(chat_id)}/messages?account_id=${encodeURIComponent(account_id)}`;
+      const unipilePath = `/chats/${encodeURIComponent(chat_id)}/messages?account_id=${encodeURIComponent(unipileAccountId)}`;
       sendResp = await unipilePost(unipilePath, { text });
     }
 
@@ -106,7 +133,7 @@ router.post('/send-message', async (req, res) => {
           timestamp: createdAt,
           is_sender: true,
           sender_attendee_id: sendResp?.sender_attendee_id || null,
-          attachments: sendResp?.attachments || attachments || [],
+          attachments: sendResp?.attachments || (hasFiles ? files.map(f => ({ name: f.originalname, type: f.mimetype })) : attachments) || [],
           reactions: sendResp?.reactions || [],
         },
         conversationId,
@@ -128,7 +155,7 @@ router.post('/send-message', async (req, res) => {
 
     // Always run a quick incremental sync so we have the definitive message from Unipile
     try {
-      await syncChatIncremental(account_id, chat_id, createdAt);
+      await syncChatIncremental(unipileAccountId, chat_id, createdAt);
     } catch (syncError) {
       logger.error('[LinkedIn] Incremental sync after send failed', syncError);
     }

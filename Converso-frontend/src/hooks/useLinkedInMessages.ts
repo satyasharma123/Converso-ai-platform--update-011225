@@ -35,7 +35,36 @@ export function useSendLinkedInMessage() {
     mutationFn: async (params: SendLinkedInMessageParams): Promise<SendLinkedInMessageResponse> => {
       const { chat_id, account_id, text, attachments } = params;
 
-      // Prepare the payload
+      // Check if we have file attachments (use FormData)
+      const hasFileAttachments =
+        attachments &&
+        attachments.length > 0 &&
+        attachments.some(att => att.file instanceof File);
+
+      if (hasFileAttachments) {
+        // Use FormData for file uploads
+        const formData = new FormData();
+
+        formData.append('chat_id', chat_id);
+        formData.append('account_id', account_id);
+
+        if (text) {
+          formData.append('text', text);
+        }
+
+        attachments.forEach(att => {
+          if (att.file) {
+            formData.append('attachments', att.file, att.name);
+          }
+        });
+
+        return apiClient.postFormData<SendLinkedInMessageResponse>(
+          '/api/linkedin/messages/send-message',
+          formData
+        );
+      }
+
+      // Fallback: text-only or legacy URL-based attachments (use JSON)
       const payload: any = {
         chat_id,
         account_id,
