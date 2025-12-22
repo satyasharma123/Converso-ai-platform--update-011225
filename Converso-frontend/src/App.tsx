@@ -41,7 +41,11 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/inbox/email" element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
+            <Route path="/inbox/email">
+              <Route index element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
+              <Route path=":folder" element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
+              <Route path=":folder/:conversationId" element={<ProtectedRoute><EmailInbox /></ProtectedRoute>} />
+            </Route>
             <Route path="/inbox/linkedin" element={<ProtectedRoute><LinkedInInbox /></ProtectedRoute>} />
             <Route path="/work-queue" element={<ProtectedRoute><WorkQueue /></ProtectedRoute>} />
             <Route path="/pipeline" element={<ProtectedRoute><SalesPipeline /></ProtectedRoute>} />

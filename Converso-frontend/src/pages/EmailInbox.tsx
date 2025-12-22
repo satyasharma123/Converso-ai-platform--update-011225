@@ -4,7 +4,7 @@ import { EmailView } from "@/components/Inbox/EmailView";
 import { EmailSidebar } from "@/components/Inbox/EmailSidebar";
 import { BulkActions } from "@/components/Inbox/BulkActions";
 import { useState, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Loader2, AlertCircle, PanelRightClose, PanelRightOpen, User, ChevronLeft, ChevronRight, PanelLeft, RefreshCw, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,29 +30,80 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
+const VALID_FOLDERS = [
+  "inbox",
+  "sent",
+  "important",
+  "drafts",
+  "archive",
+  "deleted",
+];
+
 export default function EmailInbox() {
   const location = useLocation();
+  const { folder, conversationId } = useParams();
+  const navigate = useNavigate();
+  
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedConversations, setSelectedConversations] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const stored = localStorage.getItem("email-sidebar-collapsed");
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  });
   const [isSyncing, setIsSyncing] = useState(false);
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   
   const { user, userRole } = useAuth();
   
-  // Handle navigation from Sales Pipeline
+  // Sync URL folder -> state (URL is source of truth)
   useEffect(() => {
-    if (location.state?.selectedConversationId) {
-      setSelectedConversation(location.state.selectedConversationId);
+    if (!folder || !VALID_FOLDERS.includes(folder)) {
+      navigate(
+        conversationId
+          ? `/inbox/email/inbox/${conversationId}`
+          : `/inbox/email/inbox`,
+        { replace: true }
+      );
+      return;
+    }
+
+    setSelectedFolder(folder);
+  }, [folder, conversationId, navigate]);
+  
+  // Sync URL conversationId -> state
+  useEffect(() => {
+    setSelectedConversation(conversationId || null);
+  }, [conversationId]);
+  
+  // Handle navigation from Sales Pipeline (preserve existing behavior)
+  // Priority: URL conversationId > location.state > null
+  useEffect(() => {
+    if (!conversationId && location.state?.selectedConversationId) {
+      const convId = location.state.selectedConversationId;
+      setSelectedConversation(convId);
       setIsProfileOpen(true);
-      // Clear the state after using it
+      navigate(`/inbox/email/${selectedFolder}/${convId}`, { replace: true });
       window.history.replaceState({}, document.title);
     }
-  }, [location]);
+  }, [conversationId, location.state, navigate, selectedFolder]);
+  
+  // Persist sidebar collapse state
+  useEffect(() => {
+    try {
+      localStorage.setItem("email-sidebar-collapsed", JSON.stringify(isSidebarCollapsed));
+    } catch (error) {
+      console.error('Error saving sidebar collapse state:', error);
+    }
+  }, [isSidebarCollapsed]);
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   
@@ -430,6 +481,8 @@ export default function EmailInbox() {
   const handleFolderChange = (folder: string) => {
     setSelectedFolder(folder);
     setSelectedConversations([]);
+    setSelectedConversation(null);
+    navigate(`/inbox/email/${folder}`);
   };
 
   // ✅ MINIMAL FIX: Conversation is metadata only, messages contain email body
@@ -605,7 +658,7 @@ export default function EmailInbox() {
               isSidebarCollapsed ? "w-[60px]" : "w-[200px]"
             )}>
               <div className="h-full overflow-hidden">
-                <EmailSidebar onFolderChange={handleFolderChange} isCollapsed={isSidebarCollapsed} />
+                <EmailSidebar selectedFolder={selectedFolder} onFolderChange={handleFolderChange} isCollapsed={isSidebarCollapsed} />
               </div>
               
               {/* Collapse Button - Styled like Breakcold */}
@@ -848,7 +901,10 @@ export default function EmailInbox() {
                 ) : (
                   <ConversationList
                     conversations={filteredConversations as any}
-                    onConversationClick={setSelectedConversation}
+                    onConversationClick={(id) => {
+                      setSelectedConversation(id);
+                      navigate(`/inbox/email/${selectedFolder}/${id}`);
+                    }}
                     selectedId={selectedConversation || undefined}
                     onToggleSelect={handleToggleSelect}
                     showCheckboxes={showCheckboxes}

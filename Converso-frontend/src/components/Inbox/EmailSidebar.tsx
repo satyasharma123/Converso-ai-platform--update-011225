@@ -1,9 +1,9 @@
 import { Inbox, Send, Archive, Trash2, Star, Flag, FolderOpen, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
 import { useIsEmailSyncInProgress, useEmailSyncStatus, useEmailFolderCounts } from "@/hooks/useEmailSync";
 
 interface EmailSidebarProps {
+  selectedFolder?: string;
   onFolderChange?: (folder: string) => void;
   isCollapsed?: boolean;
 }
@@ -17,14 +17,12 @@ const folders = [
   { id: "deleted", label: "Trash", icon: Trash2, countKey: "deleted" as const },
 ];
 
-export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps) {
-  const [activeFolder, setActiveFolder] = useState("inbox");
+export function EmailSidebar({ selectedFolder = "inbox", onFolderChange, isCollapsed }: EmailSidebarProps) {
   const isSyncing = useIsEmailSyncInProgress();
   const { data: syncStatuses = [] } = useEmailSyncStatus();
   const { data: folderCounts } = useEmailFolderCounts();
 
   const handleFolderClick = (folderId: string) => {
-    setActiveFolder(folderId);
     onFolderChange?.(folderId);
   };
 
@@ -48,7 +46,7 @@ export function EmailSidebar({ onFolderChange, isCollapsed }: EmailSidebarProps)
         <nav className="space-y-1 p-2">
           {folders.map((folder) => {
             const Icon = folder.icon;
-            const isActive = activeFolder === folder.id;
+            const isActive = selectedFolder === folder.id;
             const count = getFolderCount(folder.countKey);
             
             return (
