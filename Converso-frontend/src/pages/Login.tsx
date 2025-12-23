@@ -76,7 +76,7 @@ export default function Login() {
           </div>
           <div>
             <CardTitle className="text-2xl">Welcome Back</CardTitle>
-            <CardDescription>Sign in to your Converso AI account</CardDescription>
+            <CardDescription>Sign in to your SynQ account</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -106,7 +106,7 @@ export default function Signup() {
           </div>
           <div>
             <CardTitle className="text-2xl">Create Account</CardTitle>
-            <CardDescription>Sign up to get started with Converso AI</CardDescription>
+            <CardDescription>Sign up to get started with SynQ</CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

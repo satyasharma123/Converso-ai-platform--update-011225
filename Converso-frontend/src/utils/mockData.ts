@@ -264,7 +264,7 @@ export const mockMessagesByConversation: Record<string, MockMessage[]> = {
     {
       id: "1-2",
       senderName: "You",
-      content: "Hi Sarah! Thanks for reaching out. I'd be happy to show you how Converso AI can help your team manage those leads more efficiently and improve response times. I have availability on Tuesday at 2pm or Thursday at 10am. Which works better for you?",
+      content: "Hi Sarah! Thanks for reaching out. I'd be happy to show you how SynQ can help your team manage those leads more efficiently and improve response times. I have availability on Tuesday at 2pm or Thursday at 10am. Which works better for you?",
       timestamp: "1 hour ago",
       isFromLead: false,
     },
@@ -296,14 +296,14 @@ export const mockMessagesByConversation: Record<string, MockMessage[]> = {
     {
       id: "3-1",
       senderName: "Emily Rodriguez",
-      content: "Hi! I'm reaching out regarding a potential partnership between our companies. We're exploring tools that help SDR teams scale their outreach, and Converso AI looks like it could be a great fit for our customer base.",
+      content: "Hi! I'm reaching out regarding a potential partnership between our companies. We're exploring tools that help SDR teams scale their outreach, and SynQ looks like it could be a great fit for our customer base.",
       timestamp: "1 day ago",
       isFromLead: true,
     },
     {
       id: "3-2",
       senderName: "You",
-      content: "Thanks Emily! I think Converso AI could be a good fit for a partnership. Here's how our current partners typically integrate our solution... [continues with details about partnership models]",
+      content: "Thanks Emily! I think SynQ could be a good fit for a partnership. Here's how our current partners typically integrate our solution... [continues with details about partnership models]",
       timestamp: "22 hours ago",
       isFromLead: false,
     },

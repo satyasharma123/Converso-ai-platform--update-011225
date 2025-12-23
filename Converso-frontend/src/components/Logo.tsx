@@ -6,7 +6,7 @@ interface LogoProps {
   alt?: string;
 }
 
-export function Logo({ className = 'h-12 w-auto', alt = 'Converso AI' }: LogoProps) {
+export function Logo({ className = 'h-12 w-auto', alt = 'SynQ' }: LogoProps) {
   const { data: settings, isLoading } = useAppSettings();
   
   // Use database logo if available, fallback to local asset

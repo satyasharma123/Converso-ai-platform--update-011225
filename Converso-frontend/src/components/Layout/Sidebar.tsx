@@ -139,12 +139,12 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
       <SidebarContent className="flex h-full flex-col">
         <div className="px-2 py-3 flex items-center justify-center">
           {open ? (
-            <h2 className="font-bold text-sm">
-              Converso AI
+            <h2 className="font-bold text-base">
+              SynQ
             </h2>
           ) : (
-            <h2 className="font-bold text-sm">
-              CA
+            <h2 className="font-bold text-base">
+              SQ
             </h2>
           )}
         </div>
