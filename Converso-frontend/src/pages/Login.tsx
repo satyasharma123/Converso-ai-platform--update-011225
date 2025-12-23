@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
-import { Logo } from '@/components/Logo';
 import { Loader2, Mail, Lock } from 'lucide-react';
 
 export default function Login() {
@@ -71,8 +70,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="flex justify-center">
-            <Logo className="h-12 w-auto" />
+          <div className="flex justify-center mb-6">
+            <img
+              src="/Brand/SynQ logo FInal.jpg"
+              alt="SynQ"
+              className="h-12 w-auto object-contain"
+            />
           </div>
           <div>
             <CardTitle className="text-2xl">Welcome Back</CardTitle>

@@ -115,13 +115,13 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
           <RouterNavLink
             to={item.url}
             end={item.url === '/'}
-            className={`flex items-center gap-2 text-xs transition-all duration-150 ${
+            className={`flex items-center gap-3 text-sm transition-all duration-150 ${
               active 
                 ? 'bg-[#EEF2FF] text-[#3B82F6] rounded-xl font-medium' 
                 : 'hover:bg-gray-100'
             }`}
           >
-            <item.icon className="h-3.5 w-3.5" />
+            <item.icon className="h-5 w-5" />
             <span className="flex-1">{item.title}</span>
             {unreadCount > 0 && (
               <span className="ml-auto bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center font-medium">
@@ -137,15 +137,24 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
   return (
     <ShadcnSidebar collapsible="icon">
       <SidebarContent className="flex h-full flex-col">
-        <div className="px-2 py-3 flex items-center justify-center">
+        <div className="px-3 py-4 flex items-center justify-center">
           {open ? (
-            <h2 className="font-bold text-base">
-              SynQ
-            </h2>
+            <div className="flex items-center">
+              <img
+                src="/Brand/SynQ logo FInal.jpg"
+                alt="SynQ"
+                className="h-8 w-auto object-contain"
+              />
+              <span className="ml-2.5 text-xl font-bold tracking-tight">
+                SynQ
+              </span>
+            </div>
           ) : (
-            <h2 className="font-bold text-base">
-              SQ
-            </h2>
+            <img
+              src="/Brand/SynQ logo FInal.jpg"
+              alt="SynQ"
+              className="h-8 w-auto object-contain"
+            />
           )}
         </div>
 
@@ -199,8 +208,8 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
         </SidebarGroup>
 
         <div className="mt-auto px-3 pb-4 pt-3 border-t border-border/50">
-          <Button variant="secondary" size={open ? "sm" : "icon"} className="w-full gap-2" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
+          <Button variant="secondary" size={open ? "sm" : "icon"} className="w-full gap-3 text-sm" onClick={handleLogout}>
+            <LogOut className="h-5 w-5" />
             {open && <span>Logout</span>}
           </Button>
         </div>
