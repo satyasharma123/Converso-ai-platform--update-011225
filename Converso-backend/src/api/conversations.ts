@@ -112,10 +112,9 @@ export async function getConversations(
     `)
     .order('last_message_at', { ascending: false });
 
-  // Filter by workspace if available, but include legacy records missing workspace_id
-  if (workspaceId) {
-    query = query.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
-  }
+  // STRICT workspace filtering for SaaS isolation
+  // Only show conversations in user's workspace
+  query = query.eq('workspace_id', workspaceId);
 
   // Filter by type if specified
   if (type) {
@@ -199,10 +198,8 @@ async function getEmailConversationsByFolder(
     `)
     .eq('conversation_type', 'email');
 
-  // Filter by workspace
-  if (workspaceId) {
-    convQuery = convQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
-  }
+  // STRICT workspace filtering for SaaS isolation
+  convQuery = convQuery.eq('workspace_id', workspaceId);
 
   // IMPORTANT:
   // supabaseAdmin bypasses RLS.
@@ -801,16 +798,12 @@ export async function getMailboxCounts(
 ): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
   const workspaceId = await getUserWorkspaceId(userId);
   
-  // Build query for email conversations
+  // Build query for email conversations with STRICT workspace filtering
   let convListQuery = supabaseAdmin
     .from('conversations')
     .select('id')
-    .eq('conversation_type', 'email');
-  
-  // Filter by workspace
-  if (workspaceId) {
-    convListQuery = convListQuery.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
-  }
+    .eq('conversation_type', 'email')
+    .eq('workspace_id', workspaceId); // STRICT: Only this workspace
   
   // IMPORTANT: SDRs can ONLY see assigned conversations
   if (userRole === 'sdr') {

@@ -21,35 +21,20 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
       .single();
     
     if (profile?.workspace_id) {
-      // Fetch all accounts for this workspace (includes email accounts via user_id AND LinkedIn via workspace_id)
-      // Also include LinkedIn accounts that may have workspace_id missing (legacy rows) so they still appear.
+      // STRICT workspace filtering for SaaS isolation
+      // Only show accounts in user's workspace
       const { data, error } = await dbClient
         .from('connected_accounts')
         .select('*')
         .eq('is_active', true)
-        .or(
-          [
-            `user_id.eq.${userId}`,
-            `workspace_id.eq.${profile.workspace_id}`,
-            // Fallback: legacy LinkedIn accounts without workspace_id set
-            `and(account_type.eq.linkedin,workspace_id.is.null)`
-          ].join(',')
-        )
+        .eq('workspace_id', profile.workspace_id)
         .order('account_name');
       
       if (error) throw error;
       return data as ConnectedAccount[];
     } else {
-      // Fallback to user_id only if no workspace found
-      const { data, error } = await dbClient
-        .from('connected_accounts')
-        .select('*')
-        .eq('is_active', true)
-        .eq('user_id', userId)
-        .order('account_name');
-      
-      if (error) throw error;
-      return data as ConnectedAccount[];
+      // No workspace found - return empty array for SaaS isolation
+      return [];
     }
   }
   

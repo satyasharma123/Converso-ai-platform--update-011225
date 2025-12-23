@@ -219,11 +219,38 @@ router.get(
     }
 
     try {
-      // Get all email conversations for this workspace
+      // Guard: if workspace has zero active email accounts, counts must be zero
+      const { count: emailAccountCount, error: emailAccountErr } = await supabaseAdmin
+        .from('connected_accounts')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspace_id)
+        .eq('account_type', 'email')
+        .eq('is_active', true);
+
+      if (emailAccountErr) {
+        logger.error('Error checking email accounts:', emailAccountErr);
+        return res.status(500).json({ error: 'Failed to check email accounts' });
+      }
+
+      if (!emailAccountCount || emailAccountCount === 0) {
+        return res.json({ 
+          data: {
+            inbox: 0,
+            unread: 0,
+            sent: 0,
+            important: 0,
+            drafts: 0,
+            archive: 0,
+            deleted: 0,
+          }
+        });
+      }
+
+      // Get all email conversations for this workspace (STRICT workspace filtering)
       const { data: conversations, error: convError } = await supabaseAdmin
         .from('conversations')
         .select('id, is_read')
-        .or(`workspace_id.eq.${workspace_id},workspace_id.is.null`)
+        .eq('workspace_id', workspace_id)  // STRICT: Only this workspace, no NULL fallback
         .eq('conversation_type', 'email');
 
       if (convError) {
