@@ -10,9 +10,20 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware - CORS configuration for credentials support
+const allowedOrigins = [
+  'http://localhost:8082',
+  'https://converso-frontend-production.up.railway.app',
+];
+
 app.use(cors({
-  origin: 'http://localhost:8082', // Frontend origin
-  credentials: true, // Allow cookies and auth headers
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 app.use(express.json());
