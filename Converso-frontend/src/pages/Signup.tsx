@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
-import { Logo } from '@/components/Logo';
 import { Loader2, Mail, Lock, User } from 'lucide-react';
 
 export default function Signup() {
@@ -59,27 +58,22 @@ export default function Signup() {
     const { error, user, session } = await signUp(email, password, fullName);
     
     if (error) {
-      // Check if signup is blocked (not first user)
-      if (error.message?.includes('Signup is disabled') || 
-          error.message?.includes('Only the first user can sign up') ||
-          error.message?.includes('contact an admin')) {
-        toast.error('Signup is disabled. Only the first user can sign up. Please contact an admin to create your account.');
-        setErrors({ submit: 'Signup is disabled. Only the first user can sign up. Please contact an admin.' });
-      } else {
-        toast.error(error.message || 'Failed to create account');
-        setErrors({ submit: error.message || 'Failed to create account' });
-      }
+      toast.error(error.message || 'Failed to create account');
+      setErrors({ submit: error.message || 'Failed to create account' });
     } else {
       // Check if user was automatically confirmed (email confirmation disabled)
       // If session exists, user is logged in and can proceed
       if (session && user) {
         toast.success('Account created successfully!');
-        // Redirect to settings to complete profile
-        navigate('/settings');
+        // Redirect to inbox
+        navigate('/inbox/email');
       } else {
         // Email confirmation is required
-        toast.success('Account created! Please check your email to verify your account.');
-        // Optionally redirect to a "check your email" page or stay on signup
+        toast.success('Account created! Please check your email to confirm your account.');
+        // Show message and keep user on signup page
+        setErrors({ 
+          submit: '✅ Account created! Check your email for a confirmation link.' 
+        });
       }
     }
     
@@ -101,8 +95,12 @@ export default function Signup() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="flex justify-center">
-            <Logo className="h-12 w-auto" />
+          <div className="flex justify-center mb-6">
+            <img
+              src="/Brand/SynQ logo FInal.jpg"
+              alt="SynQ"
+              className="h-10 w-auto"
+            />
           </div>
           <div>
             <CardTitle className="text-2xl">Create Account</CardTitle>
