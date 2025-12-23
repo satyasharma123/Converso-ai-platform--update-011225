@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 3001;
 const allowedOrigins = [
   'http://localhost:8082',
   'https://converso-frontend-production.up.railway.app',
+  'https://app.synq-ai.co',
 ];
 
 app.use(cors({
