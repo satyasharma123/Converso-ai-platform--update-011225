@@ -31,7 +31,7 @@ const SCOPES = [
  * @param {string} state - Optional state parameter for CSRF protection
  * @returns {string} Authorization URL
  */
-function generateAuthUrl(state = null) {
+function generateAuthUrl(state: string | null = null): string {
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -50,7 +50,7 @@ function generateAuthUrl(state = null) {
  * @param {string} code - Authorization code from callback
  * @returns {Promise<Object>} Token response with access_token and refresh_token
  */
-async function exchangeCodeForToken(code) {
+async function exchangeCodeForToken(code: string): Promise<any> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: {
@@ -78,7 +78,7 @@ async function exchangeCodeForToken(code) {
  * @param {string} refreshToken - Refresh token
  * @returns {Promise<Object>} New token response
  */
-async function refreshAccessToken(refreshToken) {
+async function refreshAccessToken(refreshToken: string): Promise<any> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: {
@@ -105,7 +105,7 @@ async function refreshAccessToken(refreshToken) {
  * @param {string} accessToken - Access token
  * @returns {Promise<Object>} User info
  */
-async function getUserInfo(accessToken) {
+async function getUserInfo(accessToken: string): Promise<any> {
   const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -119,7 +119,7 @@ async function getUserInfo(accessToken) {
   return await response.json();
 }
 
-module.exports = {
+export {
   generateAuthUrl,
   exchangeCodeForToken,
   refreshAccessToken,
@@ -129,4 +129,3 @@ module.exports = {
   REDIRECT_URI,
   SCOPES,
 };
-

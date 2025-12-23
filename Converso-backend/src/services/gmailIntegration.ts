@@ -8,6 +8,7 @@ import { google } from 'googleapis';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../lib/supabase';
 import type { ConnectedAccount, EmailAttachment } from '../types';
+import { refreshAccessToken } from '../utils/oauth';
 
 interface GmailMessage {
   id: string;
@@ -521,8 +522,7 @@ export async function refreshGmailToken(refreshToken: string): Promise<{
   access_token: string;
   expires_in: number;
 }> {
-  const { refreshAccessToken } = require('../utils/oauth');
-  return await refreshAccessToken(refreshToken);
+  return await refreshAccessToken(refreshToken) as { access_token: string; expires_in: number };
 }
 
 /**

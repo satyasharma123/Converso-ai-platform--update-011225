@@ -74,7 +74,9 @@ export async function getConversations(
   // Get user's workspace
   const workspaceId = await getUserWorkspaceId(userId);
   
-  console.log(`[Conversations API] type=${type}, folder=${folder}, userId=${userId}, userRole=${userRole}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[Conversations API] type=${type}, folder=${folder}, userId=${userId}, userRole=${userRole}`);
+  }
   
   // ===================================================================
   // ✅ EMAIL WITH FOLDER: Provider-truth filtering (no inference)
@@ -84,7 +86,9 @@ export async function getConversations(
     // Normalize folder name: 'deleted' → 'trash' for provider consistency
     const normalizedFolder = folder === 'deleted' ? 'trash' : folder;
     
-    console.log(`[EMAIL FOLDER] Requested folder: ${folder}, normalized: ${normalizedFolder}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[EMAIL FOLDER] Requested folder: ${folder}, normalized: ${normalizedFolder}`);
+    }
     
     return await getEmailConversationsByFolder(workspaceId, userId, userRole, normalizedFolder);
   }
@@ -123,7 +127,9 @@ export async function getConversations(
   // SDR filtering here MUST exactly match RLS:
   // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
-    console.log(`[EMAIL SDR FILTER] Applying assigned_to filter for userId: ${userId}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[EMAIL SDR FILTER] Applying assigned_to filter for userId: ${userId}`);
+    }
     query = query.eq('assigned_to', userId);
   }
 
@@ -135,7 +141,9 @@ export async function getConversations(
   }
   
   let conversations = (data as Conversation[]) || [];
-  console.log(`[EMAIL QUERY RESULT] Found ${conversations.length} conversations BEFORE user state merge`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[EMAIL QUERY RESULT] Found ${conversations.length} conversations BEFORE user state merge`);
+  }
   
   // Fetch user-specific state and merge it with conversations
   // Unread status is user-specific: Admin unread ≠ SDR unread
@@ -159,7 +167,7 @@ export async function getConversations(
     });
   }
   
-  if (type === 'email') {
+  if (type === 'email' && process.env.NODE_ENV !== 'production') {
     console.log(`[EMAIL FINAL] Returning ${conversations.length} conversations (userRole=${userRole}, folder=${folder || 'none'})`);
   }
 

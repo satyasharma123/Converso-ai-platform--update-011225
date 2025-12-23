@@ -109,10 +109,14 @@ async function ensureDefaultTemplates(workspaceId: string): Promise<void> {
  * Get all email templates for a workspace
  */
 export async function getEmailTemplates(userId: string): Promise<EmailTemplate[]> {
-  console.log('[emailTemplates] getEmailTemplates called with userId:', userId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[emailTemplates] getEmailTemplates called with userId:', userId);
+  }
   
   const workspaceId = await getUserWorkspaceId(userId);
-  console.log('[emailTemplates] Got workspaceId:', workspaceId);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[emailTemplates] Got workspaceId:', workspaceId);
+  }
   
   if (!workspaceId) {
     throw new Error('Workspace not found');
@@ -120,9 +124,13 @@ export async function getEmailTemplates(userId: string): Promise<EmailTemplate[]
 
   // Ensure default templates exist
   try {
-    console.log('[emailTemplates] Ensuring default templates exist...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[emailTemplates] Ensuring default templates exist...');
+    }
     await ensureDefaultTemplates(workspaceId);
-    console.log('[emailTemplates] Default templates ensured');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[emailTemplates] Default templates ensured');
+    }
   } catch (error) {
     console.error('[emailTemplates] Error ensuring default templates:', error);
     // Continue even if ensuring fails - might already exist
@@ -140,7 +148,9 @@ export async function getEmailTemplates(userId: string): Promise<EmailTemplate[]
     throw error;
   }
   
-  console.log('[emailTemplates] Fetched templates count:', (data || []).length);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[emailTemplates] Fetched templates count:', (data || []).length);
+  }
   return (data || []) as EmailTemplate[];
 }
 

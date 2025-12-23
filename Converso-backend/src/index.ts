@@ -19,14 +19,16 @@ app.use(express.json());
 
 // Debug logger to trace all API requests
 app.use((req, _res, next) => {
-  console.log(`[API DEBUG] ${req.method} ${req.originalUrl}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[API DEBUG] ${req.method} ${req.originalUrl}`);
+  }
   next();
 });
 
 // Root route
 app.get('/', (_req: Request, res: Response) => {
   res.json({ 
-    message: 'Converso Backend API',
+    message: 'SynQ Backend API',
     version: '1.0.0',
     endpoints: {
       health: '/health',
@@ -75,7 +77,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Start server
 app.listen(PORT, () => {
-  logger.info(`🚀 Converso Backend Server running on http://localhost:${PORT}`);
+  logger.info(`🚀 SynQ Backend Server running on http://localhost:${PORT}`);
   logger.info(`📊 Health check available at http://localhost:${PORT}/health`);
   logger.info(`📡 API routes available at http://localhost:${PORT}/api`);
   logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);

@@ -29,15 +29,15 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Welcome to Converso</title>
+      <title>Welcome to SynQ</title>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px;">
-        <h1 style="color: #2563eb; margin-top: 0;">Welcome to Converso!</h1>
+        <h1 style="color: #2563eb; margin-top: 0;">Welcome to SynQ!</h1>
         
         <p>Hi ${toName},</p>
         
-        <p><strong>${adminName}</strong> has added you to the <strong>${workspaceName}</strong> workspace on Converso.</p>
+        <p><strong>${adminName}</strong> has added you to the <strong>${workspaceName}</strong> workspace on SynQ.</p>
         
         <p>To get started, please set your password by clicking the button below:</p>
         
@@ -64,11 +64,11 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
   `;
 
   const textBody = `
-Welcome to Converso!
+Welcome to SynQ!
 
 Hi ${toName},
 
-${adminName} has added you to the ${workspaceName} workspace on Converso.
+${adminName} has added you to the ${workspaceName} workspace on SynQ.
 
 To get started, please set your password by visiting this link:
 ${resetLink}
@@ -87,7 +87,7 @@ If you didn't expect this invitation, please ignore this email.
     const smtpUser = process.env.SMTP_USER || process.env.SMTP_USERNAME;
     const smtpPassword = process.env.SMTP_PASSWORD;
     const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser || 'info@leadnex.co';
-    const smtpFromName = process.env.SMTP_FROM_NAME || 'Converso AI';
+    const smtpFromName = process.env.SMTP_FROM_NAME || 'SynQ';
     const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465 || process.env.SMTP_SECURE === undefined;
 
     // Check if SMTP is configured
