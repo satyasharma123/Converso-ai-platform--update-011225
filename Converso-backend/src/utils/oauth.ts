@@ -66,8 +66,14 @@ async function exchangeCodeForToken(code: string): Promise<any> {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Token exchange failed: ${error.error_description || error.error}`);
+    const error = (await response.json()) as {
+      error?: string;
+      error_description?: string;
+    };
+
+    throw new Error(
+      `Token exchange failed: ${error.error_description ?? error.error ?? 'Unknown error'}`
+    );
   }
 
   return await response.json();
@@ -93,8 +99,14 @@ async function refreshAccessToken(refreshToken: string): Promise<any> {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Token refresh failed: ${error.error_description || error.error}`);
+    const error = (await response.json()) as {
+      error?: string;
+      error_description?: string;
+    };
+
+    throw new Error(
+      `Token refresh failed: ${error.error_description ?? error.error ?? 'Unknown error'}`
+    );
   }
 
   return await response.json();
