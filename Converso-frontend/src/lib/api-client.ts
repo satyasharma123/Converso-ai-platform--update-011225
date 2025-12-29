@@ -62,6 +62,13 @@ class ApiClient {
     // Add user context headers if available
     if (userData?.id) {
       headers['x-user-id'] = userData.id;
+
+      // Add workspace ID header from localStorage
+      const workspaceStorageKey = `synq_active_workspace_id:${userData.id}`;
+      const workspaceId = localStorage.getItem(workspaceStorageKey);
+      if (workspaceId) {
+        headers['X-Workspace-Id'] = workspaceId;
+      }
     }
 
     if (userData?.user_metadata?.role) {

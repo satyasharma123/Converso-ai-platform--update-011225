@@ -14,6 +14,7 @@ import { RulesEngine } from "@/components/Admin/RulesEngine";
 import { PipelineStages } from "@/components/Admin/PipelineStages";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
+import { useWorkspace as useWorkspaceContext } from "@/context/WorkspaceContext";
 import { useWorkspace, useUpdateWorkspace } from "@/hooks/useWorkspace";
 import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
 import { useCreateRoutingRule, useDeleteRoutingRule } from "@/hooks/useRoutingRules";
@@ -29,6 +30,7 @@ import type { ConnectedAccount } from "@backend/src/types";
 
 export default function Settings() {
   const { user, userRole } = useAuth();
+  const { activeWorkspace } = useWorkspaceContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: profile, isLoading: profileLoading } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
@@ -210,15 +212,20 @@ export default function Settings() {
       return;
     }
 
+    if (!activeWorkspace?.id) {
+      toast.error("Please select a workspace");
+      return;
+    }
+
     setIsEmailProviderModalOpen(false);
     
     // Redirect to appropriate OAuth flow
     const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     
     if (provider === "gmail") {
-      window.location.href = `${backendUrl}/api/integrations/gmail/connect?userId=${user.id}`;
+      window.location.href = `${backendUrl}/api/integrations/gmail/connect?userId=${user.id}&workspaceId=${activeWorkspace.id}`;
     } else if (provider === "outlook") {
-      window.location.href = `${backendUrl}/api/integrations/outlook/connect?userId=${user.id}`;
+      window.location.href = `${backendUrl}/api/integrations/outlook/connect?userId=${user.id}&workspaceId=${activeWorkspace.id}`;
     }
   };
 
@@ -228,7 +235,7 @@ export default function Settings() {
       return;
     }
 
-    if (!user?.id || !workspace?.id) {
+    if (!user?.id || !activeWorkspace?.id) {
       toast.error("User/workspace not loaded");
       return;
     }
@@ -243,7 +250,7 @@ export default function Settings() {
       account_type: 'linkedin',
       is_active: true,
       user_id: user.id,
-      workspace_id: workspace.id,
+      workspace_id: activeWorkspace.id,
       created_at: new Date().toISOString(),
     };
     optimisticAccount.__optimistic = true;
@@ -269,7 +276,7 @@ export default function Settings() {
         body: JSON.stringify({
         account_name: newLinkedInAccount.name,
         user_id: user.id,
-          workspace_id: workspace.id,
+          workspace_id: activeWorkspace.id,
         }),
       }).then(r => r.json());
 
@@ -277,8 +284,13 @@ export default function Settings() {
         throw new Error(startResp.error || "Failed to start LinkedIn authentication");
       }
 
+      // Add workspaceId to the hostedAuthUrl query params
+      const url = new URL(startResp.hostedAuthUrl);
+      url.searchParams.set('workspaceId', activeWorkspace.id);
+      const finalAuthUrl = url.toString();
+
       // Open Unipile Hosted Auth popup
-      const popup = window.open(startResp.hostedAuthUrl, "UnipileAuth", "width=500,height=700");
+      const popup = window.open(finalAuthUrl, "UnipileAuth", "width=500,height=700");
       const poll = setInterval(async () => {
         if (popup && popup.closed) {
           clearInterval(poll);
@@ -310,7 +322,7 @@ export default function Settings() {
   };
 
   const handleReconnectLinkedIn = async (accountId: string, accountName: string) => {
-    if (!user?.id || !workspace?.id) {
+    if (!user?.id || !activeWorkspace?.id) {
       toast.error("User/workspace not loaded");
       return;
     }
@@ -330,7 +342,7 @@ export default function Settings() {
         body: JSON.stringify({
           account_name: accountName,
           user_id: user.id,
-          workspace_id: workspace.id,
+          workspace_id: activeWorkspace.id,
           reconnect_account_id: accountId
         }),
       }).then(r => r.json());
@@ -339,8 +351,13 @@ export default function Settings() {
         throw new Error(startResp.error || "Failed to start LinkedIn reconnection");
       }
 
+      // Add workspaceId to the hostedAuthUrl query params
+      const url = new URL(startResp.hostedAuthUrl);
+      url.searchParams.set('workspaceId', activeWorkspace.id);
+      const finalAuthUrl = url.toString();
+
       // Open Unipile Hosted Auth popup
-      const popup = window.open(startResp.hostedAuthUrl, "UnipileAuth", "width=500,height=700");
+      const popup = window.open(finalAuthUrl, "UnipileAuth", "width=500,height=700");
       const poll = setInterval(async () => {
         if (popup && popup.closed) {
           clearInterval(poll);
