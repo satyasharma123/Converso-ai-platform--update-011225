@@ -1,25 +1,12 @@
-import { supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from './resolveWorkspace';
 import { logger } from './logger';
 
 /**
- * Get workspace ID for a user (STRICT - no fallback for SaaS isolation)
+ * Get workspace ID for a user (STRICT - uses workspace_members as source of truth)
  */
 export async function getUserWorkspaceId(userId: string): Promise<string> {
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('workspace_id')
-    .eq('id', userId)
-    .single();
-
-  if (error || !profile?.workspace_id) {
-    logger.error('[Workspace] Workspace not found for user', {
-      error: error?.message,
-      userId,
-    });
-    throw new Error(`Workspace not found for user ${userId}`);
-  }
-
-  return profile.workspace_id;
+  const { workspaceId } = await resolveActiveWorkspace({ userId });
+  return workspaceId;
 }
 
 /**
@@ -28,33 +15,12 @@ export async function getUserWorkspaceId(userId: string): Promise<string> {
  */
 export async function getUserWorkspaceIdLegacy(userId: string): Promise<string | null> {
   try {
-    const { data: profile, error } = await supabaseAdmin
-      .from('profiles')
-      .select('workspace_id')
-      .eq('id', userId)
-      .single();
-
-    if (!error && profile?.workspace_id) {
-      return profile.workspace_id;
-    }
+    const { workspaceId } = await resolveActiveWorkspace({ userId });
+    return workspaceId;
   } catch (err) {
-    logger.warn('[Workspace] Failed to fetch user workspace, falling back to default', {
+    logger.warn('[Workspace] Failed to fetch user workspace', {
       error: err instanceof Error ? err.message : err,
       userId,
-    });
-  }
-
-  try {
-    const { data: workspace } = await supabaseAdmin
-      .from('workspaces')
-      .select('id')
-      .limit(1)
-      .single();
-
-    return workspace?.id || null;
-  } catch (err) {
-    logger.error('[Workspace] Failed to determine fallback workspace', {
-      error: err instanceof Error ? err.message : err,
     });
     return null;
   }

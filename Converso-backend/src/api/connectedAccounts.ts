@@ -1,4 +1,5 @@
 import { supabase, supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 import type { ConnectedAccount } from '../types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -11,28 +12,23 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
   // This is safe because we filter by user_id/workspace_id
   const dbClient = client || supabaseAdmin;
   
-  // If userId is provided, get their workspace_id and fetch all accounts for that workspace
+  // If userId is provided, get their workspace_id from workspace_members and fetch all accounts for that workspace
   if (userId) {
-    // First, get the user's workspace_id from their profile
-    const { data: profile } = await dbClient
-      .from('profiles')
-      .select('workspace_id')
-      .eq('id', userId)
-      .single();
-    
-    if (profile?.workspace_id) {
+    try {
+      const { workspaceId } = await resolveActiveWorkspace({ userId });
+      
       // STRICT workspace filtering for SaaS isolation
       // Only show accounts in user's workspace
       const { data, error } = await dbClient
         .from('connected_accounts')
         .select('*')
         .eq('is_active', true)
-        .eq('workspace_id', profile.workspace_id)
+        .eq('workspace_id', workspaceId)
         .order('account_name');
       
       if (error) throw error;
       return data as ConnectedAccount[];
-    } else {
+    } catch (error) {
       // No workspace found - return empty array for SaaS isolation
       return [];
     }

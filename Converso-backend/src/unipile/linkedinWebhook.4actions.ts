@@ -8,6 +8,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 import { unipileGet } from './unipileClient';
 import crypto from 'crypto';
 import { sendSseEvent } from '../utils/sse';
@@ -174,38 +175,30 @@ async function resolveWorkspaceId(
   workspaceId?: string | null,
   userId?: string | null
 ): Promise<string | null> {
-  if (workspaceId) {
-    return workspaceId;
+  if (workspaceId && userId) {
+    // Verify membership if both provided
+    try {
+      const { workspaceId: verifiedWorkspaceId } = await resolveActiveWorkspace({ userId, workspaceId });
+      return verifiedWorkspaceId;
+    } catch (err) {
+      logger.warn(`[Webhook] User ${userId} is not a member of workspace ${workspaceId}`, err);
+      return null;
+    }
   }
 
   if (userId) {
     try {
-      const { data } = await supabaseAdmin
-        .from('profiles')
-        .select('workspace_id')
-        .eq('id', userId)
-        .single();
-
-      if (data?.workspace_id) {
-        return data.workspace_id;
-      }
+      const { workspaceId: resolvedWorkspaceId } = await resolveActiveWorkspace({ userId });
+      return resolvedWorkspaceId;
     } catch (err) {
       logger.warn(`[Webhook] Failed to resolve workspace for user ${userId}`, err);
+      return null;
     }
   }
 
-  try {
-    const { data } = await supabaseAdmin
-      .from('workspaces')
-      .select('id')
-      .limit(1)
-      .single();
-
-    return data?.id || null;
-  } catch (err) {
-    logger.warn('[Webhook] Failed to resolve default workspace', err);
-    return null;
-  }
+  // No userId provided - cannot resolve workspace
+  logger.warn('[Webhook] Cannot resolve workspace: no userId provided');
+  return null;
 }
 
 async function provisionConnectedAccount(unipileAccountId: string) {

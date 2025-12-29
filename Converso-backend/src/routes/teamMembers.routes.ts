@@ -3,6 +3,7 @@ import { teamMembersService } from '../services/teamMembers';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 
 const router = Router();
 
@@ -81,12 +82,20 @@ router.post(
     let workspaceId: string | undefined;
     let adminName: string | undefined;
     if (userId) {
+      try {
+        const { workspaceId: resolvedWorkspaceId } = await resolveActiveWorkspace({ userId });
+        workspaceId = resolvedWorkspaceId;
+      } catch (error) {
+        // User doesn't belong to any workspace
+        workspaceId = undefined;
+      }
+      
+      // Get admin name from profile
       const { data: profile } = await supabaseAdmin
         .from('profiles')
-        .select('workspace_id, full_name')
+        .select('full_name')
         .eq('id', userId)
         .single();
-      workspaceId = profile?.workspace_id;
       adminName = profile?.full_name;
     }
 

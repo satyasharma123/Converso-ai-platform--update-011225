@@ -108,16 +108,14 @@ router.get(
       
       logger.info(`Gmail OAuth successful for user: ${userId}, email: ${userInfo.email}`);
 
-      // Get user's workspace_id from their profile
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('workspace_id')
-        .eq('id', userId)
-        .single();
-      
-      const workspaceId = profile?.workspace_id || null;
-      if (!workspaceId) {
-        logger.warn(`User ${userId} has no workspace_id - account will be created without workspace_id`);
+      // Get user's workspace_id from workspace_members (authoritative source)
+      const { resolveActiveWorkspace } = await import('../utils/resolveWorkspace');
+      let workspaceId: string | null = null;
+      try {
+        const { workspaceId: resolvedWorkspaceId } = await resolveActiveWorkspace({ userId });
+        workspaceId = resolvedWorkspaceId;
+      } catch (error) {
+        logger.warn(`User ${userId} does not belong to any workspace - account will be created without workspace_id`);
       }
 
       // Calculate token expiry

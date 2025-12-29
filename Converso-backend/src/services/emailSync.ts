@@ -5,6 +5,7 @@
 
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 import { fetchGmailEmailMetadata, parseGmailMessageMetadata, fetchGmailEmailBody } from './gmailIntegration';
 import { fetchOutlookEmailMetadata, parseOutlookMessageMetadata, fetchOutlookEmailBody } from './outlookIntegration';
 import { upsertSyncStatus, getSyncStatus, updateSyncProgress } from '../api/syncStatus';
@@ -54,32 +55,11 @@ function normalizeProviderFolder(folder: string, isGmail: boolean): string {
 }
 
 /**
- * Get workspace ID for a user
- * For now, we'll get the first workspace (can be extended later)
+ * Get workspace ID for a user (uses workspace_members as source of truth)
  */
 async function getWorkspaceId(userId: string): Promise<string> {
-  const { data: workspace, error } = await supabaseAdmin
-    .from('workspaces')
-    .select('id')
-    .limit(1)
-    .single();
-
-  if (error || !workspace) {
-    // Create default workspace if none exists
-    const { data: newWorkspace, error: createError } = await supabaseAdmin
-      .from('workspaces')
-      .insert({ name: 'Default Workspace' })
-      .select()
-      .single();
-
-    if (createError || !newWorkspace) {
-      throw new Error('Failed to get or create workspace');
-    }
-
-    return newWorkspace.id;
-  }
-
-  return workspace.id;
+  const { workspaceId } = await resolveActiveWorkspace({ userId });
+  return workspaceId;
 }
 
 /**

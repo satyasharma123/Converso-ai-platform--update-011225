@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 import type { TeamMember } from '../types';
 
 /**
@@ -6,32 +7,40 @@ import type { TeamMember } from '../types';
  */
 
 export async function getTeamMembers(userId?: string): Promise<TeamMember[]> {
-  // If userId is provided, get their workspace_id first
+  // If userId is provided, get their workspace_id from workspace_members
   let workspaceId: string | null = null;
   if (userId) {
-    const { data: userProfile, error: userError } = await supabaseAdmin
-      .from('profiles')
-      .select('workspace_id')
-      .eq('id', userId)
-      .single();
-    
-    if (userError) {
-      console.error('Error fetching user workspace:', userError);
+    try {
+      const { workspaceId: resolvedWorkspaceId } = await resolveActiveWorkspace({ userId });
+      workspaceId = resolvedWorkspaceId;
+    } catch (error) {
+      console.error('Error fetching user workspace:', error);
       // Don't throw - continue with no workspace filter
-    } else {
-      workspaceId = userProfile?.workspace_id || null;
     }
   }
 
   // Build query to get profiles
+  // Note: We filter by workspace_members instead of profiles.workspace_id
   let query = supabaseAdmin
     .from('profiles')
     .select('*')
     .or('is_deleted.is.null,is_deleted.eq.false'); // Exclude deleted users
 
   // Filter by workspace if we have one
+  // Get all user_ids in this workspace from workspace_members
   if (workspaceId) {
-    query = query.eq('workspace_id', workspaceId);
+    const { data: members } = await supabaseAdmin
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspaceId);
+    
+    if (members && members.length > 0) {
+      const userIds = members.map(m => m.user_id);
+      query = query.in('id', userIds);
+    } else {
+      // No members in workspace, return empty array
+      return [];
+    }
   }
 
   const { data: profiles, error: profilesError } = await query;

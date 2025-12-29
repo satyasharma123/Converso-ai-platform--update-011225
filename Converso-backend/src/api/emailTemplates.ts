@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabase';
+import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 
 /**
  * API module for email template-related database queries
@@ -18,27 +19,15 @@ export interface EmailTemplate {
 }
 
 /**
- * Get workspace ID for a user
+ * Get workspace ID for a user (uses workspace_members as source of truth)
  */
 async function getUserWorkspaceId(userId: string): Promise<string | null> {
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('workspace_id')
-    .eq('id', userId)
-    .single();
-
-  if (error || !profile?.workspace_id) {
-    // Fallback: get first workspace
-    const { data: workspace } = await supabaseAdmin
-      .from('workspaces')
-      .select('id')
-      .limit(1)
-      .single();
-    
-    return workspace?.id || null;
+  try {
+    const { workspaceId } = await resolveActiveWorkspace({ userId });
+    return workspaceId;
+  } catch (error) {
+    return null;
   }
-
-  return profile.workspace_id;
 }
 
 /**
