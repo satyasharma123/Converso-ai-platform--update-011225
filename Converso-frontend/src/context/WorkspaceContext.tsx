@@ -13,6 +13,7 @@ interface WorkspaceContextType {
   workspaces: WorkspaceSummary[];
   setActiveWorkspaceId: (id: string) => void;
   loading: boolean;
+  hasNoWorkspaceMembership: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -22,6 +23,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasNoWorkspaceMembership, setHasNoWorkspaceMembership] = useState(false);
 
   const fetchWorkspaces = useCallback(async (userId: string) => {
     try {
@@ -73,12 +75,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         workspaceIds: uniqueWorkspaces.map(w => w.id)
       });
 
-      // Debug: Warn if user has no workspaces
-      if (uniqueWorkspaces.length === 0) {
-        console.warn(
-          "[WS] active workspace not found -> fallback path (no workspaces available)"
-        );
+      // FIX: Handle users with no workspace memberships (e.g., after deletion)
+      if (!uniqueWorkspaces || uniqueWorkspaces.length === 0) {
+        console.warn('[WS] User has no workspace memberships. Forcing create-workspace flow.');
+        if (userId) {
+          const storageKey = `synq_active_workspace_id:${userId}`;
+          localStorage.removeItem(storageKey);
+        }
+        setWorkspaces([]);
+        setActiveWorkspace(null);
+        setHasNoWorkspaceMembership(true);
+        setLoading(false);
+        return;
       }
+
+      // User has workspaces - clear the no-membership flag
+      setHasNoWorkspaceMembership(false);
 
       // Determine active workspace (use deduplicated list)
       const storageKey = `synq_active_workspace_id:${userId}`;
@@ -175,6 +187,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         workspaces,
         setActiveWorkspaceId,
         loading,
+        hasNoWorkspaceMembership,
       }}
     >
       {children}

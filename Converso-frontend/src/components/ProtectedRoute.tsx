@@ -1,5 +1,6 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -8,9 +9,11 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { user, userRole, loading } = useAuth();
+  const { hasNoWorkspaceMembership, loading: wsLoading } = useWorkspace();
+  const location = useLocation();
 
-  // Show loading spinner while checking authentication
-  if (loading) {
+  // Show loading spinner while checking authentication and workspace
+  if (loading || wsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -24,6 +27,13 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   // Redirect to login if not authenticated
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Redirect to create-workspace if user has no workspace memberships
+  // (unless they're already on the create-workspace page)
+  if (hasNoWorkspaceMembership && location.pathname !== '/create-workspace') {
+    console.log('[PROTECTED-ROUTE] Redirecting to /create-workspace - no workspace memberships');
+    return <Navigate to="/create-workspace" replace />;
   }
 
   // Redirect non-admin users away from admin pages
