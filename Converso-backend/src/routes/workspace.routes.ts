@@ -79,7 +79,17 @@ router.get(
     
     // Auto-create workspace ONLY if user doesn't belong to any workspace
     if (!workspace && userId) {
-      workspace = await workspaceService.createWorkspace('Default Workspace', client);
+      // Get user email for owner_email field
+      const { supabaseAdmin } = await import('../lib/supabase');
+      const dbClient = client || supabaseAdmin;
+      const { data: profile } = await dbClient
+        .from('profiles')
+        .select('email')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      const userEmail = profile?.email || null;
+      workspace = await workspaceService.createWorkspace('Default Workspace', client, userId, userEmail);
     }
     
     res.json({ data: workspace });
@@ -129,7 +139,7 @@ router.put(
 
 /**
  * DELETE /api/workspace
- * Delete workspace (ADMIN only)
+ * Delete workspace (OWNER only)
  */
 router.delete(
   '/',
@@ -148,24 +158,29 @@ router.delete(
       });
     }
 
-    // Verify user is ADMIN of this workspace
-    try {
-      const { workspaceId: verifiedWorkspaceId, role } = await resolveActiveWorkspace({ userId, workspaceId });
-      
-      // Case-insensitive role check (role can be 'admin', 'ADMIN', 'Admin', etc.)
-      if (role.toUpperCase() !== 'ADMIN') {
-        return res.status(403).json({
-          error: 'Only workspace admins can delete workspaces'
-        });
-      }
-    } catch (error: any) {
+    // Use admin client to read owner_user_id (since backend may bypass RLS)
+    const client = req.supabaseClient || undefined;
+    const { supabaseAdmin } = await import('../lib/supabase');
+    const dbClient = client || supabaseAdmin;
+
+    const { data: ws, error: wsErr } = await dbClient
+      .from('workspaces')
+      .select('id, owner_user_id')
+      .eq('id', workspaceId)
+      .single();
+
+    if (wsErr || !ws) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    // Only the account owner can delete the workspace
+    if (ws.owner_user_id !== userId) {
       return res.status(403).json({
-        error: 'User is not a member of this workspace'
+        error: 'Only the account owner can delete this workspace'
       });
     }
 
-    // Delete workspace (service handles workspace_members deletion)
-    const client = req.supabaseClient || undefined;
+    // Proceed with delete (service handles workspace_members deletion)
     await workspaceService.deleteWorkspace(workspaceId, client);
     
     res.json({ success: true });

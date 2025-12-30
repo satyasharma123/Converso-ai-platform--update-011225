@@ -160,11 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userEmailPrefix = email.split('@')[0];
         
-        // 1. Create workspace
+        // 1. Create workspace with owner fields
         const { data: workspace, error: workspaceError } = await (supabase
           .from('workspaces' as any)
           .insert({
             name: `${userEmailPrefix}'s Workspace`,
+            owner_user_id: data.user.id,
+            owner_email: email,
           })
           .select()
           .single() as any);

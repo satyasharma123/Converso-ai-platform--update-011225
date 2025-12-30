@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface Workspace {
   id: string;
   name: string;
+  owner_user_id?: string;
+  owner_email?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -31,11 +33,27 @@ export async function getWorkspace(client?: SupabaseClient): Promise<Workspace |
   return data as Workspace | null;
 }
 
-export async function createWorkspace(name: string, client?: SupabaseClient): Promise<Workspace> {
+export async function createWorkspace(
+  name: string,
+  client?: SupabaseClient,
+  ownerUserId?: string,
+  ownerEmail?: string | null
+): Promise<Workspace> {
   const dbClient = client || supabaseAdmin;
+  
+  const insertData: any = { name };
+  
+  // Set owner fields if provided
+  if (ownerUserId) {
+    insertData.owner_user_id = ownerUserId;
+  }
+  if (ownerEmail !== undefined) {
+    insertData.owner_email = ownerEmail;
+  }
+  
   const { data, error } = await dbClient
     .from('workspaces')
-    .insert({ name })
+    .insert(insertData)
     .select()
     .single();
 

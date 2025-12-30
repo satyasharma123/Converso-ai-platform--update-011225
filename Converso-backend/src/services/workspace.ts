@@ -16,8 +16,13 @@ export const workspaceService = {
   /**
    * Create workspace
    */
-  async createWorkspace(name: string, client?: SupabaseClient) {
-    return workspaceApi.createWorkspace(name, client);
+  async createWorkspace(
+    name: string,
+    client?: SupabaseClient,
+    ownerUserId?: string,
+    ownerEmail?: string | null
+  ) {
+    return workspaceApi.createWorkspace(name, client, ownerUserId, ownerEmail);
   },
 
   /**

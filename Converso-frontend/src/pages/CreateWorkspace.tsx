@@ -31,11 +31,13 @@ export default function CreateWorkspace() {
     setIsCreating(true);
 
     try {
-      // 1. Create workspace
+      // 1. Create workspace with owner fields
       const { data: workspace, error: workspaceError } = await (supabase
         .from('workspaces' as any)
         .insert({
           name: workspaceName.trim(),
+          owner_user_id: user.id,
+          owner_email: user.email || null,
         })
         .select()
         .single() as any);
