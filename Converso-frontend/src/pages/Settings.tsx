@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -90,6 +90,7 @@ export default function Settings() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Integrations state
   const [isEmailProviderModalOpen, setIsEmailProviderModalOpen] = useState(false);
@@ -245,6 +246,10 @@ export default function Settings() {
       
       toast.success("Workspace deleted successfully");
       
+      // Close modal before logout
+      setShowDeleteModal(false);
+      setDeleteConfirmText("");
+      
       // Logout user and redirect to login
       await signOut();
       navigate('/login');
@@ -253,7 +258,6 @@ export default function Settings() {
       toast.error(error.message || "Failed to delete workspace");
     } finally {
       setIsDeletingWorkspace(false);
-      setDeleteConfirmText("");
     }
   };
 
@@ -992,57 +996,31 @@ export default function Settings() {
                             }}
                           />
                         </div>
-                        <Button
-                          onClick={handleUpdateWorkspace}
-                          disabled={updateWorkspace.isPending || !workspaceName.trim()}
-                        >
-                          {updateWorkspace.isPending ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Updating...
-                            </>
-                          ) : (
-                            "Update Workspace"
-                          )}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleUpdateWorkspace}
+                            disabled={updateWorkspace.isPending || !workspaceName.trim()}
+                          >
+                            {updateWorkspace.isPending ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Updating...
+                              </>
+                            ) : (
+                              "Update Workspace"
+                            )}
+                          </Button>
 
-                        {/* Delete Workspace Section - Admin Only */}
-                        {userRole === "admin" && (
-                          <div className="mt-8 pt-8 border-t space-y-4">
-                            <div>
-                              <Label className="text-destructive font-semibold">Delete Workspace</Label>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                This action cannot be undone. All workspace data will be permanently deleted.
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="delete-confirm">
-                                Type <span className="font-mono font-semibold">DELETE</span> to confirm
-                              </Label>
-                              <Input
-                                id="delete-confirm"
-                                placeholder="DELETE"
-                                value={deleteConfirmText}
-                                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                className="max-w-xs"
-                              />
-                            </div>
+                          {/* Delete Workspace Button - Admin Only */}
+                          {userRole === "admin" && (
                             <Button
                               variant="destructive"
-                              onClick={handleDeleteWorkspace}
-                              disabled={isDeletingWorkspace || deleteConfirmText !== "DELETE"}
+                              onClick={() => setShowDeleteModal(true)}
                             >
-                              {isDeletingWorkspace ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Deleting...
-                                </>
-                              ) : (
-                                "Delete Workspace"
-                              )}
+                              Delete Workspace
                             </Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </>
                     )}
                   </CardContent>
@@ -1143,6 +1121,62 @@ export default function Settings() {
           </Tabs>
         </div>
       </div>
+
+      {/* Delete Workspace Confirmation Modal */}
+      {showDeleteModal && (
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive">
+                Delete Workspace
+              </DialogTitle>
+              <DialogDescription>
+                This action is permanent and cannot be undone.
+                <br />
+                All workspace data will be deleted.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <Label>
+                Type <span className="font-mono font-semibold">DELETE</span> to confirm
+              </Label>
+              <Input
+                placeholder="DELETE"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText("");
+                }}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                variant="destructive"
+                disabled={deleteConfirmText !== "DELETE" || isDeletingWorkspace}
+                onClick={handleDeleteWorkspace}
+              >
+                {isDeletingWorkspace ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Workspace"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </AppLayout>
   );
 }

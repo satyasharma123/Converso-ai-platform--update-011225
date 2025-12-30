@@ -152,7 +152,8 @@ router.delete(
     try {
       const { workspaceId: verifiedWorkspaceId, role } = await resolveActiveWorkspace({ userId, workspaceId });
       
-      if (role !== 'admin') {
+      // Case-insensitive role check (role can be 'admin', 'ADMIN', 'Admin', etc.)
+      if (role.toUpperCase() !== 'ADMIN') {
         return res.status(403).json({
           error: 'Only workspace admins can delete workspaces'
         });
