@@ -223,10 +223,11 @@ const workspaceId = (userProfile as any)?.workspace_id || (user as any)?.workspa
 ```
 
 **Impact:** 
-- This is a fallback for LinkedIn inbox, not used for active workspace selection
+- This is a fallback for LinkedIn inbox manual refresh, not used for active workspace selection
 - **SAFE**: Not used in WorkspaceContext or active workspace logic
+- **NOTE**: After workspace deletion, `profiles.workspace_id` may still contain deleted workspace_id (legacy field, not cleaned)
 
-**Verdict:** Not a source of stale state for active workspace.
+**Verdict:** Not a source of stale state for active workspace, but could cause issues in LinkedIn inbox if it tries to use deleted workspace_id.
 
 ### B) Backend Endpoint `/api/workspace` Behavior
 
