@@ -124,6 +124,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // and a session is created. We don't need to do anything extra.
     // If email confirmation is enabled, user needs to check their email.
     
+    /**
+     * PHASE 3 — Explicit workspace creation
+     * This is REQUIRED and PERMANENT
+     * Safe: runs only after signup success
+     */
+    if (data?.user) {
+      try {
+        const userEmailPrefix = email.split('@')[0];
+        
+        // 1. Create workspace
+        const { data: workspace, error: workspaceError } = await supabase
+          .from('workspaces')
+          .insert({
+            name: `${userEmailPrefix}'s Workspace`,
+          })
+          .select()
+          .single();
+
+        if (workspaceError) {
+          console.error('Workspace creation failed after signup:', workspaceError);
+          // Don't throw - allow signup to succeed, workspace can be created later
+        } else if (workspace) {
+          // 2. Create workspace_members row
+          const { error: memberError } = await supabase
+            .from('workspace_members')
+            .insert({
+              workspace_id: workspace.id,
+              user_id: data.user.id,
+              role: 'admin',
+            });
+
+          if (memberError) {
+            console.error('Workspace membership creation failed:', memberError);
+          }
+
+          // 3. Update profile with workspace_id (if profile exists)
+          await supabase
+            .from('profiles')
+            .update({ workspace_id: workspace.id })
+            .eq('id', data.user.id);
+
+          // 4. Assign admin role (if user_roles table exists)
+          await supabase
+            .from('user_roles')
+            .insert({
+              user_id: data.user.id,
+              role: 'admin',
+            })
+            .select();
+        }
+      } catch (workspaceCreationError: any) {
+        console.error('Error creating workspace after signup:', workspaceCreationError);
+        // Don't throw - signup succeeded, workspace creation is non-critical
+      }
+    }
+    
     return { error, user: data?.user, session: data?.session };
   };
 

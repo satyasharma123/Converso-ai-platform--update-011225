@@ -8,7 +8,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/context/WorkspaceContext";
-import { Loader2 } from "lucide-react";
 
 interface NavbarProps {
   userName?: string;
@@ -16,13 +15,12 @@ interface NavbarProps {
 }
 
 export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
-  const { activeWorkspace, workspaces, setActiveWorkspaceId, loading } = useWorkspace();
-
-  const handleWorkspaceChange = (workspaceId: string) => {
-    setActiveWorkspaceId(workspaceId);
-    // Reload page to avoid stale state
-    window.location.reload();
-  };
+  const {
+    workspaces,
+    activeWorkspace,
+    setActiveWorkspaceId,
+    loading,
+  } = useWorkspace();
 
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background backdrop-blur supports-[backdrop-filter]:bg-background/95">
@@ -31,41 +29,36 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
         
         <div className="flex-1" />
 
-        {/* Workspace Switcher */}
-        {!loading && workspaces.length > 0 && (
+        {!loading && workspaces?.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="hidden md:flex items-center gap-2">
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm hover:bg-muted"
+                aria-label="Switch workspace"
+              >
                 <Building2 className="h-4 w-4" />
-                <span className="max-w-[150px] truncate">
-                  {activeWorkspace?.name || "Select Workspace"}
+                <span className="max-w-[140px] truncate">
+                  {activeWorkspace?.name || "Select workspace"}
                 </span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
+                <ChevronDown className="h-4 w-4 opacity-60" />
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[200px]">
-              {workspaces.map((workspace) => (
-                <DropdownMenuItem
-                  key={workspace.id}
-                  onClick={() => handleWorkspaceChange(workspace.id)}
-                  className={activeWorkspace?.id === workspace.id ? "bg-accent" : ""}
-                >
-                  <div className="flex flex-col">
-                    <span className="font-medium">{workspace.name}</span>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {workspace.role}
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              ))}
+
+            <DropdownMenuContent align="end">
+              {workspaces.map((ws) => {
+                // AUDIT: Log dropdown item
+                console.log('[WS-NAV] dropdown item', { id: ws.id, name: ws.name });
+                return (
+                  <DropdownMenuItem
+                    key={ws.id}
+                    onClick={() => setActiveWorkspaceId(ws.id)}
+                  >
+                    {ws.name}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-
-        {loading && (
-          <div className="hidden md:flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-          </div>
         )}
 
         <Button variant="ghost" size="icon" className="relative">

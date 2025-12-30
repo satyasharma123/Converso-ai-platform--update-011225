@@ -32,6 +32,16 @@ router.put(
   optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { name } = req.body;
+    const userId = req.user?.id;
+    const workspaceIdHeader = req.headers['x-workspace-id'] as string | undefined;
+
+    // AUDIT: Log route handler entry
+    console.log('[WS-BACKEND] PUT /api/workspace handler', {
+      userId,
+      workspaceIdHeader,
+      name,
+      note: 'Route does NOT use X-Workspace-Id header or resolveActiveWorkspace()'
+    });
 
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ error: 'Workspace name is required' });

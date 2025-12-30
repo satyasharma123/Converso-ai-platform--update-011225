@@ -101,11 +101,29 @@ export default function Settings() {
     }
   }, [profile]);
 
+  // AUDIT: Log render (separate useEffect to avoid invalid JSX)
   useEffect(() => {
-    if (workspace?.name) {
+    console.log('[WS-SETTINGS] render', { 
+      workspaceId: workspace?.id, 
+      workspaceNameState: workspaceName, 
+      workspaceNameFromCtx: workspace?.name,
+      activeWorkspaceId: activeWorkspace?.id,
+      activeWorkspaceName: activeWorkspace?.name
+    });
+  });
+
+  // Sync local state ONLY when workspace ID changes (not on every render)
+  useEffect(() => {
+    // AUDIT: Log useEffect sync from context
+    console.log('[WS-SETTINGS] useEffect sync from ctx', { 
+      workspaceId: workspace?.id, 
+      ctxName: workspace?.name,
+      currentStateName: workspaceName 
+    });
+    if (workspace?.name && workspace?.id) {
       setWorkspaceName(workspace.name);
     }
-  }, [workspace]);
+  }, [workspace?.id]); // Only sync when workspace ID changes, not on every workspace update
 
   // Handle OAuth callback success/error messages
   useEffect(() => {
@@ -189,6 +207,13 @@ export default function Settings() {
 
   // Workspace handlers
   const handleUpdateWorkspace = async () => {
+    // AUDIT: Log update clicked
+    console.log('[WS-SETTINGS] update clicked', { 
+      workspaceId: workspace?.id, 
+      activeWorkspaceId: activeWorkspace?.id,
+      payloadName: workspaceName,
+      workspaceFromHook: workspace 
+    });
     if (!workspaceName.trim()) {
       toast.error("Workspace name is required");
       return;
@@ -921,8 +946,15 @@ export default function Settings() {
                           <Input
                             id="workspace-name"
                             placeholder="My Company"
-                            value={workspaceName || workspace?.name || ""}
-                            onChange={(e) => setWorkspaceName(e.target.value)}
+                            value={workspaceName}
+                            onChange={(e) => {
+                              // AUDIT: Log onChange
+                              console.log('[WS-SETTINGS] onChange', { 
+                                next: e.target.value,
+                                current: workspaceName 
+                              });
+                              setWorkspaceName(e.target.value);
+                            }}
                           />
                         </div>
                         <Button

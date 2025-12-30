@@ -48,9 +48,24 @@ export async function updateWorkspace(name: string, client?: SupabaseClient): Pr
   const dbClient = client || supabaseAdmin;
   let workspace = await getWorkspace(client);
 
+  // AUDIT: Log workspace resolution
+  console.log('[WS-BACKEND] updateWorkspace called', {
+    name,
+    resolvedWorkspaceId: workspace?.id,
+    resolvedWorkspaceName: workspace?.name,
+    hasClient: !!client,
+    note: 'getWorkspace() uses .limit(1).single() - gets FIRST workspace, not active workspace'
+  });
+
   if (!workspace) {
     return createWorkspace(name, client);
   }
+
+  // AUDIT: Log SQL filter
+  console.log('[WS-BACKEND] updating workspace', {
+    filter: `eq('id', '${workspace.id}')`,
+    newName: name
+  });
 
   const { data, error } = await dbClient
     .from('workspaces')

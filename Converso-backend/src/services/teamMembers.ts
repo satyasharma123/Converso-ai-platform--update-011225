@@ -54,6 +54,14 @@ export const teamMembersService = {
       throw new Error('Email and full name are required');
     }
 
+    if (!workspaceId) {
+      throw new Error('No active workspace resolved. Cannot create team member without workspace.');
+    }
+
+    if (!adminUserId) {
+      throw new Error('Admin user ID is required to create team member.');
+    }
+
     return teamMembersApi.createTeamMember(email, fullName, role, workspaceId, adminUserId, adminName);
   },
 
@@ -73,13 +81,18 @@ export const teamMembersService = {
 
   /**
    * Delete a team member
+   * Only removes workspace membership, does NOT delete profile or auth user
    */
-  async deleteMember(userId: string): Promise<void> {
+  async deleteMember(userId: string, workspaceId: string): Promise<void> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
-    return teamMembersApi.deleteTeamMember(userId);
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    await teamMembersApi.deleteTeamMember(userId, workspaceId);
   },
 
   /**
