@@ -139,11 +139,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[AUTH] signup success', { userId: data.user.id, email });
 
         // Guard: Check if user already belongs to a workspace
-        const { data: existingMemberships } = await supabase
-          .from('workspace_members')
+        const { data: existingMemberships } = await (supabase
+          .from('workspace_members' as any)
           .select('workspace_id')
           .eq('user_id', data.user.id)
-          .limit(1);
+          .limit(1) as any);
 
         // AUDIT: Log memberships check
         console.log('[AUTH] memberships after signup', { 
@@ -161,13 +161,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userEmailPrefix = email.split('@')[0];
         
         // 1. Create workspace
-        const { data: workspace, error: workspaceError } = await supabase
-          .from('workspaces')
+        const { data: workspace, error: workspaceError } = await (supabase
+          .from('workspaces' as any)
           .insert({
             name: `${userEmailPrefix}'s Workspace`,
           })
           .select()
-          .single();
+          .single() as any);
 
         // AUDIT: Log workspace creation result
         console.log('[AUTH] workspace created?', { 
@@ -180,13 +180,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Don't throw - allow signup to succeed, workspace can be created later
         } else if (workspace) {
           // 2. Create workspace_members row
-          const { error: memberError } = await supabase
-            .from('workspace_members')
+          const { error: memberError } = await (supabase
+            .from('workspace_members' as any)
             .insert({
               workspace_id: workspace.id,
               user_id: data.user.id,
               role: 'admin',
-            });
+            }) as any);
 
           if (memberError) {
             console.error('Workspace membership creation failed:', memberError);
@@ -197,9 +197,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[AUTH] workspace and membership created, but activeWorkspace not set in context yet');
 
           // 3. Update profile with workspace_id (if profile exists)
+          // NOTE: workspace_id on profiles is legacy, not used for workspace listing
           await supabase
             .from('profiles')
-            .update({ workspace_id: workspace.id })
+            .update({ workspace_id: workspace.id } as any)
             .eq('id', data.user.id);
 
           // 4. Assign admin role (if user_roles table exists)
