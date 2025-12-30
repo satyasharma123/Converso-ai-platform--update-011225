@@ -43,38 +43,25 @@ export async function createWorkspace(name: string, client?: SupabaseClient): Pr
   return data as Workspace;
 }
 
-export async function updateWorkspace(name: string, client?: SupabaseClient): Promise<Workspace> {
-  // Get existing workspace or create new one
+export async function updateWorkspace(workspaceId: string, name: string, client?: SupabaseClient): Promise<Workspace> {
+  // Update workspace by ID explicitly - do NOT use getWorkspace() or limit(1)
   const dbClient = client || supabaseAdmin;
-  let workspace = await getWorkspace(client);
-
-  // AUDIT: Log workspace resolution
-  console.log('[WS-BACKEND] updateWorkspace called', {
-    name,
-    resolvedWorkspaceId: workspace?.id,
-    resolvedWorkspaceName: workspace?.name,
-    hasClient: !!client,
-    note: 'getWorkspace() uses .limit(1).single() - gets FIRST workspace, not active workspace'
-  });
-
-  if (!workspace) {
-    return createWorkspace(name, client);
-  }
-
-  // AUDIT: Log SQL filter
-  console.log('[WS-BACKEND] updating workspace', {
-    filter: `eq('id', '${workspace.id}')`,
-    newName: name
-  });
 
   const { data, error } = await dbClient
     .from('workspaces')
     .update({ name, updated_at: new Date().toISOString() })
-    .eq('id', workspace.id)
+    .eq('id', workspaceId)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // If workspace not found, return 404 error
+    if (error.code === 'PGRST116') {
+      throw new Error(`Workspace with id ${workspaceId} not found`);
+    }
+    throw error;
+  }
+
   return data as Workspace;
 }
 

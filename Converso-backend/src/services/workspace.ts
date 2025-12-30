@@ -23,12 +23,15 @@ export const workspaceService = {
   /**
    * Update workspace name
    */
-  async updateWorkspace(name: string, client?: SupabaseClient) {
+  async updateWorkspace(workspaceId: string, name: string, client?: SupabaseClient) {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
     if (!name || name.trim().length === 0) {
       throw new Error('Workspace name is required');
     }
 
-    return workspaceApi.updateWorkspace(name, client);
+    return workspaceApi.updateWorkspace(workspaceId, name, client);
   },
 };
 
