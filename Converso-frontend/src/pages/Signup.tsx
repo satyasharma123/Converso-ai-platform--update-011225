@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
 import { Loader2, Mail, Lock, User } from 'lucide-react';
+import { AuthBrand } from '@/components/brand/AuthBrand';
 
 export default function Signup() {
   const [fullName, setFullName] = useState('');
@@ -95,16 +96,7 @@ export default function Signup() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="flex flex-col items-center mb-6">
-            <img
-              src="/Brand/SynQ logo FInal.jpg"
-              alt="SynQ Logo"
-              className="h-10 w-auto mb-2"
-            />
-            <span className="text-xl font-semibold tracking-tight">
-              SynQ
-            </span>
-          </div>
+          <AuthBrand />
           <div>
             <CardTitle className="text-2xl">Create Account</CardTitle>
             <CardDescription>Sign up to get started with SynQ</CardDescription>

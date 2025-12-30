@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from 'sonner';
-import { Logo } from '@/components/Logo';
+import { AuthBrand } from '@/components/brand/AuthBrand';
 import { Loader2, Lock, CheckCircle2 } from 'lucide-react';
 
 export default function ResetPassword() {
@@ -84,12 +84,7 @@ export default function ResetPassword() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center space-y-4">
-            <div className="flex flex-col items-center mb-6">
-              <Logo className="h-10 w-auto mb-2" />
-              <span className="text-xl font-semibold tracking-tight">
-                SynQ
-              </span>
-            </div>
+            <AuthBrand />
             <div className="flex justify-center">
               <CheckCircle2 className="h-16 w-16 text-green-500" />
             </div>
@@ -115,12 +110,7 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="flex flex-col items-center mb-6">
-            <Logo className="h-10 w-auto mb-2" />
-            <span className="text-xl font-semibold tracking-tight">
-              SynQ
-            </span>
-          </div>
+          <AuthBrand />
           <div>
             <CardTitle className="text-2xl">Reset Password</CardTitle>
             <CardDescription>
