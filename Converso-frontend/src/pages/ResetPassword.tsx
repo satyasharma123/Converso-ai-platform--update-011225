@@ -84,8 +84,11 @@ export default function ResetPassword() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center space-y-4">
-            <div className="flex justify-center">
-              <Logo className="h-12 w-auto" />
+            <div className="flex flex-col items-center mb-6">
+              <Logo className="h-10 w-auto mb-2" />
+              <span className="text-xl font-semibold tracking-tight">
+                SynQ
+              </span>
             </div>
             <div className="flex justify-center">
               <CheckCircle2 className="h-16 w-16 text-green-500" />
@@ -112,8 +115,11 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="flex justify-center">
-            <Logo className="h-12 w-auto" />
+          <div className="flex flex-col items-center mb-6">
+            <Logo className="h-10 w-auto mb-2" />
+            <span className="text-xl font-semibold tracking-tight">
+              SynQ
+            </span>
           </div>
           <div>
             <CardTitle className="text-2xl">Reset Password</CardTitle>

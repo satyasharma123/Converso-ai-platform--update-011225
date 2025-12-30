@@ -1010,17 +1010,25 @@ export default function Settings() {
                               "Update Workspace"
                             )}
                           </Button>
+                        </div>
 
-                          {/* Delete Workspace Button - Admin Only */}
-                          {userRole === "admin" && (
+                        {/* Danger Zone - Admin Only */}
+                        {userRole === "admin" && (
+                          <div className="mt-10 border-t pt-6">
+                            <h3 className="text-sm font-semibold text-red-600">
+                              Danger Zone
+                            </h3>
+                            <p className="text-sm text-muted-foreground mt-1 mb-4">
+                              Deleting a workspace is permanent and cannot be undone.
+                            </p>
                             <Button
                               variant="destructive"
                               onClick={() => setShowDeleteModal(true)}
                             >
                               Delete Workspace
                             </Button>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </CardContent>
