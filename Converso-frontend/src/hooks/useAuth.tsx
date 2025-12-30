@@ -135,6 +135,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      */
     if (data?.user) {
       try {
+        // AUDIT: Log signup success
+        console.log('[AUTH] signup success', { userId: data.user.id, email });
+
         // Guard: Check if user already belongs to a workspace
         const { data: existingMemberships } = await supabase
           .from('workspace_members')
@@ -142,10 +145,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('user_id', data.user.id)
           .limit(1);
 
+        // AUDIT: Log memberships check
+        console.log('[AUTH] memberships after signup', { 
+          existingMemberships, 
+          count: existingMemberships?.length || 0 
+        });
+
         if (existingMemberships && existingMemberships.length > 0) {
           // User already belongs to a workspace
           // DO NOT CREATE ANOTHER
-          console.log('User already belongs to a workspace, skipping workspace creation');
+          console.log('[AUTH] User already belongs to a workspace, skipping workspace creation');
           return { error, data };
         }
 
@@ -159,6 +168,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
           .select()
           .single();
+
+        // AUDIT: Log workspace creation result
+        console.log('[AUTH] workspace created?', { 
+          createdWorkspaceId: workspace?.id, 
+          error: workspaceError?.message 
+        });
 
         if (workspaceError) {
           console.error('Workspace creation failed after signup:', workspaceError);
@@ -176,6 +191,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (memberError) {
             console.error('Workspace membership creation failed:', memberError);
           }
+
+          // AUDIT: Note - workspace created but activeWorkspace NOT set here
+          // WorkspaceContext will pick it up on next render via fetchWorkspaces()
+          console.log('[AUTH] workspace and membership created, but activeWorkspace not set in context yet');
 
           // 3. Update profile with workspace_id (if profile exists)
           await supabase

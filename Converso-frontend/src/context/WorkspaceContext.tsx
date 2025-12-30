@@ -67,10 +67,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       setWorkspaces(uniqueWorkspaces);
 
+      // AUDIT: Log memberships loaded
+      console.log('[WS] memberships loaded', { 
+        memberships: uniqueWorkspaces.length,
+        workspaceIds: uniqueWorkspaces.map(w => w.id)
+      });
+
       // Debug: Warn if user has no workspaces
       if (uniqueWorkspaces.length === 0) {
         console.warn(
-          "WorkspaceContext: user has no workspaces — onboarding issue"
+          "[WS] active workspace not found -> fallback path (no workspaces available)"
         );
       }
 
@@ -102,8 +108,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(storageKey, selectedWorkspace.id);
       }
 
+      // AUDIT: Log resolved active workspace
+      console.log('[WS] resolved active workspace', { 
+        activeWorkspaceId: selectedWorkspace?.id,
+        activeWorkspaceName: selectedWorkspace?.name,
+        wasFromStorage: !!validWorkspace,
+        wasFallback: !validWorkspace && uniqueWorkspaces.length > 0
+      });
+
       if (selectedWorkspace) {
         setActiveWorkspace(selectedWorkspace);
+      } else {
+        // AUDIT: Log when no workspace is selected
+        console.log('[WS] active workspace not found -> fallback path (no valid workspace selected)');
       }
     } catch (error) {
       console.error('Error in fetchWorkspaces:', error);
@@ -113,6 +130,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // AUDIT: Log boot start
+    console.log('[WS] boot start', { userId: user?.id });
+
     if (!user?.id) {
       setWorkspaces([]);
       setActiveWorkspace(null);
@@ -123,6 +143,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     // IMPORTANT: Clear cached workspace on login to force fresh DB read
     // This ensures multi-workspace users see all their workspaces
     const storageKey = `synq_active_workspace_id:${user.id}`;
+    const storedId = localStorage.getItem(storageKey);
+    
+    // AUDIT: Log stored active workspace before clearing
+    console.log('[WS] stored active workspace id (before clear)', { storedId });
+    
     localStorage.removeItem(storageKey);
 
     setLoading(true);

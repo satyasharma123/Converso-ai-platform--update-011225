@@ -22,6 +22,14 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
     loading,
   } = useWorkspace();
 
+  // AUDIT: Log switcher render
+  console.log('[WS-SWITCHER] render', { 
+    activeWorkspace: activeWorkspace?.id, 
+    activeWorkspaceName: activeWorkspace?.name,
+    workspaces: workspaces.length,
+    loading 
+  });
+
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background backdrop-blur supports-[backdrop-filter]:bg-background/95">
       <div className="flex h-14 items-center gap-4 px-4">

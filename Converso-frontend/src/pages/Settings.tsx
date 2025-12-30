@@ -234,14 +234,26 @@ export default function Settings() {
       return;
     }
 
+    // AUDIT: Log delete start
+    console.log('[WS-DELETE] start', { 
+      userId: user?.id, 
+      activeWorkspaceId: activeWorkspace?.id 
+    });
+
     setIsDeletingWorkspace(true);
     try {
       await apiClient.delete('/api/workspace');
+      
+      // AUDIT: Log api delete success
+      console.log('[WS-DELETE] api delete success');
       
       // Clear active workspace from localStorage
       if (user?.id) {
         const storageKey = `synq_active_workspace_id:${user.id}`;
         localStorage.removeItem(storageKey);
+        
+        // AUDIT: Log localStorage key removed
+        console.log('[WS-DELETE] localStorage key removed', { key: storageKey });
       }
       
       toast.success("Workspace deleted successfully");
@@ -250,11 +262,14 @@ export default function Settings() {
       setShowDeleteModal(false);
       setDeleteConfirmText("");
       
+      // AUDIT: Log signing out
+      console.log('[WS-DELETE] signing out');
+      
       // Logout user and redirect to login
       await signOut();
       navigate('/login');
     } catch (error: any) {
-      console.error('Error deleting workspace:', error);
+      console.error('[WS-DELETE] error:', error);
       toast.error(error.message || "Failed to delete workspace");
     } finally {
       setIsDeletingWorkspace(false);
