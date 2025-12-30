@@ -22,15 +22,18 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { connectedAccountsApi } from "@/lib/backend-api";
 import { initialSyncLinkedIn, disconnectLinkedInAccount } from "@/api/linkedinApi";
 import { supabase } from "@/integrations/supabase/client";
-import { useState, useEffect } from "react";
+import { apiClient } from "@/lib/api-client";
+import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ConnectedAccount } from "@backend/src/types";
 
 export default function Settings() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, signOut } = useAuth();
   const { activeWorkspace } = useWorkspaceContext();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: profile, isLoading: profileLoading } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
@@ -85,6 +88,8 @@ export default function Settings() {
 
   // Workspace state
   const [workspaceName, setWorkspaceName] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
 
   // Integrations state
   const [isEmailProviderModalOpen, setIsEmailProviderModalOpen] = useState(false);
@@ -101,27 +106,17 @@ export default function Settings() {
     }
   }, [profile]);
 
-  // AUDIT: Log render (separate useEffect to avoid invalid JSX)
-  useEffect(() => {
-    console.log('[WS-SETTINGS] render', { 
-      workspaceId: workspace?.id, 
-      workspaceNameState: workspaceName, 
-      workspaceNameFromCtx: workspace?.name,
-      activeWorkspaceId: activeWorkspace?.id,
-      activeWorkspaceName: activeWorkspace?.name
-    });
-  });
+  // Track previous workspace ID to prevent name sync on name-only updates
+  const lastWorkspaceIdRef = useRef<string | null>(null);
 
-  // Sync local state ONLY when workspace ID changes (not on every render)
+  // Sync local state ONLY when workspace ID changes (not on name updates)
   useEffect(() => {
-    // AUDIT: Log useEffect sync from context
-    console.log('[WS-SETTINGS] useEffect sync from ctx', { 
-      workspaceId: workspace?.id, 
-      ctxName: workspace?.name,
-      currentStateName: workspaceName 
-    });
-    if (workspace?.name && workspace?.id) {
-      setWorkspaceName(workspace.name);
+    if (!workspace?.id) return;
+
+    // Only sync if workspace ID actually changed
+    if (lastWorkspaceIdRef.current !== workspace.id) {
+      setWorkspaceName(workspace.name || '');
+      lastWorkspaceIdRef.current = workspace.id;
     }
   }, [workspace?.id]); // Only sync when workspace ID changes, not on every workspace update
 
@@ -220,6 +215,46 @@ export default function Settings() {
     }
 
     await updateWorkspace.mutateAsync(workspaceName);
+  };
+
+  const handleDeleteWorkspace = async () => {
+    if (deleteConfirmText !== "DELETE") {
+      toast.error("Please type DELETE to confirm");
+      return;
+    }
+
+    if (!activeWorkspace?.id) {
+      toast.error("No active workspace found");
+      return;
+    }
+
+    if (userRole !== "admin") {
+      toast.error("Only workspace admins can delete workspaces");
+      return;
+    }
+
+    setIsDeletingWorkspace(true);
+    try {
+      await apiClient.delete('/api/workspace');
+      
+      // Clear active workspace from localStorage
+      if (user?.id) {
+        const storageKey = `synq_active_workspace_id:${user.id}`;
+        localStorage.removeItem(storageKey);
+      }
+      
+      toast.success("Workspace deleted successfully");
+      
+      // Logout user and redirect to login
+      await signOut();
+      navigate('/login');
+    } catch (error: any) {
+      console.error('Error deleting workspace:', error);
+      toast.error(error.message || "Failed to delete workspace");
+    } finally {
+      setIsDeletingWorkspace(false);
+      setDeleteConfirmText("");
+    }
   };
 
   // Integration handlers
@@ -970,6 +1005,44 @@ export default function Settings() {
                             "Update Workspace"
                           )}
                         </Button>
+
+                        {/* Delete Workspace Section - Admin Only */}
+                        {userRole === "admin" && (
+                          <div className="mt-8 pt-8 border-t space-y-4">
+                            <div>
+                              <Label className="text-destructive font-semibold">Delete Workspace</Label>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                This action cannot be undone. All workspace data will be permanently deleted.
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="delete-confirm">
+                                Type <span className="font-mono font-semibold">DELETE</span> to confirm
+                              </Label>
+                              <Input
+                                id="delete-confirm"
+                                placeholder="DELETE"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                className="max-w-xs"
+                              />
+                            </div>
+                            <Button
+                              variant="destructive"
+                              onClick={handleDeleteWorkspace}
+                              disabled={isDeletingWorkspace || deleteConfirmText !== "DELETE"}
+                            >
+                              {isDeletingWorkspace ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Deleting...
+                                </>
+                              ) : (
+                                "Delete Workspace"
+                              )}
+                            </Button>
+                          </div>
+                        )}
                       </>
                     )}
                   </CardContent>

@@ -15,7 +15,7 @@ BEGIN
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE NOT NULL,
       user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-      role TEXT NOT NULL DEFAULT 'member',
+      role TEXT NOT NULL DEFAULT 'SDR', -- Normalized: only ADMIN and SDR allowed
       status TEXT NOT NULL DEFAULT 'active',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()

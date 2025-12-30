@@ -65,3 +65,27 @@ export async function updateWorkspace(workspaceId: string, name: string, client?
   return data as Workspace;
 }
 
+export async function deleteWorkspace(workspaceId: string, client?: SupabaseClient): Promise<void> {
+  const dbClient = client || supabaseAdmin;
+
+  // 1. Delete all workspace_members entries
+  const { error: membersError } = await dbClient
+    .from('workspace_members')
+    .delete()
+    .eq('workspace_id', workspaceId);
+
+  if (membersError) {
+    throw new Error(`Failed to delete workspace members: ${membersError.message}`);
+  }
+
+  // 2. Delete the workspace
+  const { error: workspaceError } = await dbClient
+    .from('workspaces')
+    .delete()
+    .eq('id', workspaceId);
+
+  if (workspaceError) {
+    throw new Error(`Failed to delete workspace: ${workspaceError.message}`);
+  }
+}
+

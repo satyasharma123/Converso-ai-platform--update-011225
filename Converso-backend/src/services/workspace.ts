@@ -33,5 +33,16 @@ export const workspaceService = {
 
     return workspaceApi.updateWorkspace(workspaceId, name, client);
   },
+
+  /**
+   * Delete workspace
+   */
+  async deleteWorkspace(workspaceId: string, client?: SupabaseClient) {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return workspaceApi.deleteWorkspace(workspaceId, client);
+  },
 };
 

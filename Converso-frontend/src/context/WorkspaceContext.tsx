@@ -48,7 +48,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           return {
             id: workspace.id,
             name: workspace.name,
-            role: item.role || 'member',
+            role: item.role || 'SDR', // Normalized: only ADMIN and SDR allowed
           };
         })
         .filter((w): w is WorkspaceSummary => w !== null);

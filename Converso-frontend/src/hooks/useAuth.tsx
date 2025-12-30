@@ -128,9 +128,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      * PHASE 3 — Explicit workspace creation
      * This is REQUIRED and PERMANENT
      * Safe: runs only after signup success
+     * 
+     * INVARIANT:
+     * A user may auto-create a workspace ONLY if
+     * they do NOT already belong to any workspace
      */
     if (data?.user) {
       try {
+        // Guard: Check if user already belongs to a workspace
+        const { data: existingMemberships } = await supabase
+          .from('workspace_members')
+          .select('workspace_id')
+          .eq('user_id', data.user.id)
+          .limit(1);
+
+        if (existingMemberships && existingMemberships.length > 0) {
+          // User already belongs to a workspace
+          // DO NOT CREATE ANOTHER
+          console.log('User already belongs to a workspace, skipping workspace creation');
+          return { error, data };
+        }
+
         const userEmailPrefix = email.split('@')[0];
         
         // 1. Create workspace
