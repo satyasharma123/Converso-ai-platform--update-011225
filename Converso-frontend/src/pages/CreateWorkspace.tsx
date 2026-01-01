@@ -68,14 +68,14 @@ export default function CreateWorkspace() {
 
       console.log('[CREATE-WS] Workspace created', { workspaceId: workspace.id });
 
-      // 2. Create workspace_members row (assign user as admin)
+      // 2. Create workspace_members row (assign user as owner)
       console.log('[CREATE-WS] creating workspace_members row');
       const { error: memberError } = await (supabase
         .from('workspace_members' as any)
         .insert({
           workspace_id: workspace.id,
           user_id: user.id,
-          role: 'admin',
+          role: 'owner',
         }) as any);
 
       console.log('[CREATE-WS] workspace_members insert response:', { 
@@ -100,21 +100,21 @@ export default function CreateWorkspace() {
         .update({ workspace_id: workspace.id } as any)
         .eq('id', user.id);
 
-      // 5. Assign admin role (with error handling - don't block flow if it fails)
+      // 5. Assign owner role (with error handling - don't block flow if it fails)
       try {
-        const { error: roleError } = await supabase
-          .from('user_roles')
+        const { error: roleError } = await (supabase
+          .from('user_roles' as any)
           .insert({
             user_id: user.id,
-            role: 'admin',
+            role: 'owner',
           })
-          .select();
+          .select() as any);
         
         if (roleError) {
-          console.error('[CREATE-WS] user_roles insert failed:', roleError);
+          console.error('[CREATE-WS] failed to assign owner role', roleError);
         }
       } catch (roleErr: any) {
-        console.error('[CREATE-WS] user_roles insert failed:', roleErr);
+        console.error('[CREATE-WS] failed to assign owner role', roleErr);
       }
 
       toast.success("Workspace created successfully!");
