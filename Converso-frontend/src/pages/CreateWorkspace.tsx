@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { AuthBrand } from "@/components/brand/AuthBrand";
 
 export default function CreateWorkspace() {
   const { user } = useAuth();
+  const { setActiveWorkspaceId } = useWorkspace();
   const navigate = useNavigate();
   const [workspaceName, setWorkspaceName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -109,8 +111,12 @@ export default function CreateWorkspace() {
 
       toast.success("Workspace created successfully!");
 
-      // 6. Redirect to dashboard (WorkspaceContext will pick up the new workspace)
-      window.location.href = '/dashboard';
+      // 6. Set active workspace in context before navigation
+      console.log('[CREATE-WS] Setting active workspace in context', { workspaceId: workspace.id });
+      setActiveWorkspaceId(workspace.id);
+
+      // 7. Redirect to dashboard
+      navigate('/dashboard', { replace: true });
     } catch (error: any) {
       console.error('[CREATE-WS] Error creating workspace:', error);
       toast.error(error.message || "Failed to create workspace");
