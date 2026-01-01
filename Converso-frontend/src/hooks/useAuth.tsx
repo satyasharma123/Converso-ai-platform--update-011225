@@ -35,30 +35,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Fallback to user_roles table if not in metadata
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+      // Wrap in try/catch to allow failure - user_roles may not exist yet
+      let resolvedRole: 'admin' | 'sdr' | null = null;
 
-      if (error) {
-        // If no role found in table, default to null
-        if (error.code === 'PGRST116') {
-          setUserRole(null);
-        } else {
-          throw error;
+      try {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!error && data?.role) {
+          resolvedRole = data.role as 'admin' | 'sdr';
+          
+          // Update user metadata with role for future use
+          await supabase.auth.updateUser({
+            data: { role: resolvedRole }
+          });
         }
-      } else if (data?.role) {
-        const role = data.role as 'admin' | 'sdr';
-        setUserRole(role);
-        
-        // Update user metadata with role for future use
-        await supabase.auth.updateUser({
-          data: { role }
-        });
-      } else {
-        setUserRole(null);
+      } catch (err) {
+        console.warn('[AUTH] user_roles not available yet, continuing', err);
       }
+
+      setUserRole(resolvedRole);
     } catch (error) {
       console.error('Error fetching user role:', error);
       setUserRole(null);

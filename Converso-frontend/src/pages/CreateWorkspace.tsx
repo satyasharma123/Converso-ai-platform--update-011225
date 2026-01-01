@@ -119,8 +119,8 @@ export default function CreateWorkspace() {
       setActiveWorkspaceId(workspace.id);
 
       // 7. Force navigation to dashboard
-      console.log('[CREATE-WS] workspace created, navigating');
-      navigate('/dashboard', { replace: true });
+      console.log('[CREATE-WS] forcing dashboard redirect');
+      window.location.href = '/dashboard';
     } catch (error: any) {
       console.error('[CREATE-WS] Error creating workspace:', error);
       toast.error(error.message || "Failed to create workspace");
