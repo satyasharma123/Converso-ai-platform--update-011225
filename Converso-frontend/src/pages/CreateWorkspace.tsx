@@ -68,14 +68,14 @@ export default function CreateWorkspace() {
 
       console.log('[CREATE-WS] Workspace created', { workspaceId: workspace.id });
 
-      // 2. Create workspace_members row (assign user as owner)
+      // 2. Create workspace_members row (assign user as admin)
       console.log('[CREATE-WS] creating workspace_members row');
       const { error: memberError } = await (supabase
         .from('workspace_members' as any)
         .insert({
           workspace_id: workspace.id,
           user_id: user.id,
-          role: 'owner',
+          role: 'admin',
         }) as any);
 
       console.log('[CREATE-WS] workspace_members insert response:', { 
@@ -100,21 +100,16 @@ export default function CreateWorkspace() {
         .update({ workspace_id: workspace.id } as any)
         .eq('id', user.id);
 
-      // 5. Assign owner role (with error handling - don't block flow if it fails)
+      // 5. Assign admin role (optional, non-blocking)
       try {
-        const { error: roleError } = await (supabase
-          .from('user_roles' as any)
+        await supabase
+          .from('user_roles')
           .insert({
             user_id: user.id,
-            role: 'owner',
-          })
-          .select() as any);
-        
-        if (roleError) {
-          console.error('[CREATE-WS] failed to assign owner role', roleError);
-        }
-      } catch (roleErr: any) {
-        console.error('[CREATE-WS] failed to assign owner role', roleErr);
+            role: 'admin',
+          });
+      } catch (err: any) {
+        console.warn('[CREATE-WS] user_roles insert failed, continuing', err);
       }
 
       toast.success("Workspace created successfully!");
@@ -123,7 +118,8 @@ export default function CreateWorkspace() {
       console.log('[CREATE-WS] Setting active workspace in context', { workspaceId: workspace.id });
       setActiveWorkspaceId(workspace.id);
 
-      // 7. Redirect to dashboard
+      // 7. Force navigation to dashboard
+      console.log('[CREATE-WS] workspace created, navigating');
       navigate('/dashboard', { replace: true });
     } catch (error: any) {
       console.error('[CREATE-WS] Error creating workspace:', error);

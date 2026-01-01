@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { useNavigate } from "react-router-dom";
 import { useConversations } from "@/hooks/useConversations";
 
@@ -61,6 +62,7 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
   const { open } = useSidebar();
   const location = useLocation();
   const { signOut } = useAuth();
+  const { isOwner } = useWorkspace();
   const navigate = useNavigate();
   
   // Fetch conversations to calculate unread counts
@@ -78,7 +80,9 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
     return isRead === false || isRead === 'false' || isRead === 0;
   }).length;
 
-  const salesItems = role === "admin" ? salesItemsAdmin : salesItemsSdr;
+  // OWNER gets admin UI (role === 'admin' || isOwner)
+  const showAdminItems = role === "admin" || isOwner;
+  const salesItems = showAdminItems ? salesItemsAdmin : salesItemsSdr;
 
   const handleLogout = async () => {
     await signOut();

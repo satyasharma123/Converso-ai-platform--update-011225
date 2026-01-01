@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { user, userRole, loading } = useAuth();
-  const { hasNoWorkspaceMembership, loading: wsLoading } = useWorkspace();
+  const { hasNoWorkspaceMembership, loading: wsLoading, isOwner } = useWorkspace();
   const location = useLocation();
 
   // Show loading spinner while checking authentication and workspace
@@ -36,8 +36,9 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     return <Navigate to="/create-workspace" replace />;
   }
 
-  // Redirect non-admin users away from admin pages
-  if (requiredRole === 'admin' && userRole !== 'admin') {
+  // Redirect non-admin/non-owner users away from admin pages
+  // OWNER gets admin UI access
+  if (requiredRole === 'admin' && userRole !== 'admin' && !isOwner) {
     return <Navigate to="/" replace />;
   }
 

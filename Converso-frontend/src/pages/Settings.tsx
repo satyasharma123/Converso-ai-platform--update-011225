@@ -32,7 +32,7 @@ import type { ConnectedAccount } from "@backend/src/types";
 
 export default function Settings() {
   const { user, userRole, signOut } = useAuth();
-  const { activeWorkspace } = useWorkspaceContext();
+  const { activeWorkspace, isOwner } = useWorkspaceContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: profile, isLoading: profileLoading } = useProfile();
@@ -70,11 +70,13 @@ export default function Settings() {
 
   // Get active tab from URL or default
   // SDRs can only access profile and integrations tabs
-  const activeTab = searchParams.get('tab') || (userRole === 'admin' ? 'rules' : 'profile');
+  // OWNER gets admin UI
+  const isAdminOrOwner = userRole === 'admin' || isOwner;
+  const activeTab = searchParams.get('tab') || (isAdminOrOwner ? 'rules' : 'profile');
   
   // Redirect SDRs if they try to access admin-only tabs
   useEffect(() => {
-    if (userRole === 'sdr' && (activeTab === 'rules' || activeTab === 'pipeline' || activeTab === 'workspace')) {
+    if (userRole === 'sdr' && !isOwner && (activeTab === 'rules' || activeTab === 'pipeline' || activeTab === 'workspace')) {
       setSearchParams({ tab: 'profile' });
     }
   }, [userRole, activeTab, setSearchParams]);
@@ -229,8 +231,9 @@ export default function Settings() {
       return;
     }
 
-    if (userRole !== "admin") {
-      toast.error("Only workspace admins can delete workspaces");
+    // Only OWNER can delete workspace (not admin)
+    if (!isOwner) {
+      toast.error("Only the workspace owner can delete workspaces");
       return;
     }
 
@@ -520,7 +523,7 @@ export default function Settings() {
           >
             <div className="sticky top-0 z-10 bg-background border-b pb-2 pt-4">
               <TabsList>
-                {userRole === 'admin' && (
+                {isAdminOrOwner && (
                   <>
                     <TabsTrigger value="rules">Routing Rules</TabsTrigger>
                     <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -532,7 +535,7 @@ export default function Settings() {
               </TabsList>
             </div>
 
-            {userRole === 'admin' && (
+            {isAdminOrOwner && (
             <>
               <TabsContent value="rules" className="mt-6">
                 <RulesEngine />
@@ -1027,8 +1030,8 @@ export default function Settings() {
                           </Button>
                         </div>
 
-                        {/* Danger Zone - Admin Only */}
-                        {userRole === "admin" && (
+                        {/* Danger Zone - Owner Only */}
+                        {isOwner && (
                           <div className="mt-10 border-t pt-6">
                             <h3 className="text-sm font-semibold text-red-600">
                               Danger Zone

@@ -6,6 +6,7 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   role: string;
+  owner_user_id?: string;
 }
 
 interface WorkspaceContextType {
@@ -14,6 +15,7 @@ interface WorkspaceContextType {
   setActiveWorkspaceId: (id: string) => void;
   loading: boolean;
   hasNoWorkspaceMembership: boolean;
+  isOwner: boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -31,7 +33,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       // This supports multi-workspace users (SDR can belong to multiple workspaces)
       const { data, error } = await (supabase
         .from('workspace_members' as any)
-        .select('workspace_id, role, workspaces:workspaces(id, name)')
+        .select('workspace_id, role, workspaces:workspaces(id, name, owner_user_id)')
         .eq('user_id', userId)
         .order('created_at', { ascending: true }) as any);
 
@@ -51,6 +53,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             id: workspace.id,
             name: workspace.name,
             role: item.role || 'SDR', // Normalized: only ADMIN and SDR allowed
+            owner_user_id: workspace.owner_user_id,
           };
         })
         .filter((w): w is WorkspaceSummary => w !== null);
@@ -181,6 +184,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [user?.id, workspaces]
   );
 
+  // Derive owner flag based on workspaces.owner_user_id
+  const isOwner =
+    activeWorkspace &&
+    user?.id === activeWorkspace.owner_user_id;
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -189,6 +197,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setActiveWorkspaceId,
         loading,
         hasNoWorkspaceMembership,
+        isOwner: isOwner || false,
       }}
     >
       {children}
