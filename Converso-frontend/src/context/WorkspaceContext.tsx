@@ -152,15 +152,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // IMPORTANT: Clear cached workspace on login to force fresh DB read
-    // This ensures multi-workspace users see all their workspaces
+    // FIX: Do not clear localStorage on login - preserves workspace ID set during creation
     const storageKey = `synq_active_workspace_id:${user.id}`;
     const storedId = localStorage.getItem(storageKey);
     
-    // AUDIT: Log stored active workspace before clearing
-    console.log('[WS] stored active workspace id (before clear)', { storedId });
-    
-    localStorage.removeItem(storageKey);
+    // AUDIT: Log stored active workspace
+    console.log('[WS] stored active workspace id', { storedId });
 
     setLoading(true);
     fetchWorkspaces(user.id);
@@ -170,12 +167,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       if (!user?.id) return;
 
+      // FIX: Always set localStorage first (even if workspace not in array yet)
+      const storageKey = `synq_active_workspace_id:${user.id}`;
+      localStorage.setItem(storageKey, id);
+
+      // If workspace exists in array, set it in state
       const workspace = workspaces.find((w) => w.id === id);
       if (workspace) {
         setActiveWorkspace(workspace);
-        const storageKey = `synq_active_workspace_id:${user.id}`;
-        localStorage.setItem(storageKey, id);
       }
+      // If not in array yet, fetchWorkspaces will pick it up from localStorage later
     },
     [user?.id, workspaces]
   );

@@ -100,14 +100,22 @@ export default function CreateWorkspace() {
         .update({ workspace_id: workspace.id } as any)
         .eq('id', user.id);
 
-      // 5. Assign admin role
-      await supabase
-        .from('user_roles')
-        .insert({
-          user_id: user.id,
-          role: 'admin',
-        })
-        .select();
+      // 5. Assign admin role (with error handling - don't block flow if it fails)
+      try {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: user.id,
+            role: 'admin',
+          })
+          .select();
+        
+        if (roleError) {
+          console.error('[CREATE-WS] user_roles insert failed:', roleError);
+        }
+      } catch (roleErr: any) {
+        console.error('[CREATE-WS] user_roles insert failed:', roleErr);
+      }
 
       toast.success("Workspace created successfully!");
 

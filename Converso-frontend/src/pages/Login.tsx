@@ -17,12 +17,12 @@ export default function Login() {
   const { signIn, signInWithGoogle, user, userRole, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in
+  // Redirect if already logged in (FIX: removed userRole requirement)
   useEffect(() => {
-    if (!authLoading && user && userRole) {
+    if (!authLoading && user) {
       navigate('/');
     }
-  }, [user, userRole, authLoading, navigate]);
+  }, [user, authLoading, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
