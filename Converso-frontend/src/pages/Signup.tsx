@@ -56,29 +56,33 @@ export default function Signup() {
     setLoading(true);
     setErrors({});
 
-    const { error, user, session } = await signUp(email, password, fullName);
-    
-    if (error) {
-      toast.error(error.message || 'Failed to create account');
-      setErrors({ submit: error.message || 'Failed to create account' });
-    } else {
-      // Check if user was automatically confirmed (email confirmation disabled)
-      // If session exists, user is logged in and can proceed
-      if (session && user) {
+    try {
+      console.log('[SIGNUP-PAGE] calling signUp');
+      const { error, user } = await signUp(email, password, fullName);
+      
+      if (error) {
+        console.error('[SIGNUP-PAGE] signUp returned error:', error);
+        toast.error(error.message || 'Failed to create account');
+        setErrors({ submit: error.message || 'Failed to create account' });
+        setLoading(false);
+      } else if (user) {
+        console.log('[SIGNUP-PAGE] signUp successful, redirecting to /create-workspace');
         toast.success('Account created successfully!');
-        // Redirect to inbox
-        navigate('/inbox/email');
+        // Always redirect to create-workspace page (workspace creation happens there)
+        navigate('/create-workspace', { replace: true });
+        setLoading(false);
       } else {
-        // Email confirmation is required
-        toast.success('Account created! Please check your email to confirm your account.');
-        // Show message and keep user on signup page
-        setErrors({ 
-          submit: '✅ Account created! Check your email for a confirmation link.' 
-        });
+        console.error('[SIGNUP-PAGE] signUp returned no user');
+        toast.error('Account creation failed');
+        setErrors({ submit: 'Account creation failed. Please try again.' });
+        setLoading(false);
       }
+    } catch (err: any) {
+      console.error('[SIGNUP-PAGE] catch error:', err);
+      toast.error(err.message || 'Failed to create account');
+      setErrors({ submit: err.message || 'Failed to create account' });
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const handleGoogleSignUp = async () => {

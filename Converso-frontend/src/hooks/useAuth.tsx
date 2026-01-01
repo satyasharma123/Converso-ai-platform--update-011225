@@ -107,120 +107,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/auth/callback`;
+    console.log('[SIGNUP] start', { email, fullName: fullName ? 'provided' : 'missing' });
     
-    const { error, data } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
         },
+      });
+
+      console.log('[SIGNUP] supabase response:', { 
+        hasData: !!data, 
+        hasUser: !!data?.user,
+        hasSession: !!data?.session,
+        error: error ? { message: error.message, status: error.status } : null 
+      });
+
+      if (error) {
+        console.error('[SIGNUP] error:', error);
+        throw error;
       }
-    });
 
-    // If email confirmation is disabled in Supabase, user is automatically confirmed
-    // and a session is created. We don't need to do anything extra.
-    // If email confirmation is enabled, user needs to check their email.
-    
-    /**
-     * PHASE 3 — Explicit workspace creation
-     * This is REQUIRED and PERMANENT
-     * Safe: runs only after signup success
-     * 
-     * INVARIANT:
-     * A user may auto-create a workspace ONLY if
-     * they do NOT already belong to any workspace
-     */
-    if (data?.user) {
-      try {
-        // AUDIT: Log signup success
-        console.log('[AUTH] signup success', { userId: data.user.id, email });
+      console.log('[SIGNUP] user:', data?.user ? { id: data.user.id, email: data.user.email } : null);
+      console.log('[SIGNUP] session:', data?.session ? 'exists' : 'null');
 
-        // Guard: Check if user already belongs to a workspace
-        const { data: existingMemberships } = await (supabase
-          .from('workspace_members' as any)
-          .select('workspace_id')
-          .eq('user_id', data.user.id)
-          .limit(1) as any);
-
-        // AUDIT: Log memberships check
-        console.log('[AUTH] memberships after signup', { 
-          existingMemberships, 
-          count: existingMemberships?.length || 0 
-        });
-
-        if (existingMemberships && existingMemberships.length > 0) {
-          // User already belongs to a workspace
-          // DO NOT CREATE ANOTHER
-          console.log('[AUTH] User already belongs to a workspace, skipping workspace creation');
-          return { error, data };
-        }
-
-        const userEmailPrefix = email.split('@')[0];
-        
-        // 1. Create workspace with owner fields
-        const { data: workspace, error: workspaceError } = await (supabase
-          .from('workspaces' as any)
-          .insert({
-            name: `${userEmailPrefix}'s Workspace`,
-            owner_user_id: data.user.id,
-            owner_email: email,
-          })
-          .select()
-          .single() as any);
-
-        // AUDIT: Log workspace creation result
-        console.log('[AUTH] workspace created?', { 
-          createdWorkspaceId: workspace?.id, 
-          error: workspaceError?.message 
-        });
-
-        if (workspaceError) {
-          console.error('Workspace creation failed after signup:', workspaceError);
-          // Don't throw - allow signup to succeed, workspace can be created later
-        } else if (workspace) {
-          // 2. Create workspace_members row
-          const { error: memberError } = await (supabase
-            .from('workspace_members' as any)
-            .insert({
-              workspace_id: workspace.id,
-              user_id: data.user.id,
-              role: 'admin',
-            }) as any);
-
-          if (memberError) {
-            console.error('Workspace membership creation failed:', memberError);
-          }
-
-          // AUDIT: Note - workspace created but activeWorkspace NOT set here
-          // WorkspaceContext will pick it up on next render via fetchWorkspaces()
-          console.log('[AUTH] workspace and membership created, but activeWorkspace not set in context yet');
-
-          // 3. Update profile with workspace_id (if profile exists)
-          // NOTE: workspace_id on profiles is legacy, not used for workspace listing
-          await supabase
-            .from('profiles')
-            .update({ workspace_id: workspace.id } as any)
-            .eq('id', data.user.id);
-
-          // 4. Assign admin role (if user_roles table exists)
-          await supabase
-            .from('user_roles')
-            .insert({
-              user_id: data.user.id,
-              role: 'admin',
-            })
-            .select();
-        }
-      } catch (workspaceCreationError: any) {
-        console.error('Error creating workspace after signup:', workspaceCreationError);
-        // Don't throw - signup succeeded, workspace creation is non-critical
+      if (!data?.user) {
+        throw new Error('Signup succeeded but user is null');
       }
+
+      // 🚨 IMPORTANT: DO NOT wait for session or create workspace
+      // Signup only creates auth user
+      // Workspace creation happens on /create-workspace page
+      console.log('[SIGNUP] signup successful, returning user data (workspace creation happens on create-workspace page)');
+      
+      return { error: null, user: data.user, session: data.session };
+    } catch (err: any) {
+      console.error('[SIGNUP] catch:', err);
+      throw err;
     }
-    
-    return { error, user: data?.user, session: data?.session };
   };
 
   const signInWithGoogle = async () => {
