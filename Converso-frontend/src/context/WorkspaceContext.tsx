@@ -184,45 +184,36 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const userId = user?.id;
-
-    // HARD GUARANTEE: never block the app
-    if (!userId) {
-      console.log('[WS] boot skipped — userId not ready');
-      setLoading(false);
+    if (!user?.id) {
+      console.log('[WS] waiting for userId');
       return;
     }
 
+    const userId = user.id;
     console.log('[WS] boot start', { userId });
 
-    // FIX: Do not clear localStorage on login - preserves workspace ID set during creation
     const storageKey = `synq_active_workspace_id:${userId}`;
     const storedId = localStorage.getItem(storageKey);
-    
-    // AUDIT: Log stored active workspace
     console.log('[WS] stored active workspace id', { storedId });
 
-    let cancelled = false;
-
+    let mounted = true;
     setLoading(true);
 
-    (async () => {
-      try {
-        await fetchWorkspaces(userId);
-      } catch (err) {
+    fetchWorkspaces(userId)
+      .catch((err) => {
         console.error('[WS] fetchWorkspaces failed', err);
-      } finally {
-        // ABSOLUTE SAFETY NET
-        if (!cancelled) {
+      })
+      .finally(() => {
+        if (mounted) {
+          console.log('[WS] boot complete -> loading false');
           setLoading(false);
         }
-      }
-    })();
+      });
 
     return () => {
-      cancelled = true;
+      mounted = false;
     };
-  }, [user?.id, fetchWorkspaces]);
+  }, [user?.id]);
 
   const setActiveWorkspaceId = useCallback(
     (id: string) => {
