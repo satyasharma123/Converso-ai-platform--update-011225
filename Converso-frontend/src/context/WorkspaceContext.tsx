@@ -29,16 +29,45 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const fetchWorkspaces = useCallback(async (userId: string) => {
     try {
+      console.log('[WS-FETCH] start', { userId });
+      
       // Query workspace_members to get all workspaces for user
       // This supports multi-workspace users (SDR can belong to multiple workspaces)
-      const { data, error } = await (supabase
+      // Add timeout wrapper to detect hanging queries
+      const queryPromise = (supabase
         .from('workspace_members' as any)
         .select('workspace_id, role, workspaces:workspaces(id, name, owner_user_id)')
         .eq('user_id', userId)
         .order('created_at', { ascending: true }) as any);
 
+      const timeoutPromise = new Promise<{ data: null; error: { message: string; code: string } }>((_, reject) => 
+        setTimeout(() => reject(new Error('Workspace query timeout after 10s')), 10000)
+      );
+
+      console.log('[WS-FETCH] executing query with timeout');
+      let queryResult: any;
+      try {
+        queryResult = await Promise.race([queryPromise, timeoutPromise]);
+      } catch (timeoutError: any) {
+        console.error('[WS-FETCH] Query timed out or failed', timeoutError);
+        throw timeoutError;
+      }
+      const { data, error } = queryResult;
+
+      console.log('[WS-FETCH] query result', { 
+        hasData: !!data, 
+        dataLength: data?.length ?? 0,
+        hasError: !!error,
+        error: error ? { message: error.message, code: error.code, details: error.details } : null
+      });
+
       if (error) {
-        console.error('Error fetching workspaces:', error);
+        console.error('[WS-FETCH] Error fetching workspaces:', error);
+        // Don't return early - let finally block set loading to false
+        // But set empty state so UI can proceed
+        setWorkspaces([]);
+        setActiveWorkspace(null);
+        setHasNoWorkspaceMembership(true);
         return;
       }
 
@@ -132,14 +161,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (selectedWorkspace) {
+        console.log('[WS-FETCH] setting active workspace', { id: selectedWorkspace.id, name: selectedWorkspace.name });
         setActiveWorkspace(selectedWorkspace);
       } else {
         // AUDIT: Log when no workspace is selected
-        console.log('[WS] active workspace not found -> fallback path (no valid workspace selected)');
+        console.log('[WS-FETCH] active workspace not found -> fallback path (no valid workspace selected)');
       }
-    } catch (error) {
-      console.error('Error in fetchWorkspaces:', error);
+    } catch (error: any) {
+      console.error('[WS-FETCH] Error in fetchWorkspaces:', error);
+      // Ensure UI can proceed even on error
+      setWorkspaces([]);
+      setActiveWorkspace(null);
+      if (error?.message?.includes('timeout')) {
+        console.error('[WS-FETCH] Query timed out - possible RLS/network issue');
+      }
     } finally {
+      console.log('[WS-FETCH] finally block - setting loading to false');
       setLoading(false);
     }
   }, []);

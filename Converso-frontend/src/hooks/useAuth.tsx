@@ -24,13 +24,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserRole = async (user: User) => {
     try {
+      console.log('[AUTH] fetchUserRole start', { userId: user.id });
       setLoading(true);
       
       // First, check user metadata for role
       const metadataRole = user.user_metadata?.role as 'admin' | 'sdr' | undefined;
       if (metadataRole === 'admin' || metadataRole === 'sdr') {
+        console.log('[AUTH] role from metadata', { role: metadataRole });
         setUserRole(metadataRole);
         setLoading(false);
+        console.log('[AUTH] loading set to false (from metadata)');
         return;
       }
 
@@ -57,24 +60,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[AUTH] user_roles not available yet, continuing', err);
       }
 
+      console.log('[AUTH] role resolved', { role: resolvedRole });
       setUserRole(resolvedRole);
     } catch (error) {
-      console.error('Error fetching user role:', error);
+      console.error('[AUTH] Error fetching user role:', error);
       setUserRole(null);
     } finally {
       setLoading(false);
+      console.log('[AUTH] loading set to false (finally)');
     }
   };
 
   useEffect(() => {
+    console.log('[AUTH] init start');
     // Check for existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[AUTH] session detected', { hasSession: !!session, hasUser: !!session?.user });
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        console.log('[AUTH] fetching user role', { userId: session.user.id });
         fetchUserRole(session.user);
       } else {
+        console.log('[AUTH] no session, setting loading false');
         setLoading(false);
       }
     });
