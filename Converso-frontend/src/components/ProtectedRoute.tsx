@@ -12,14 +12,6 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   const { hasNoWorkspaceMembership, loading: wsLoading, isOwner } = useWorkspace();
   const location = useLocation();
 
-  // DIAGNOSTIC: Log loading states every render
-  console.log('[PROTECTED-ROUTE] render', { 
-    authLoading: loading, 
-    wsLoading, 
-    hasUser: !!user,
-    pathname: location.pathname 
-  });
-
   // Block ONLY while auth is loading
   if (loading) {
     return (
