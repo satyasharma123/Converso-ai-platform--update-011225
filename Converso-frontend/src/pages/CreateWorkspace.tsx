@@ -68,7 +68,7 @@ export default function CreateWorkspace() {
 
       console.log('[CREATE-WS] Workspace created', { workspaceId: workspace.id });
 
-      // 2. Create workspace_members row (assign user as admin)
+      // 2. Create workspace_members row (assign user as admin) - NON-NEGOTIABLE
       console.log('[CREATE-WS] creating workspace_members row');
       const { error: memberError } = await (supabase
         .from('workspace_members' as any)
@@ -83,24 +83,40 @@ export default function CreateWorkspace() {
       });
 
       if (memberError) {
-        console.error('[CREATE-WS] workspace_members insert error:', memberError);
-        throw new Error(`Failed to create workspace membership: ${memberError.message}`);
+        console.error('[CREATE-WS] failed to add creator as workspace member', memberError);
+        throw memberError; // IMPORTANT: stop flow - fail fast
       }
 
       console.log('[CREATE-WS] Workspace membership created');
 
-      // 3. Set active workspace in localStorage
+      // 3. Verify membership immediately (safety net)
+      console.log('[CREATE-WS] verifying workspace membership');
+      const { data: verifyMembership, error: verifyError } = await (supabase
+        .from('workspace_members' as any)
+        .select('id')
+        .eq('workspace_id', workspace.id)
+        .eq('user_id', user.id)
+        .single() as any);
+
+      if (!verifyMembership || verifyError) {
+        console.error('[CREATE-WS] membership verification failed', verifyError);
+        throw new Error('Workspace membership not created - verification failed');
+      }
+
+      console.log('[CREATE-WS] Workspace membership verified', { membershipId: verifyMembership.id });
+
+      // 4. Set active workspace in localStorage
       const storageKey = `synq_active_workspace_id:${user.id}`;
       localStorage.setItem(storageKey, workspace.id);
       console.log('[CREATE-WS] Active workspace set in localStorage', { workspaceId: workspace.id });
 
-      // 4. Update profile with workspace_id (legacy field)
+      // 5. Update profile with workspace_id (legacy field)
       await supabase
         .from('profiles')
         .update({ workspace_id: workspace.id } as any)
         .eq('id', user.id);
 
-      // 5. Assign admin role (optional, non-blocking)
+      // 6. Assign admin role (optional, non-blocking)
       try {
         await supabase
           .from('user_roles')
@@ -114,11 +130,11 @@ export default function CreateWorkspace() {
 
       toast.success("Workspace created successfully!");
 
-      // 6. Set active workspace in context before navigation
+      // 7. Set active workspace in context before navigation
       console.log('[CREATE-WS] Setting active workspace in context', { workspaceId: workspace.id });
       setActiveWorkspaceId(workspace.id);
 
-      // 7. Force navigation to dashboard
+      // 8. Force navigation to dashboard (ONLY after verification succeeds)
       console.log('[CREATE-WS] forcing dashboard redirect');
       window.location.href = '/dashboard';
     } catch (error: any) {
