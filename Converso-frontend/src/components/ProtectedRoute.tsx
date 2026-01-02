@@ -44,7 +44,6 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   // Redirect to create-workspace if user has no workspace memberships
   // (unless they're already on the create-workspace page)
   if (hasNoWorkspaceMembership && location.pathname !== '/create-workspace') {
-    console.log('[PROTECTED-ROUTE] Redirecting to /create-workspace - no workspace memberships');
     return <Navigate to="/create-workspace" replace />;
   }
 
