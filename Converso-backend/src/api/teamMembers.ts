@@ -6,69 +6,56 @@ import type { TeamMember } from '../types';
  * API module for team member-related database queries
  */
 
-export async function getTeamMembers(userId?: string): Promise<TeamMember[]> {
-  // If userId is provided, get their workspace_id from workspace_members
-  let workspaceId: string | null = null;
-  if (userId) {
-    try {
-      const { workspaceId: resolvedWorkspaceId } = await resolveActiveWorkspace({ userId });
-      workspaceId = resolvedWorkspaceId;
-    } catch (error) {
-      console.error('Error fetching user workspace:', error);
-      // Don't throw - continue with no workspace filter
-    }
+export async function getTeamMembers(workspaceId: string): Promise<TeamMember[]> {
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required to fetch team members');
   }
 
-  // Build query to get profiles
-  // Note: We filter by workspace_members instead of profiles.workspace_id
-  let query = supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .or('is_deleted.is.null,is_deleted.eq.false'); // Exclude deleted users
+  console.log('[TEAM] fetch members', { workspaceId });
 
-  // Filter by workspace if we have one
-  // Get all user_ids in this workspace from workspace_members
-  if (workspaceId) {
-    const { data: members } = await supabaseAdmin
-      .from('workspace_members')
-      .select('user_id')
-      .eq('workspace_id', workspaceId);
-    
-    if (members && members.length > 0) {
-      const userIds = members.map(m => m.user_id);
-      query = query.in('id', userIds);
-    } else {
-      // No members in workspace, return empty array
-      return [];
-    }
+  // Query workspace_members with profiles join to get role from workspace_members (not user_roles)
+  // This ensures role is workspace-specific
+  const { data: members, error: membersError } = await supabaseAdmin
+    .from('workspace_members')
+    .select(`
+      user_id,
+      role,
+      created_at,
+      profiles:profiles (
+        id,
+        email,
+        full_name,
+        status,
+        workspace_id,
+        created_at,
+        updated_at
+      )
+    `)
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: true });
+
+  if (membersError) {
+    throw membersError;
   }
 
-  const { data: profiles, error: profilesError } = await query;
-
-  if (profilesError) throw profilesError;
-
-  if (!profiles || profiles.length === 0) {
+  if (!members || members.length === 0) {
     return [];
   }
 
-  // Get roles only for the fetched users
-  const userIds = profiles.map(p => p.id);
-  const { data: roles, error: rolesError } = await supabaseAdmin
-    .from('user_roles')
-    .select('*')
-    .in('user_id', userIds);
-
-  if (rolesError) throw rolesError;
-
-  // Combine profiles with roles
-  const teamMembers = profiles.map(profile => {
-    const userRole = roles?.find(r => r.user_id === profile.id);
-    return {
-      ...profile,
-      role: userRole?.role || 'sdr',
-      status: profile.status || 'active', // Include status field
-    } as TeamMember;
-  });
+  // Map workspace_members to TeamMember format
+  // Role comes from workspace_members.role (workspace-specific)
+  const teamMembers: TeamMember[] = members
+    .filter(m => m.profiles) // Filter out any null profiles
+    .map(m => ({
+      id: m.profiles.id,
+      email: m.profiles.email,
+      full_name: m.profiles.full_name,
+      role: (m.role as 'admin' | 'sdr') || 'sdr', // Use workspace_members.role
+      status: m.profiles.status as 'invited' | 'active' | undefined,
+      workspace_id: workspaceId,
+      created_at: m.profiles.created_at,
+      updated_at: m.profiles.updated_at,
+    }));
 
   return teamMembers;
 }
@@ -97,30 +84,34 @@ export async function getTeamMemberById(userId: string): Promise<TeamMember | nu
 
 export async function updateTeamMemberRole(
   userId: string,
+  workspaceId: string,
   role: 'admin' | 'sdr'
 ): Promise<void> {
-  // Check if role exists
-  const { data: existingRole } = await supabaseAdmin
-    .from('user_roles')
-    .select('id')
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required to update team member role');
+  }
+
+  // Update role in workspace_members (workspace-specific role)
+  const { error } = await supabaseAdmin
+    .from('workspace_members')
+    .update({ role })
     .eq('user_id', userId)
-    .single();
+    .eq('workspace_id', workspaceId);
 
-  if (existingRole) {
-    // Update existing role
-    const { error } = await supabaseAdmin
-      .from('user_roles')
-      .update({ role })
-      .eq('user_id', userId);
+  if (error) {
+    throw new Error(`Failed to update workspace member role: ${error.message}`);
+  }
 
-    if (error) throw error;
-  } else {
-    // Create new role
-    const { error } = await supabaseAdmin
-      .from('user_roles')
-      .insert({ user_id: userId, role });
+  // Also update user_roles for backward compatibility (optional, non-blocking)
+  const { error: roleErr } = await supabaseAdmin
+    .from('user_roles')
+    .upsert(
+      { user_id: userId, role },
+      { onConflict: 'user_id,role' }
+    );
 
-    if (error) throw error;
+  if (roleErr) {
+    console.warn('user_roles upsert failed (non-blocking):', roleErr.message);
   }
 }
 

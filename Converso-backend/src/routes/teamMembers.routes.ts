@@ -9,14 +9,29 @@ const router = Router();
 
 /**
  * GET /api/team-members
- * Get all team members (filtered by workspace if user is authenticated)
+ * Get all team members for the active workspace (from X-Workspace-Id header)
  */
 router.get(
   '/',
   optionalAuth,
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const userId = req.user?.id || req.headers['x-user-id'] as string;
-    const members = await teamMembersService.getMembers(userId);
+    const workspaceId = req.headers['x-workspace-id'] as string | undefined;
+
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'X-Workspace-Id header is required' });
+    }
+
+    // Verify user has access to this workspace
+    const userId = req.user?.id;
+    if (userId) {
+      try {
+        await resolveActiveWorkspace({ userId, workspaceId });
+      } catch (error) {
+        return res.status(403).json({ error: 'User does not have access to this workspace' });
+      }
+    }
+
+    const members = await teamMembersService.getMembers(workspaceId);
     res.json({ data: members });
   })
 );
@@ -41,7 +56,7 @@ router.get(
 
 /**
  * PATCH /api/team-members/:id/role
- * Update a team member's role
+ * Update a team member's role in the active workspace
  */
 router.patch(
   '/:id/role',
@@ -49,12 +64,27 @@ router.patch(
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const { role } = req.body;
+    const workspaceId = req.headers['x-workspace-id'] as string | undefined;
 
     if (!role || (role !== 'admin' && role !== 'sdr')) {
       return res.status(400).json({ error: 'Valid role (admin or sdr) is required' });
     }
 
-    await teamMembersService.updateRole(id, role);
+    if (!workspaceId) {
+      return res.status(400).json({ error: 'X-Workspace-Id header is required' });
+    }
+
+    // Verify user has access to this workspace
+    const userId = req.user?.id;
+    if (userId) {
+      try {
+        await resolveActiveWorkspace({ userId, workspaceId });
+      } catch (error) {
+        return res.status(403).json({ error: 'User does not have access to this workspace' });
+      }
+    }
+
+    await teamMembersService.updateRole(id, workspaceId, role);
     res.json({ message: 'Role updated successfully' });
   })
 );

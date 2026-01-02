@@ -14,6 +14,7 @@ import { useBulkReassignConversations } from "@/hooks/useConversations";
 import { useConversations } from "@/hooks/useConversations";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   Dialog,
   DialogContent,
@@ -57,7 +58,11 @@ import { toast } from "sonner";
 export default function Team() {
   const { user } = useAuth();
   const { data: userProfile } = useProfile();
+  const { activeWorkspace } = useWorkspace();
   const { data: teamMembers = [], isLoading, error } = useTeamMembers();
+
+  // Audit log
+  console.log('[TEAM] activeWorkspace', activeWorkspace?.id, activeWorkspace?.name);
   const { data: conversations = [] } = useConversations();
   const createMember = useCreateTeamMember();
   const updateMember = useUpdateTeamMember();
@@ -68,6 +73,21 @@ export default function Team() {
   // Get user display name: prefer full_name from profile, then from teamMembers, fallback to email
   const currentUserMember = teamMembers.find(m => m.id === user?.id);
   const userDisplayName = userProfile?.full_name || currentUserMember?.full_name || user?.email || "User";
+
+  // Helper: Check if member is owner
+  const isOwner = (memberId: string) => {
+    return activeWorkspace?.owner_user_id === memberId;
+  };
+
+  // Helper: Count admins/owners in workspace
+  const adminCount = teamMembers.filter(m => 
+    m.role === 'admin' || isOwner(m.id)
+  ).length;
+
+  // Helper: Check if member is last admin/owner
+  const isLastAdminOrOwner = (memberId: string) => {
+    return adminCount <= 1 && (teamMembers.find(m => m.id === memberId)?.role === 'admin' || isOwner(memberId));
+  };
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -186,6 +206,24 @@ export default function Team() {
   };
 
   const handleDeleteClick = (member: any) => {
+    // Prevent deleting owner
+    if (activeWorkspace?.owner_user_id === member.id) {
+      toast.error('Owner cannot be removed from the workspace');
+      return;
+    }
+
+    // Prevent deleting yourself (unless explicitly supported)
+    if (member.id === user?.id) {
+      toast.error('You cannot remove yourself from the workspace');
+      return;
+    }
+
+    // Prevent deleting last admin/owner
+    if (isLastAdminOrOwner(member.id)) {
+      toast.error('Cannot remove the last admin/owner. At least one admin must remain.');
+      return;
+    }
+
     setDeletingMember(member);
     setReassignToSdrId(""); // Reset reassignment selection
     
@@ -448,10 +486,10 @@ export default function Team() {
                         {member.full_name || "Unnamed"}
                       </span>
                       <Badge
-                        variant={member.role === "admin" ? "default" : "secondary"}
+                        variant={member.role === "admin" || isOwner(member.id) ? "default" : "secondary"}
                         className="shrink-0 text-[10px] font-normal px-1.5 py-0.5"
                       >
-                        {member.role === "admin" ? "Admin" : "SDR"}
+                        {isOwner(member.id) ? "Owner" : member.role === "admin" ? "Admin" : "SDR"}
                       </Badge>
                     </div>
                   </div>
@@ -475,20 +513,32 @@ export default function Team() {
 
                   {/* Role Selector */}
                   <div className="col-span-2 flex items-center">
-                    <Select
-                      value={member.role}
-                      onValueChange={(value: "admin" | "sdr") =>
-                        handleRoleChange(member.id, value)
-                      }
-                    >
-                      <SelectTrigger className="w-[110px] h-9 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sdr">SDR</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {isOwner(member.id) ? (
+                      <Badge variant="default" className="w-[110px] h-9 text-xs flex items-center justify-center">
+                        Owner
+                      </Badge>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        onValueChange={(value: "admin" | "sdr") => {
+                          // Prevent demoting last admin/owner to SDR
+                          if (value === 'sdr' && isLastAdminOrOwner(member.id)) {
+                            toast.error('Cannot demote the last admin/owner to SDR. At least one admin must remain.');
+                            return;
+                          }
+                          handleRoleChange(member.id, value);
+                        }}
+                        disabled={isLastAdminOrOwner(member.id) && member.role === 'admin'}
+                      >
+                        <SelectTrigger className="w-[110px] h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sdr">SDR</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   {/* Actions - 3 Dots Menu */}
@@ -521,13 +571,23 @@ export default function Team() {
                           </>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={() => handleDeleteClick(member)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Remove
-                        </DropdownMenuItem>
+                        {isOwner(member.id) ? (
+                          <DropdownMenuItem 
+                            disabled
+                            className="text-muted-foreground cursor-not-allowed"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Owner cannot be removed
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteClick(member)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Remove
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

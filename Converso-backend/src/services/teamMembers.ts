@@ -7,10 +7,13 @@ import type { TeamMember } from '../types';
 
 export const teamMembersService = {
   /**
-   * Get all team members with their roles
+   * Get all team members with their roles for a specific workspace
    */
-  async getMembers(userId?: string): Promise<TeamMember[]> {
-    return teamMembersApi.getTeamMembers(userId);
+  async getMembers(workspaceId: string): Promise<TeamMember[]> {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required to fetch team members');
+    }
+    return teamMembersApi.getTeamMembers(workspaceId);
   },
 
   /**
@@ -27,16 +30,20 @@ export const teamMembersService = {
   /**
    * Update a team member's role
    */
-  async updateRole(userId: string, role: 'admin' | 'sdr'): Promise<void> {
+  async updateRole(userId: string, workspaceId: string, role: 'admin' | 'sdr'): Promise<void> {
     if (!userId) {
       throw new Error('User ID is required');
+    }
+
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
     }
 
     if (!role || (role !== 'admin' && role !== 'sdr')) {
       throw new Error('Valid role (admin or sdr) is required');
     }
 
-    return teamMembersApi.updateTeamMemberRole(userId, role);
+    return teamMembersApi.updateTeamMemberRole(userId, workspaceId, role);
   },
 
   /**
