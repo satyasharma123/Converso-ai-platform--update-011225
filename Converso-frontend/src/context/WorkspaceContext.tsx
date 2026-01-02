@@ -146,8 +146,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const userId = user?.id;
-    
-    // Hard guard: userId must be available before any workspace operations
+
+    // HARD GUARANTEE: never block the app
     if (!userId) {
       console.log('[WS] boot skipped — userId not ready');
       setLoading(false);
@@ -163,16 +163,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     // AUDIT: Log stored active workspace
     console.log('[WS] stored active workspace id', { storedId });
 
+    let cancelled = false;
+
     setLoading(true);
-    
-    try {
-      fetchWorkspaces(userId);
-    } catch (err) {
-      console.error('[WS] workspace boot failed', err);
-    } finally {
-      // Note: fetchWorkspaces has its own finally block that sets loading to false
-      // This ensures loading is resolved even if fetchWorkspaces throws synchronously
-    }
+
+    (async () => {
+      try {
+        await fetchWorkspaces(userId);
+      } catch (err) {
+        console.error('[WS] fetchWorkspaces failed', err);
+      } finally {
+        // ABSOLUTE SAFETY NET
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, fetchWorkspaces]);
 
   const setActiveWorkspaceId = useCallback(
