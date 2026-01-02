@@ -40,7 +40,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         .eq('user_id', userId)
         .order('created_at', { ascending: true }) as any);
 
-      const timeoutPromise = new Promise<{ data: null; error: { message: string; code: string } }>((_, reject) => 
+      const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Workspace query timeout after 10s')), 10000)
       );
 
@@ -50,6 +50,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         queryResult = await Promise.race([queryPromise, timeoutPromise]);
       } catch (timeoutError: any) {
         console.error('[WS-FETCH] Query timed out or failed', timeoutError);
+        // Return error structure that matches Supabase response
+        const { data, error } = { data: null, error: { message: timeoutError.message, code: 'TIMEOUT' } };
         throw timeoutError;
       }
       const { data, error } = queryResult;
