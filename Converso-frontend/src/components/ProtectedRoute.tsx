@@ -20,8 +20,20 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     pathname: location.pathname 
   });
 
-  // Show loading spinner while checking authentication and workspace
-  if (loading || wsLoading) {
+  // Block ONLY while auth is loading
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Block workspace loading ONLY AFTER user is authenticated
+  if (user && wsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-4">
