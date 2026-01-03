@@ -6,6 +6,7 @@ import { transformConversation, transformConversations } from '../utils/transfor
 import { syncChatIncremental } from '../unipile/linkedinSync.4actions';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../utils/logger';
+import { getUserWorkspaceId, resolveWorkspaceId } from '../utils/workspace';
 
 const router = Router();
 
@@ -27,7 +28,16 @@ router.get(
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const conversations = await conversationsService.getConversations(userId, userRole, type, folder);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+
+    const conversations = await conversationsService.getConversations(
+      userId,
+      userRole,
+      type,
+      folder,
+      workspaceId
+    );
     res.json({ data: transformConversations(conversations) });
   })
 );
@@ -47,7 +57,10 @@ router.get(
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const counts = await conversationsService.getMailboxCounts(userId, userRole);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+
+    const counts = await conversationsService.getMailboxCounts(userId, userRole, workspaceId);
     res.json({ data: counts });
   })
 );
@@ -135,9 +148,8 @@ router.get(
       });
     }
 
-    // Get user's workspace
-    const { getUserWorkspaceId } = await import('../utils/workspace');
-    const workspaceId = await getUserWorkspaceId(userId);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
     
     if (!workspaceId) {
       return res.status(400).json({ error: 'Workspace ID is required' });

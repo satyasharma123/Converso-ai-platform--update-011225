@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { conversationsService } from '../services/conversations';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
-import { getUserWorkspaceId } from '../utils/workspace';
+import { getUserWorkspaceId, resolveWorkspaceId } from '../utils/workspace';
 
 const router = Router();
 
@@ -23,7 +23,8 @@ router.get(
     }
 
     // Get user's workspace
-    const workspaceId = await getUserWorkspaceId(userId);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
     if (!workspaceId) {
       return res.status(400).json({ error: 'Workspace ID is required' });
     }
@@ -64,7 +65,8 @@ router.patch(
     }
 
     // Get user's workspace
-    const workspaceId = await getUserWorkspaceId(userId);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
     if (!workspaceId) {
       return res.status(400).json({ error: 'Workspace ID is required' });
     }
@@ -110,7 +112,8 @@ router.patch(
     }
 
     // Get user's workspace
-    const workspaceId = await getUserWorkspaceId(userId);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
     if (!workspaceId) {
       return res.status(400).json({ error: 'Workspace ID is required' });
     }

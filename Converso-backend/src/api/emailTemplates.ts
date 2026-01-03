@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '../lib/supabase';
-import { resolveActiveWorkspace } from '../utils/resolveWorkspace';
 
 /**
  * API module for email template-related database queries
@@ -16,18 +15,6 @@ export interface EmailTemplate {
   is_default: boolean;
   created_at: string;
   updated_at: string;
-}
-
-/**
- * Get workspace ID for a user (uses workspace_members as source of truth)
- */
-async function getUserWorkspaceId(userId: string): Promise<string | null> {
-  try {
-    const { workspaceId } = await resolveActiveWorkspace({ userId });
-    return workspaceId;
-  } catch (error) {
-    return null;
-  }
 }
 
 /**
@@ -97,14 +84,9 @@ async function ensureDefaultTemplates(workspaceId: string): Promise<void> {
 /**
  * Get all email templates for a workspace
  */
-export async function getEmailTemplates(userId: string): Promise<EmailTemplate[]> {
+export async function getEmailTemplates(userId: string, workspaceId: string): Promise<EmailTemplate[]> {
   if (process.env.NODE_ENV !== 'production') {
     console.log('[emailTemplates] getEmailTemplates called with userId:', userId);
-  }
-  
-  const workspaceId = await getUserWorkspaceId(userId);
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[emailTemplates] Got workspaceId:', workspaceId);
   }
   
   if (!workspaceId) {
@@ -173,10 +155,9 @@ export async function createEmailTemplate(
     content: string;
     category: string;
     shortcut?: string;
-  }
+  },
+  workspaceId: string
 ): Promise<EmailTemplate> {
-  const workspaceId = await getUserWorkspaceId(userId);
-  
   if (!workspaceId) {
     throw new Error('Workspace not found');
   }

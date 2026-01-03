@@ -69,10 +69,12 @@ export async function getConversations(
   userId: string,
   userRole: 'admin' | 'sdr' | null,
   type?: 'email' | 'linkedin',
-  folder?: string
+  folder?: string,
+  workspaceId?: string
 ): Promise<Conversation[]> {
-  // Get user's workspace
-  const workspaceId = await getUserWorkspaceId(userId);
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required');
+  }
   
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[Conversations API] type=${type}, folder=${folder}, userId=${userId}, userRole=${userRole}`);
@@ -804,10 +806,13 @@ export async function deleteConversation(conversationId: string): Promise<void> 
  */
 export async function getMailboxCounts(
   userId: string,
-  userRole: 'admin' | 'sdr' | null
+  userRole: 'admin' | 'sdr' | null,
+  workspaceId: string
 ): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
-  const workspaceId = await getUserWorkspaceId(userId);
-  
+  if (!workspaceId) {
+    throw new Error('Workspace ID is required');
+  }
+
   // Build query for email conversations with STRICT workspace filtering
   let convListQuery = supabaseAdmin
     .from('conversations')

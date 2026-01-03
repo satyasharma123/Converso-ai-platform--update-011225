@@ -14,13 +14,14 @@ export const conversationsService = {
     userId: string,
     userRole: 'admin' | 'sdr' | null,
     type?: 'email' | 'linkedin',
-    folder?: string
+    folder?: string,
+    workspaceId?: string
   ): Promise<Conversation[]> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
-    return conversationsApi.getConversations(userId, userRole, type, folder);
+    return conversationsApi.getConversations(userId, userRole, type, folder, workspaceId);
   },
 
   /**
@@ -150,13 +151,18 @@ export const conversationsService = {
    */
   async getMailboxCounts(
     userId: string,
-    userRole: 'admin' | 'sdr' | null
+    userRole: 'admin' | 'sdr' | null,
+    workspaceId: string
   ): Promise<{ inbox: number; sent: number; archive: number; trash: number }> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
-    return conversationsApi.getMailboxCounts(userId, userRole);
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return conversationsApi.getMailboxCounts(userId, userRole, workspaceId);
   },
 
   /**

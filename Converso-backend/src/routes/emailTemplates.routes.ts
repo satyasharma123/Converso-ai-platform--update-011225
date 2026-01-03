@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { emailTemplatesService } from '../services/emailTemplates';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
+import { getUserWorkspaceId, resolveWorkspaceId } from '../utils/workspace';
 
 const router = Router();
 
@@ -19,7 +20,10 @@ router.get(
       return res.status(400).json({ error: 'User ID is required' });
     }
 
-    const templates = await emailTemplatesService.getEmailTemplates(userId);
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+
+    const templates = await emailTemplatesService.getEmailTemplates(userId, workspaceId);
     res.json({ data: templates });
   })
 );
@@ -61,12 +65,15 @@ router.post(
       return res.status(400).json({ error: 'Title, content, and category are required' });
     }
 
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+
     const template = await emailTemplatesService.createEmailTemplate(userId, {
       title,
       content,
       category,
       shortcut,
-    });
+    }, workspaceId);
 
     res.status(201).json({ data: template });
   })

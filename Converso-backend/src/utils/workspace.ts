@@ -9,6 +9,22 @@ export async function getUserWorkspaceId(userId: string): Promise<string> {
   return workspaceId;
 }
 
+export function resolveWorkspaceId(req: any, fallbackWorkspaceId?: string): string {
+  const headerWorkspace =
+    req.headers['x-workspace-id'] ||
+    req.headers['X-Workspace-Id'];
+
+  if (headerWorkspace && typeof headerWorkspace === 'string') {
+    return headerWorkspace;
+  }
+
+  if (fallbackWorkspaceId) {
+    return fallbackWorkspaceId;
+  }
+
+  throw new Error('WorkspaceId could not be resolved');
+}
+
 /**
  * Legacy function - deprecated, use getUserWorkspaceId instead
  * @deprecated Use getUserWorkspaceId for strict workspace isolation

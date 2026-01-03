@@ -9,12 +9,16 @@ export const emailTemplatesService = {
   /**
    * Get all email templates for a user's workspace
    */
-  async getEmailTemplates(userId: string): Promise<EmailTemplate[]> {
+  async getEmailTemplates(userId: string, workspaceId: string): Promise<EmailTemplate[]> {
     if (!userId) {
       throw new Error('User ID is required');
     }
 
-    return emailTemplatesApi.getEmailTemplates(userId);
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return emailTemplatesApi.getEmailTemplates(userId, workspaceId);
   },
 
   /**
@@ -38,7 +42,8 @@ export const emailTemplatesService = {
       content: string;
       category: string;
       shortcut?: string;
-    }
+    },
+    workspaceId: string
   ): Promise<EmailTemplate> {
     if (!userId) {
       throw new Error('User ID is required');
@@ -52,7 +57,11 @@ export const emailTemplatesService = {
       throw new Error('Category is required');
     }
 
-    return emailTemplatesApi.createEmailTemplate(userId, data);
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required');
+    }
+
+    return emailTemplatesApi.createEmailTemplate(userId, data, workspaceId);
   },
 
   /**
