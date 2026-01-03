@@ -29,6 +29,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // null = unknown (still loading), true = confirmed no memberships, false = confirmed memberships exist
   const [hasNoWorkspaceMembership, setHasNoWorkspaceMembership] = useState<boolean | null>(null);
 
+  const persistEffectiveRole = (opts: {
+    userId: string;
+    workspace: WorkspaceSummary | null;
+  }) => {
+    const roleKey = `synq_active_workspace_role:${opts.userId}`;
+    if (!opts.workspace) {
+      localStorage.removeItem(roleKey);
+      return;
+    }
+
+    const workspaceRole = (opts.workspace.role || '').toString().toLowerCase();
+    const isOwner = !!opts.workspace.owner_user_id && opts.userId === opts.workspace.owner_user_id;
+    const effectiveRole = isOwner ? 'admin' : workspaceRole;
+
+    if (effectiveRole === 'admin' || effectiveRole === 'sdr') {
+      localStorage.setItem(roleKey, effectiveRole);
+    } else {
+      // Unknown role -> remove so api-client can fall back to metadata
+      localStorage.removeItem(roleKey);
+    }
+  };
+
   const fetchWorkspaces = useCallback(async (userId: string) => {
     try {
       // Query workspace_members to get all workspaces for user
@@ -53,6 +75,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setWorkspaces([]);
         setActiveWorkspace(null);
         setHasNoWorkspaceMembership(true);
+        persistEffectiveRole({ userId, workspace: null });
         return;
       }
 
@@ -104,6 +127,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       if (selectedWorkspace) {
         setActiveWorkspace(selectedWorkspace);
+        persistEffectiveRole({ userId, workspace: selectedWorkspace });
       }
     } catch (error: any) {
       // IMPORTANT: Errors must NOT force create-workspace routing.
@@ -145,6 +169,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const workspace = workspaces.find((w) => w.id === id);
       if (workspace) {
         setActiveWorkspace(workspace);
+        persistEffectiveRole({ userId: user.id, workspace });
       }
       // If not in array yet, fetchWorkspaces will pick it up from localStorage later
     },

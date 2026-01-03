@@ -74,7 +74,14 @@ class ApiClient {
       }
     }
 
-    if (userData?.user_metadata?.role) {
+    // Prefer workspace-scoped role (derived from WorkspaceContext) if available.
+    // This prevents owner/admin being incorrectly treated as SDR due to stale metadata.
+    const roleFromWorkspace =
+      userData?.id ? localStorage.getItem(`synq_active_workspace_role:${userData.id}`) : null;
+    const normalizedRole = (roleFromWorkspace || '').toString().toLowerCase();
+    if (normalizedRole === 'admin' || normalizedRole === 'sdr') {
+      headers['x-user-role'] = normalizedRole;
+    } else if (userData?.user_metadata?.role) {
       headers['x-user-role'] = userData.user_metadata.role;
     }
 
