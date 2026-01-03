@@ -15,12 +15,15 @@ export function ConnectedAccountFilter({ value, onChange, type }: ConnectedAccou
     ? accounts?.filter(acc => acc.account_type === type)
     : accounts;
 
-  if (isLoading || !filteredAccounts?.length) {
+  // ALWAYS render the filter (even when no accounts exist)
+  // This ensures Admin/SDR can see the filter UI
+  // "All Accounts" option is always available
+  if (isLoading) {
     return null;
   }
 
   // Find the selected account to display properly
-  const selectedAccount = value === 'all' ? null : filteredAccounts.find(acc => acc.id === value);
+  const selectedAccount = value === 'all' ? null : filteredAccounts?.find(acc => acc.id === value);
 
   return (
     <Select value={value} onValueChange={onChange}>
@@ -34,7 +37,7 @@ export function ConnectedAccountFilter({ value, onChange, type }: ConnectedAccou
       </SelectTrigger>
       <SelectContent className="bg-popover border shadow-md z-50">
         <SelectItem value="all" className="text-xs">All Accounts</SelectItem>
-        {filteredAccounts.map(account => (
+        {filteredAccounts?.map(account => (
           <SelectItem key={account.id} value={account.id} className="text-xs">
             <div className="flex items-center gap-2">
               {account.account_type === 'email' ? (
