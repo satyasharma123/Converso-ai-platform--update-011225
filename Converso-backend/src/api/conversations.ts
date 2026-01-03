@@ -411,7 +411,8 @@ export async function assignConversation(
     .select('id, assigned_to')
     .eq('conversation_type', 'email')
     .eq('workspace_id', workspaceId)
-    .eq('sender_email', normalizedEmail); // Exact match on normalized email
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   if (fetchAllError) throw fetchAllError;
   if (!conversations || conversations.length === 0) {
@@ -424,7 +425,8 @@ export async function assignConversation(
     .update({ assigned_to: sdrId })
     .eq('conversation_type', 'email')
     .eq('workspace_id', workspaceId)
-    .eq('sender_email', normalizedEmail); // Exact match on normalized email
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   if (updateError) throw updateError;
 
@@ -671,7 +673,8 @@ export async function updateConversationStage(
     })
     .eq('conversation_type', 'email')
     .eq('workspace_id', conversation.workspace_id)
-    .eq('sender_email', normalizedEmail); // Exact match on normalized email
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   if (updateError) throw updateError;
 
@@ -1096,7 +1099,8 @@ export async function updateEmailSenderStage(
     .select('id, custom_stage_id, workspace_id')
     .eq('conversation_type', 'email')
     .eq('workspace_id', workspaceId)
-    .eq('sender_email', normalizedEmail);
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   // SDR filtering: only assigned conversations
   if (userRole === 'sdr') {
@@ -1181,7 +1185,8 @@ export async function updateEmailSenderAssignment(
     .select('id, assigned_to, workspace_id')
     .eq('conversation_type', 'email')
     .eq('workspace_id', workspaceId)
-    .eq('sender_email', normalizedEmail);
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   // SDR filtering: only assigned conversations
   if (userRole === 'sdr') {
@@ -1261,7 +1266,8 @@ export async function getEmailSenderActivities(
     .select('id')
     .eq('conversation_type', 'email')
     .eq('workspace_id', workspaceId)
-    .eq('sender_email', normalizedEmail);
+    // Case-insensitive match: sender_email may not be normalized in stored data
+    .ilike('sender_email', normalizedEmail);
 
   if (convError) {
     logger.error('[Email Sender Activities] Error fetching conversations:', convError);
