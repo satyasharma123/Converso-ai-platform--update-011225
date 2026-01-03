@@ -240,7 +240,8 @@ async function getEmailConversationsByFolder(
       .from('messages')
       .select('conversation_id, created_at, content, subject, provider_folder, sender_name, sender_email, is_from_lead')
       .in('conversation_id', batch)
-      .eq('provider_folder', folder)
+      // Case-insensitive folder match: provider values may vary in casing (e.g. INBOX vs inbox)
+      .ilike('provider_folder', folder)
       .order('created_at', { ascending: false });
     
     if (msgError) {
@@ -828,7 +829,8 @@ export async function getMailboxCounts(
       .from('messages')
       .select('conversation_id', { count: 'exact', head: false })
       .in('conversation_id', conversationIds)
-      .eq('provider_folder', folder);
+      // Case-insensitive folder match: provider values may vary in casing (e.g. INBOX vs inbox)
+      .ilike('provider_folder', folder);
     
     if (!folderError && folderConvs) {
       // Count unique conversation IDs
