@@ -121,8 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    console.log('[SIGNUP] start', { email, fullName: fullName ? 'provided' : 'missing' });
-    
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -134,20 +132,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      console.log('[SIGNUP] supabase response:', { 
-        hasData: !!data, 
-        hasUser: !!data?.user,
-        hasSession: !!data?.session,
-        error: error ? { message: error.message, status: error.status } : null 
-      });
-
       if (error) {
-        console.error('[SIGNUP] error:', error);
         throw error;
       }
-
-      console.log('[SIGNUP] user:', data?.user ? { id: data.user.id, email: data.user.email } : null);
-      console.log('[SIGNUP] session:', data?.session ? 'exists' : 'null');
 
       if (!data?.user) {
         throw new Error('Signup succeeded but user is null');
@@ -156,11 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 🚨 IMPORTANT: DO NOT wait for session or create workspace
       // Signup only creates auth user
       // Workspace creation happens on /create-workspace page
-      console.log('[SIGNUP] signup successful, returning user data (workspace creation happens on create-workspace page)');
-      
       return { error: null, user: data.user, session: data.session };
     } catch (err: any) {
-      console.error('[SIGNUP] catch:', err);
       throw err;
     }
   };

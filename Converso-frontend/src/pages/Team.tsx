@@ -60,9 +60,6 @@ export default function Team() {
   const { data: userProfile } = useProfile();
   const { activeWorkspace } = useWorkspace();
   const { data: teamMembers = [], isLoading, error } = useTeamMembers();
-
-  // Audit log
-  console.log('[TEAM] activeWorkspace', activeWorkspace?.id, activeWorkspace?.name);
   const { data: conversations = [] } = useConversations();
   const createMember = useCreateTeamMember();
   const updateMember = useUpdateTeamMember();

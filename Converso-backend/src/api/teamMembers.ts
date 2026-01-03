@@ -11,8 +11,6 @@ export async function getTeamMembers(workspaceId: string): Promise<TeamMember[]>
     throw new Error('Workspace ID is required to fetch team members');
   }
 
-  console.log('[TEAM] fetch members', { workspaceId });
-
   // Query workspace_members with profiles join to get role from workspace_members (not user_roles)
   // This ensures role is workspace-specific
   const { data: members, error: membersError } = await supabaseAdmin

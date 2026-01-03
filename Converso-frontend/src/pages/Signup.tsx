@@ -57,28 +57,23 @@ export default function Signup() {
     setErrors({});
 
     try {
-      console.log('[SIGNUP-PAGE] calling signUp');
       const { error, user } = await signUp(email, password, fullName);
       
       if (error) {
-        console.error('[SIGNUP-PAGE] signUp returned error:', error);
         toast.error(error.message || 'Failed to create account');
         setErrors({ submit: error.message || 'Failed to create account' });
         setLoading(false);
       } else if (user) {
-        console.log('[SIGNUP-PAGE] signUp successful, redirecting to /create-workspace');
         toast.success('Account created successfully!');
         // Always redirect to create-workspace page (workspace creation happens there)
         navigate('/create-workspace', { replace: true });
         setLoading(false);
       } else {
-        console.error('[SIGNUP-PAGE] signUp returned no user');
         toast.error('Account creation failed');
         setErrors({ submit: 'Account creation failed. Please try again.' });
         setLoading(false);
       }
     } catch (err: any) {
-      console.error('[SIGNUP-PAGE] catch error:', err);
       toast.error(err.message || 'Failed to create account');
       setErrors({ submit: err.message || 'Failed to create account' });
       setLoading(false);

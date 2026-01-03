@@ -14,7 +14,7 @@ interface WorkspaceContextType {
   workspaces: WorkspaceSummary[];
   setActiveWorkspaceId: (id: string) => void;
   loading: boolean;
-  hasNoWorkspaceMembership: boolean;
+  hasNoWorkspaceMembership: boolean | null;
   isOwner: boolean;
 }
 
@@ -25,56 +25,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hasNoWorkspaceMembership, setHasNoWorkspaceMembership] = useState(false);
+  // null = unknown (still loading), true = confirmed no memberships, false = confirmed memberships exist
+  const [hasNoWorkspaceMembership, setHasNoWorkspaceMembership] = useState<boolean | null>(null);
 
   const fetchWorkspaces = useCallback(async (userId: string) => {
     try {
-      console.log('[WS-FETCH] start', { userId });
-      
       // Query workspace_members to get all workspaces for user
       // This supports multi-workspace users (SDR can belong to multiple workspaces)
-      // Add timeout wrapper to detect hanging queries
-      const queryPromise = (supabase
+      const queryResult = await (supabase
         .from('workspace_members' as any)
         .select('workspace_id, role, workspaces:workspaces(id, name, owner_user_id)')
         .eq('user_id', userId)
         .order('created_at', { ascending: true }) as any);
-
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Workspace query timeout after 10s')), 10000)
-      );
-
-      console.log('[WS-FETCH] executing query with timeout');
-      let queryResult: any;
-      try {
-        queryResult = await Promise.race([queryPromise, timeoutPromise]);
-      } catch (timeoutError: any) {
-        console.error('[WS-FETCH] Query timed out or failed', timeoutError);
-        // Return error structure that matches Supabase response
-        const { data, error } = { data: null, error: { message: timeoutError.message, code: 'TIMEOUT' } };
-        throw timeoutError;
-      }
       const { data, error } = queryResult;
 
-      console.log('[WS-FETCH] query result', { 
-        hasData: !!data, 
-        dataLength: data?.length ?? 0,
-        hasError: !!error,
-        error: error ? { message: error.message, code: error.code, details: error.details } : null
-      });
-
       if (error) {
-        console.error('[WS-FETCH] Error fetching workspaces:', error);
-        // Don't return early - let finally block set loading to false
-        // But set empty state so UI can proceed
+        // IMPORTANT:
+        // Errors must NOT force create-workspace routing.
+        // The invariant is: only an ACTUAL empty membership list may redirect.
+        console.error('[WS] fetchWorkspaces failed', error);
+        return;
+      }
+
+      // If there are no memberships, this is authoritative.
+      if (!data || data.length === 0) {
         setWorkspaces([]);
         setActiveWorkspace(null);
         setHasNoWorkspaceMembership(true);
         return;
       }
-
-      // AUDIT: Log raw workspace_members rows
-      console.log('[WS-CTX] raw workspace_members rows', data);
 
       const workspaceList: WorkspaceSummary[] = (data || [])
         .map((item: any) => {
@@ -83,14 +62,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           return {
             id: workspace.id,
             name: workspace.name,
-            role: item.role || 'SDR', // Normalized: only ADMIN and SDR allowed
+            role: item.role || 'SDR',
             owner_user_id: workspace.owner_user_id,
           };
         })
         .filter((w): w is WorkspaceSummary => w !== null);
-
-      // AUDIT: Log mapped workspaceList before deduplication
-      console.log('[WS-CTX] mapped workspaceList', workspaceList);
 
       // Deduplicate workspaces by workspace_id to prevent duplicates in dropdown
       const uniqueWorkspaceMap = new Map<string, WorkspaceSummary>();
@@ -102,40 +78,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const uniqueWorkspaces = Array.from(uniqueWorkspaceMap.values());
 
       setWorkspaces(uniqueWorkspaces);
-
-      // AUDIT: Log memberships loaded
-      console.log('[WS] memberships loaded', { 
-        memberships: uniqueWorkspaces.length,
-        workspaceIds: uniqueWorkspaces.map(w => w.id)
-      });
-
-      // FIX: Handle users with no workspace memberships (e.g., after deletion)
-      if (!uniqueWorkspaces || uniqueWorkspaces.length === 0) {
-        console.warn('[WS] User has no workspace memberships. Forcing create-workspace flow.');
-        if (userId) {
-          const storageKey = `synq_active_workspace_id:${userId}`;
-          localStorage.removeItem(storageKey);
-        }
-        setWorkspaces([]);
-        setActiveWorkspace(null);
-        setHasNoWorkspaceMembership(true);
-        setLoading(false);
-        return;
-      }
-
-      // User has workspaces - clear the no-membership flag
       setHasNoWorkspaceMembership(false);
 
       // Determine active workspace (use deduplicated list)
       const storageKey = `synq_active_workspace_id:${userId}`;
       const savedWorkspaceId = localStorage.getItem(storageKey);
-
-      // AUDIT: Log active workspace selection
-      console.log('[WS-CTX] selecting active workspace', { 
-        savedWorkspaceId, 
-        uniqueWorkspacesCount: uniqueWorkspaces.length,
-        uniqueWorkspaceIds: uniqueWorkspaces.map(w => w.id)
-      });
 
       // Validate active workspace after fetch (use uniqueWorkspaces)
       const validWorkspace = savedWorkspaceId
@@ -154,66 +101,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(storageKey, selectedWorkspace.id);
       }
 
-      // AUDIT: Log resolved active workspace
-      console.log('[WS] resolved active workspace', { 
-        activeWorkspaceId: selectedWorkspace?.id,
-        activeWorkspaceName: selectedWorkspace?.name,
-        wasFromStorage: !!validWorkspace,
-        wasFallback: !validWorkspace && uniqueWorkspaces.length > 0
-      });
-
       if (selectedWorkspace) {
-        console.log('[WS-FETCH] setting active workspace', { id: selectedWorkspace.id, name: selectedWorkspace.name });
         setActiveWorkspace(selectedWorkspace);
-      } else {
-        // AUDIT: Log when no workspace is selected
-        console.log('[WS-FETCH] active workspace not found -> fallback path (no valid workspace selected)');
       }
     } catch (error: any) {
-      console.error('[WS-FETCH] Error in fetchWorkspaces:', error);
-      // Ensure UI can proceed even on error
-      setWorkspaces([]);
-      setActiveWorkspace(null);
-      if (error?.message?.includes('timeout')) {
-        console.error('[WS-FETCH] Query timed out - possible RLS/network issue');
-      }
-    } finally {
-      console.log('[WS-FETCH] finally block - setting loading to false');
-      setLoading(false);
+      // IMPORTANT: Errors must NOT force create-workspace routing.
+      console.error('[WS] fetchWorkspaces exception', error);
     }
   }, []);
 
   useEffect(() => {
-    if (!user?.id) {
-      console.log('[WS] waiting for userId');
-      return;
-    }
+    if (!user?.id) return;
 
-    const userId = user.id;
-    console.log('[WS] boot start', { userId });
-
-    const storageKey = `synq_active_workspace_id:${userId}`;
-    const storedId = localStorage.getItem(storageKey);
-    console.log('[WS] stored active workspace id', { storedId });
-
-    let mounted = true;
     setLoading(true);
 
-    fetchWorkspaces(userId)
-      .catch((err) => {
-        console.error('[WS] fetchWorkspaces failed', err);
-      })
+    fetchWorkspaces(user.id)
+      .catch(console.error)
       .finally(() => {
-        if (mounted) {
-          console.log('[WS] boot complete -> loading false');
-          setLoading(false);
-        }
+        setLoading(false);
       });
-
-    return () => {
-      mounted = false;
-    };
-  }, [user?.id]);
+  }, [user?.id, fetchWorkspaces]);
 
   const setActiveWorkspaceId = useCallback(
     (id: string) => {

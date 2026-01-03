@@ -205,13 +205,6 @@ export default function Settings() {
 
   // Workspace handlers
   const handleUpdateWorkspace = async () => {
-    // AUDIT: Log update clicked
-    console.log('[WS-SETTINGS] update clicked', { 
-      workspaceId: workspace?.id, 
-      activeWorkspaceId: activeWorkspace?.id,
-      payloadName: workspaceName,
-      workspaceFromHook: workspace 
-    });
     if (!workspaceName.trim()) {
       toast.error("Workspace name is required");
       return;
@@ -237,26 +230,14 @@ export default function Settings() {
       return;
     }
 
-    // AUDIT: Log delete start
-    console.log('[WS-DELETE] start', { 
-      userId: user?.id, 
-      activeWorkspaceId: activeWorkspace?.id 
-    });
-
     setIsDeletingWorkspace(true);
     try {
       await apiClient.delete('/api/workspace');
-      
-      // AUDIT: Log api delete success
-      console.log('[WS-DELETE] api delete success');
       
       // Clear active workspace from localStorage
       if (user?.id) {
         const storageKey = `synq_active_workspace_id:${user.id}`;
         localStorage.removeItem(storageKey);
-        
-        // AUDIT: Log localStorage key removed
-        console.log('[WS-DELETE] localStorage key removed', { key: storageKey });
       }
       
       toast.success("Workspace deleted successfully");
@@ -264,9 +245,6 @@ export default function Settings() {
       // Close modal before logout
       setShowDeleteModal(false);
       setDeleteConfirmText("");
-      
-      // AUDIT: Log signing out
-      console.log('[WS-DELETE] signing out');
       
       // Logout user and redirect to login
       await signOut();
@@ -1005,11 +983,6 @@ export default function Settings() {
                             placeholder="My Company"
                             value={workspaceName}
                             onChange={(e) => {
-                              // AUDIT: Log onChange
-                              console.log('[WS-SETTINGS] onChange', { 
-                                next: e.target.value,
-                                current: workspaceName 
-                              });
                               setWorkspaceName(e.target.value);
                             }}
                           />

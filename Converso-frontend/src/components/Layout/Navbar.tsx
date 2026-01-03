@@ -22,14 +22,6 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
     loading,
   } = useWorkspace();
 
-  // AUDIT: Log switcher render
-  console.log('[WS-SWITCHER] render', { 
-    activeWorkspace: activeWorkspace?.id, 
-    activeWorkspaceName: activeWorkspace?.name,
-    workspaces: workspaces.length,
-    loading 
-  });
-
   return (
     <header className="sticky top-0 z-40 w-full border-b bg-background backdrop-blur supports-[backdrop-filter]:bg-background/95">
       <div className="flex h-14 items-center gap-4 px-4">
@@ -53,18 +45,14 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end">
-              {workspaces.map((ws) => {
-                // AUDIT: Log dropdown item
-                console.log('[WS-NAV] dropdown item', { id: ws.id, name: ws.name });
-                return (
-                  <DropdownMenuItem
-                    key={ws.id}
-                    onClick={() => setActiveWorkspaceId(ws.id)}
-                  >
-                    {ws.name}
-                  </DropdownMenuItem>
-                );
-              })}
+              {workspaces.map((ws) => (
+                <DropdownMenuItem
+                  key={ws.id}
+                  onClick={() => setActiveWorkspaceId(ws.id)}
+                >
+                  {ws.name}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
