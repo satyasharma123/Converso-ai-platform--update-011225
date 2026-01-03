@@ -12,6 +12,7 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
   const { user } = useAuth();
   const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace?.id;
+  const isEmail = type === 'email';
 
   return useQuery({
     queryKey: ['conversations', workspaceId, type, folder, user?.id],
@@ -79,8 +80,11 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
     enabled: !!user && !!workspaceId && enabled,
     // ✅ OPTIMIZED: Only LinkedIn gets polling, Email uses manual refresh
     refetchInterval: type === 'linkedin' ? 15000 : false, // LinkedIn: 15s, Email: manual only
-    refetchOnWindowFocus: type === 'linkedin', // ✅ FIX: Only LinkedIn auto-refetches
-    refetchOnMount: false, // ✅ FIX: Don't refetch on component mount
+    // Email assignment changes are made by Admin in a different session,
+    // so SDR must refetch when returning/focusing the tab.
+    refetchOnWindowFocus: type === 'linkedin' || isEmail,
+    // Ensure email inbox doesn't stay stuck with cached empty results after assignment.
+    refetchOnMount: isEmail ? 'always' : false,
     staleTime: 5 * 60 * 1000, // ✅ FIX: Data fresh for 5 minutes (was 30s!)
   });
 }
