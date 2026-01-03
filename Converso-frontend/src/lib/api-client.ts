@@ -65,7 +65,10 @@ class ApiClient {
 
       // Add workspace ID header from localStorage
       const workspaceStorageKey = `synq_active_workspace_id:${userData.id}`;
-      const workspaceId = localStorage.getItem(workspaceStorageKey);
+      const workspaceId =
+        localStorage.getItem(workspaceStorageKey) ||
+        localStorage.getItem('synq_active_workspace_id') ||
+        localStorage.getItem('activeWorkspaceId');
       if (workspaceId) {
         headers['X-Workspace-Id'] = workspaceId;
       }
