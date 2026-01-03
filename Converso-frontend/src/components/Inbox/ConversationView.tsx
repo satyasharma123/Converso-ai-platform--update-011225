@@ -15,6 +15,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 
 /**
  * Helper: Normalize attachment URL from various LinkedIn schema fields
@@ -162,6 +163,9 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
 
   // Hooks for data and mutations
   const { userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: stages = [] } = usePipelineStages();
   const toggleRead = useToggleRead();
@@ -549,7 +553,7 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
                   )}
                 </DropdownMenuItem>
 
-                {userRole === 'admin' && (
+                {isAdmin && (
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>
                       <UserPlus className="h-4 w-4 mr-2" />

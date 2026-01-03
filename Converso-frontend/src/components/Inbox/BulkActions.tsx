@@ -12,6 +12,7 @@ import { ChevronDown, Check, CheckCheck, UserPlus, GitBranch, Archive, Trash2, S
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { toast } from "sonner";
 
 interface BulkActionsProps {
@@ -40,6 +41,9 @@ export function BulkActions({
   onClearSelection,
 }: BulkActionsProps) {
   const { userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: stages = [] } = usePipelineStages();
 
@@ -68,7 +72,7 @@ export function BulkActions({
             Mark as Unread
           </DropdownMenuItem>
 
-          {userRole === 'admin' && (
+          {isAdmin && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <UserPlus className="h-4 w-4 mr-2" />
@@ -123,7 +127,7 @@ export function BulkActions({
             Remove Favorite
           </DropdownMenuItem>
 
-          {userRole === 'admin' && (
+          {isAdmin && (
             <>
               <DropdownMenuItem onClick={onArchive}>
                 <Archive className="h-4 w-4 mr-2" />

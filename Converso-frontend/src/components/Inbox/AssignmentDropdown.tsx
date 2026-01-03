@@ -2,6 +2,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAssignConversation } from '@/hooks/useConversations';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { UserCheck } from 'lucide-react';
 
 interface AssignmentDropdownProps {
@@ -11,11 +12,14 @@ interface AssignmentDropdownProps {
 
 export function AssignmentDropdown({ conversationId, currentAssignment }: AssignmentDropdownProps) {
   const { userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const { data: teamMembers, isLoading } = useTeamMembers();
   const assignMutation = useAssignConversation();
   
   // Hide assignment dropdown for SDR role
-  if (userRole === 'sdr') {
+  if (!isAdmin) {
     return null;
   }
 

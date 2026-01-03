@@ -13,6 +13,7 @@ import { useUpdateConversationStage, useUpdateLeadProfile, useAssignConversation
 import { useLeadNotes, useAddLeadNote, useUpdateLeadNote, useDeleteLeadNote } from "@/hooks/useLeadNotes";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { formatDistanceToNow } from "date-fns";
 
 import type { Conversation } from "@/hooks/useConversations";
@@ -46,6 +47,9 @@ export function LeadProfilePanel({ lead, conversationId, conversation }: LeadPro
   }, [lead?.id, lead?.lastMessageAt, lead?.score, lead?.mobile, lead?.email, lead?.company, lead?.location, lead?.stageId, lead?.assignedToId]);
 
   const { user, userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const { data: currentUserProfile } = useProfile();
   const [noteText, setNoteText] = useState("");
   const { data: teamMembers } = useTeamMembers();
@@ -222,8 +226,8 @@ export function LeadProfilePanel({ lead, conversationId, conversation }: LeadPro
     : "";
 
   // Check if user can edit (both admin and assigned SDR)
-  const canEdit = userRole === 'admin' || (userRole === 'sdr' && currentSdrId === user?.id);
-  const canEditSDR = userRole === 'admin';
+  const canEdit = isAdmin || (!isAdmin && currentSdrId === user?.id);
+  const canEditSDR = isAdmin;
 
   return (
     <div className="h-full bg-white rounded-lg border overflow-y-auto">

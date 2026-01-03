@@ -8,6 +8,7 @@ import { Search, Filter, ChevronDown, Calendar as CalendarIcon, X } from "lucide
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { format } from "date-fns";
 
 interface PipelineFiltersProps {
@@ -26,6 +27,9 @@ export function PipelineFilters({ filters, onFiltersChange }: PipelineFiltersPro
   const { data: teamMembers } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
   const { userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
 
   const toggleStage = (stageId: string) => {
     const newSelectedStages = filters.selectedStages.includes(stageId)
@@ -105,7 +109,7 @@ export function PipelineFilters({ filters, onFiltersChange }: PipelineFiltersPro
           </SelectContent>
         </Select>
 
-        {userRole === 'admin' && (
+        {isAdmin && (
           <Select
             value={filters.assignedTo}
             onValueChange={(value) => onFiltersChange({ ...filters, assignedTo: value })}

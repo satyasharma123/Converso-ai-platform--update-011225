@@ -2,6 +2,7 @@ import { Conversation, useUpdateConversationStage } from "@/hooks/useConversatio
 import { useConversations } from "@/hooks/useConversations";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { KanbanColumn } from "./KanbanColumn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -24,6 +25,9 @@ export function KanbanBoard({ filters, onLeadClick }: KanbanBoardProps) {
   const { data: allConversations = [], isLoading, error: conversationsError } = useConversations();
   const { data: pipelineStages = [], isLoading: isLoadingStages, error: stagesError } = usePipelineStages();
   const { userRole, user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const updateStage = useUpdateConversationStage();
 
   // Filter out conversations without a stage assigned
@@ -126,7 +130,7 @@ export function KanbanBoard({ filters, onLeadClick }: KanbanBoardProps) {
     let filtered = conversations?.filter(conv => conv.custom_stage_id === stageId) || [];
     
     // SDR role filtering: only show assigned conversations
-    if (userRole === 'sdr' && user) {
+    if (!isAdmin && user) {
       filtered = filtered.filter(conv => conv.assigned_to === user.id);
     }
     

@@ -11,6 +11,7 @@ import { useToggleRead, useAssignConversation, useUpdateConversationStage, useTo
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 
 export interface Conversation {
   id: string;
@@ -71,6 +72,9 @@ export function ConversationList({
   const toggleFavorite = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
   const { userRole } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin' || userRole === 'admin';
   const { data: stages = [] } = usePipelineStages();
   const { data: teamMembers = [] } = useTeamMembers();
 
@@ -324,7 +328,7 @@ export function ConversationList({
                 )}
               </DropdownMenuItem>
 
-              {userRole === 'admin' && (
+              {isAdmin && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
                     <UserPlus className="h-4 w-4 mr-2" />
