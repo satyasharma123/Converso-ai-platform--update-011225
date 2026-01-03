@@ -482,7 +482,7 @@ export default function Settings() {
   const linkedInAccounts = connectedAccounts.filter(acc => acc.account_type === "linkedin");
 
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-56px)] min-h-0">
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 bg-background border-b pb-4">

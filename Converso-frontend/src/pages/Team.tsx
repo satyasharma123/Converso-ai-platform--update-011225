@@ -306,7 +306,7 @@ export default function Team() {
   };
 
   return (
-    <AppLayout role="admin" userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-full -m-6">
         {/* Fixed Header Section */}
         <div className="flex-shrink-0 px-10 pt-10 pb-6 space-y-6">

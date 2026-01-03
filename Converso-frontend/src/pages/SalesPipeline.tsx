@@ -73,7 +73,7 @@ export default function SalesPipeline() {
   };
 
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-80px)] overflow-x-hidden overflow-y-hidden">
         {/* Fixed Header */}
         <div className="flex-shrink-0 pb-4 border-b">

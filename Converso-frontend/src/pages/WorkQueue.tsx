@@ -190,7 +190,7 @@ export default function WorkQueue() {
   }
 
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-56px-48px)]">
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 bg-background border-b pb-4">

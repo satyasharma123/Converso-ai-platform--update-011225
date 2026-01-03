@@ -157,7 +157,7 @@ export default function Dashboard() {
     .slice(0, 6);
   
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-56px)] min-h-0">
         {/* Sticky Header */}
         <div className="sticky top-0 z-20 bg-background border-b pb-4">

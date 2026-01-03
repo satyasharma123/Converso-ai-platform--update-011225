@@ -590,7 +590,7 @@ export default function LinkedInInbox() {
   } : null;
 
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col lg:flex-row gap-2 h-[calc(100vh-120px)]">
         <div className="overflow-hidden flex flex-col lg:w-[27%]">
           <div className="sticky top-0 z-10 bg-background space-y-2 mb-3">

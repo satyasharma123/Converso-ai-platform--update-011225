@@ -43,10 +43,6 @@ const systemItems = [
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
-interface SidebarProps {
-  role?: "admin" | "sdr";
-}
-
 // Section label component
 function SectionLabel({ children, isFirst = false }: { children: React.ReactNode; isFirst?: boolean }) {
   return (
@@ -58,11 +54,11 @@ function SectionLabel({ children, isFirst = false }: { children: React.ReactNode
   );
 }
 
-export function Sidebar({ role = "admin" }: SidebarProps) {
+export function Sidebar() {
   const { open } = useSidebar();
   const location = useLocation();
   const { signOut } = useAuth();
-  const { isOwner } = useWorkspace();
+  const { activeWorkspace, isOwner } = useWorkspace();
   const navigate = useNavigate();
   
   // Fetch conversations to calculate unread counts
@@ -80,8 +76,9 @@ export function Sidebar({ role = "admin" }: SidebarProps) {
     return isRead === false || isRead === 'false' || isRead === 0;
   }).length;
 
-  // OWNER gets admin UI (role === 'admin' || isOwner)
-  const showAdminItems = role === "admin" || isOwner;
+  const workspaceRole = (activeWorkspace?.role || "").toString().toLowerCase();
+  // OWNER gets admin UI (workspace-scoped role)
+  const showAdminItems = isOwner || workspaceRole === "admin";
   const salesItems = showAdminItems ? salesItemsAdmin : salesItemsSdr;
 
   const handleLogout = async () => {

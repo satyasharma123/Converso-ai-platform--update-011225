@@ -693,7 +693,7 @@ export default function EmailInbox() {
   const isAnySyncInProgress = syncStatuses.some((s: any) => s.status === 'in_progress');
 
   return (
-    <AppLayout role={userRole} userName={userDisplayName}>
+    <AppLayout userName={userDisplayName}>
       <div className="flex flex-col h-[calc(100vh-100px)] overflow-hidden">
         {/* Main Content Area */}
         <div className="flex flex-1 overflow-hidden relative">
