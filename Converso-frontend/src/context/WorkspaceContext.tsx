@@ -16,6 +16,7 @@ interface WorkspaceContextType {
   loading: boolean;
   hasNoWorkspaceMembership: boolean | null;
   isOwner: boolean;
+  refreshWorkspaces: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -122,6 +123,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       });
   }, [user?.id, fetchWorkspaces]);
 
+  const refreshWorkspaces = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      await fetchWorkspaces(user.id);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const setActiveWorkspaceId = useCallback(
     (id: string) => {
       if (!user?.id) return;
@@ -154,6 +165,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         loading,
         hasNoWorkspaceMembership,
         isOwner: isOwner || false,
+        refreshWorkspaces,
       }}
     >
       {children}

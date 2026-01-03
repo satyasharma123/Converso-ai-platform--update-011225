@@ -58,7 +58,7 @@ import { toast } from "sonner";
 export default function Team() {
   const { user } = useAuth();
   const { data: userProfile } = useProfile();
-  const { activeWorkspace } = useWorkspace();
+  const { activeWorkspace, refreshWorkspaces } = useWorkspace();
   const { data: teamMembers = [], isLoading, error } = useTeamMembers();
   const { data: conversations = [] } = useConversations();
   const createMember = useCreateTeamMember();
@@ -288,6 +288,9 @@ export default function Team() {
         id: memberId,
         role: newRole,
       });
+      // Ensure workspace-scoped role (workspace_members.role) is refreshed
+      // so routing + permissions update without reload.
+      await refreshWorkspaces();
     } catch (error) {
       // Error is handled by the hook
     }
