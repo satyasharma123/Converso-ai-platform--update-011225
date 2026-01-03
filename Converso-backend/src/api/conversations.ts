@@ -183,8 +183,6 @@ async function getEmailConversationsByFolder(
   userRole: 'admin' | 'sdr' | null,
   folder: string
 ): Promise<Conversation[]> {
-  console.log(`[EMAIL FOLDER] Starting query for folder: ${folder}, userRole: ${userRole}, userId: ${userId}`);
-  
   // Step 1: Get all email conversations with received_account info
   let convQuery = supabaseAdmin
     .from('conversations')
@@ -206,7 +204,6 @@ async function getEmailConversationsByFolder(
   // SDR filtering here MUST exactly match RLS:
   // SDRs can ONLY see conversations where assigned_to = userId
   if (userRole === 'sdr') {
-    console.log(`[EMAIL FOLDER SDR] Applying assigned_to filter for userId: ${userId}`);
     convQuery = convQuery.eq('assigned_to', userId);
   }
 
@@ -218,83 +215,93 @@ async function getEmailConversationsByFolder(
   }
   
   if (!allConversations || allConversations.length === 0) {
-    console.log(`[EMAIL FOLDER] No email conversations found (userRole=${userRole}, folder=${folder})`);
     return [];
   }
   
-  console.log(`[EMAIL FOLDER] Found ${allConversations.length} total email conversations for userRole=${userRole}`);
-  
-  console.log(`[EMAIL FOLDER] Found ${allConversations.length} total email conversations`);
-  
   const conversationIds = allConversations.map(c => c.id);
-  
-  // Step 2: Get latest message in the specific folder for each conversation
-  // ✅ FIX: Batch queries to avoid HeadersOverflowError (max 100 IDs per query)
+
+  // Step 2: Fetch latest message per conversation (NO folder filtering)
+  // Folder should only affect which message we use for preview; assigned conversations must never be dropped.
   const BATCH_SIZE = 100;
+  const allLatestMessages: any[] = [];
   const allFolderMessages: any[] = [];
-  
+
   for (let i = 0; i < conversationIds.length; i += BATCH_SIZE) {
     const batch = conversationIds.slice(i, i + BATCH_SIZE);
-    
-    const { data: batchMessages, error: msgError } = await supabaseAdmin
+
+    // Latest messages across ANY folder (used as fallback preview)
+    const { data: batchLatest, error: latestErr } = await supabaseAdmin
       .from('messages')
       .select('conversation_id, created_at, content, subject, provider_folder, sender_name, sender_email, is_from_lead')
       .in('conversation_id', batch)
-      // Case-insensitive folder match: provider values may vary in casing (e.g. INBOX vs inbox)
-      .ilike('provider_folder', folder)
       .order('created_at', { ascending: false });
-    
-    if (msgError) {
-      console.error('[EMAIL FOLDER] Messages query error:', msgError);
-      throw msgError;
+
+    if (latestErr) {
+      console.error('[EMAIL FOLDER] Messages (latest) query error:', latestErr);
+      throw latestErr;
     }
-    
-    if (batchMessages) {
-      allFolderMessages.push(...batchMessages);
+    if (batchLatest) {
+      allLatestMessages.push(...batchLatest);
+    }
+
+    // Folder-specific messages (optional preview preference)
+    if (folder) {
+      const { data: batchFolderMsgs, error: folderErr } = await supabaseAdmin
+        .from('messages')
+        .select('conversation_id, created_at, content, subject, provider_folder, sender_name, sender_email, is_from_lead')
+        .in('conversation_id', batch)
+        .ilike('provider_folder', folder)
+        .order('created_at', { ascending: false });
+
+      if (folderErr) {
+        console.error('[EMAIL FOLDER] Messages (folder) query error:', folderErr);
+        throw folderErr;
+      }
+      if (batchFolderMsgs) {
+        allFolderMessages.push(...batchFolderMsgs);
+      }
     }
   }
-  
-  const folderMessages = allFolderMessages;
-  
-  if (!folderMessages || folderMessages.length === 0) {
-    console.log(`[EMAIL FOLDER] No messages found in folder: ${folder}`);
-    return [];
-  }
-  
-  console.log(`[EMAIL FOLDER] Found ${folderMessages.length} messages in folder: ${folder}`);
-  
-  // Step 3: Group by conversation and get latest message per conversation
-  const latestByConversation = new Map<string, any>();
-  for (const msg of folderMessages) {
-    if (!latestByConversation.has(msg.conversation_id)) {
-      latestByConversation.set(msg.conversation_id, msg);
+
+  // Build message maps: pick the first (latest) per conversation
+  const latestMsgByConversation = new Map<string, any>();
+  for (const msg of allLatestMessages) {
+    if (!latestMsgByConversation.has(msg.conversation_id)) {
+      latestMsgByConversation.set(msg.conversation_id, msg);
     }
   }
-  
-  // Step 4: Filter conversations that have messages in this folder
-  const filtered = allConversations
-    .filter(conv => latestByConversation.has(conv.id))
-    .map(conv => {
-      const latestMsg = latestByConversation.get(conv.id);
+
+  const folderMsgByConversation = new Map<string, any>();
+  for (const msg of allFolderMessages) {
+    if (!folderMsgByConversation.has(msg.conversation_id)) {
+      folderMsgByConversation.set(msg.conversation_id, msg);
+    }
+  }
+
+  // Step 3: Return ALL conversations; choose preview message by folder first, then fallback to latest.
+  const hydrated = (allConversations as any[])
+    .map((conv) => {
+      const preferred = folderMsgByConversation.get(conv.id) || latestMsgByConversation.get(conv.id) || null;
+      if (!preferred) return conv;
       return {
         ...conv,
-        folder_last_message_at: latestMsg.created_at,
-        folder_preview: latestMsg.content || latestMsg.subject,
-        folder_name: latestMsg.provider_folder,
-        folder_sender_name: latestMsg.sender_name,
-        folder_sender_email: latestMsg.sender_email,
-        folder_is_from_lead: latestMsg.is_from_lead
+        folder_last_message_at: preferred.created_at,
+        folder_preview: preferred.content || preferred.subject,
+        folder_name: preferred.provider_folder,
+        folder_sender_name: preferred.sender_name,
+        folder_sender_email: preferred.sender_email,
+        folder_is_from_lead: preferred.is_from_lead,
       };
     })
     .sort((a: any, b: any) => {
-      return new Date(b.folder_last_message_at).getTime() - new Date(a.folder_last_message_at).getTime();
+      const timeA = a.folder_last_message_at ? new Date(a.folder_last_message_at).getTime() : 0;
+      const timeB = b.folder_last_message_at ? new Date(b.folder_last_message_at).getTime() : 0;
+      return timeB - timeA;
     });
-  
-  console.log(`[EMAIL FOLDER] Filtered to ${filtered.length} conversations with messages in folder: ${folder}`);
   
   // Fetch user-specific state and merge it with conversations
   // Unread status is user-specific: Admin unread ≠ SDR unread
-  let result = filtered as Conversation[];
+  let result = hydrated as Conversation[];
   if (result.length > 0 && userId) {
     const conversationIds = result.map(c => c.id);
     const userStates = await getUserConversationStates(userId, conversationIds);
@@ -315,7 +322,6 @@ async function getEmailConversationsByFolder(
     });
   }
   
-  console.log(`[EMAIL FOLDER FINAL] Returning ${result.length} conversations (userRole=${userRole}, folder=${folder})`);
   return result;
 }
 
