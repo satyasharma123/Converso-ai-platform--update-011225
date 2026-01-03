@@ -10,8 +10,12 @@ export const connectedAccountsService = {
   /**
    * Get all active connected accounts, optionally filtered by user
    */
-  async getAccounts(userId?: string, client?: SupabaseClient): Promise<ConnectedAccount[]> {
-    return connectedAccountsApi.getConnectedAccounts(userId, client);
+  async getAccounts(
+    userId?: string,
+    client?: SupabaseClient,
+    workspaceId?: string
+  ): Promise<ConnectedAccount[]> {
+    return connectedAccountsApi.getConnectedAccounts(userId, client, workspaceId);
   },
 
   /**

@@ -3,6 +3,7 @@ import { connectedAccountsService } from '../services/connectedAccounts';
 import { asyncHandler } from '../utils/errorHandler';
 import { optionalAuth, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { getUserWorkspaceId, resolveWorkspaceId } from '../utils/workspace';
 
 const router = Router();
 
@@ -16,7 +17,13 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.query.userId as string | undefined;
     const client = req.supabaseClient || undefined;
-    const accounts = await connectedAccountsService.getAccounts(userId, client);
+    let workspaceId: string | undefined;
+    if (userId) {
+      const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+      workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+    }
+
+    const accounts = await connectedAccountsService.getAccounts(userId, client, workspaceId);
     res.json({ data: accounts });
   })
 );

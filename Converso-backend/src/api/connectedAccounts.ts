@@ -7,7 +7,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * API module for connected account-related database queries
  */
 
-export async function getConnectedAccounts(userId?: string, client?: SupabaseClient): Promise<ConnectedAccount[]> {
+export async function getConnectedAccounts(
+  userId?: string,
+  client?: SupabaseClient,
+  workspaceId?: string
+): Promise<ConnectedAccount[]> {
   // Always use admin client to bypass RLS for connected accounts query
   // This is safe because we filter by user_id/workspace_id
   const dbClient = client || supabaseAdmin;
@@ -15,7 +19,8 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
   // If userId is provided, get their workspace_id from workspace_members and fetch all accounts for that workspace
   if (userId) {
     try {
-      const { workspaceId } = await resolveActiveWorkspace({ userId });
+      // If a workspaceId is provided (from X-Workspace-Id), validate membership before using it.
+      const resolved = await resolveActiveWorkspace({ userId, workspaceId });
       
       // STRICT workspace filtering for SaaS isolation
       // Only show accounts in user's workspace
@@ -23,7 +28,7 @@ export async function getConnectedAccounts(userId?: string, client?: SupabaseCli
         .from('connected_accounts')
         .select('*')
         .eq('is_active', true)
-        .eq('workspace_id', workspaceId)
+        .eq('workspace_id', resolved.workspaceId)
         .order('account_name');
       
       if (error) throw error;

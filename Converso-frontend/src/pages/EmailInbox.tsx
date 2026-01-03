@@ -129,7 +129,8 @@ export default function EmailInbox() {
   // Hydrate filters from URL on mount (once)
   useEffect(() => {
     setTabValue(urlState.get("tab", "all") as 'all' | 'unread' | 'favorites');
-    setAccountFilter(urlState.get("account", "all"));
+    // IMPORTANT: null/undefined must mean "All Accounts" (do NOT filter everything out)
+    setAccountFilter(urlState.get("account", "all") || "all");
     const urlSearch = urlState.get("q", "");
     setSearchQuery(urlSearch);
     setDebouncedSearch(urlSearch);
@@ -377,6 +378,7 @@ export default function EmailInbox() {
         (conv as any).receivedOnAccountId ||
         (conv as any).received_account?.id;
       const matchesAccount =
+        !accountFilter ||
         accountFilter === 'all' ||
         accountId === accountFilter;
 
