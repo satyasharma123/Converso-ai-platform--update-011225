@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import { conversationsApi } from '@/lib/backend-api';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import type { Conversation } from '@backend/src/types';
 
 // Re-export types for convenience
@@ -9,9 +10,11 @@ export type { Conversation } from '@backend/src/types';
 
 export function useConversations(type?: 'email' | 'linkedin', folder?: string, enabled: boolean = true) {
   const { user } = useAuth();
+  const { activeWorkspace } = useWorkspace();
+  const workspaceId = activeWorkspace?.id;
 
   return useQuery({
-    queryKey: ['conversations', type, folder, user?.id],
+    queryKey: ['conversations', workspaceId, type, folder, user?.id],
     queryFn: async () => {
       if (!user) return [];
       
@@ -72,7 +75,8 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
       // - LinkedIn: use existing endpoint
       return conversationsApi.list(type, folder);
     },
-    enabled: !!user && enabled, // ✅ FIX: Allow conditional enabling
+    // IMPORTANT: wait for active workspace id so requests include X-Workspace-Id deterministically
+    enabled: !!user && !!workspaceId && enabled,
     // ✅ OPTIMIZED: Only LinkedIn gets polling, Email uses manual refresh
     refetchInterval: type === 'linkedin' ? 15000 : false, // LinkedIn: 15s, Email: manual only
     refetchOnWindowFocus: type === 'linkedin', // ✅ FIX: Only LinkedIn auto-refetches

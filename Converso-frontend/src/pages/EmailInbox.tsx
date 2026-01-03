@@ -24,7 +24,6 @@ import { useAssignConversation, useUpdateConversationStage, useToggleRead, useTo
 import { useMessages } from "@/hooks/useMessages";
 import { useEmailSyncStatus, useInitEmailSync, type SyncStatus } from "@/hooks/useEmailSync";
 import { useConnectedAccounts } from "@/hooks/useConnectedAccounts";
-import { useWorkspace } from "@/hooks/useWorkspace";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useQueryClient } from "@tanstack/react-query";
@@ -81,9 +80,10 @@ export default function EmailInbox() {
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   
   const { user } = useAuth();
-  const { activeWorkspace, isOwner } = useWorkspace();
+  const { activeWorkspace, isOwner, loading: workspaceLoading } = useWorkspace();
   const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
   const isAdmin = isOwner || workspaceRole === 'admin';
+  const workspace = activeWorkspace;
   
   // Sync URL folder -> state (URL is source of truth)
   useEffect(() => {
@@ -176,7 +176,6 @@ export default function EmailInbox() {
   const { data: syncStatuses = [] } = useEmailSyncStatus();
   const initSync = useInitEmailSync();
   const queryClient = useQueryClient();
-  const { data: workspace, isLoading: workspaceLoading } = useWorkspace();
   const { data: stages = [] } = usePipelineStages();
   const toggleFavoriteConversation = useToggleFavoriteConversation();
   const deleteConversation = useDeleteConversation();
