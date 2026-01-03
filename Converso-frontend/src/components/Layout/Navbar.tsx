@@ -19,6 +19,7 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
     workspaces,
     activeWorkspace,
     setActiveWorkspaceId,
+    refreshWorkspaces,
     loading,
   } = useWorkspace();
 
@@ -48,7 +49,10 @@ export function Navbar({ userName = "John Doe", role = "admin" }: NavbarProps) {
               {workspaces.map((ws) => (
                 <DropdownMenuItem
                   key={ws.id}
-                  onClick={() => setActiveWorkspaceId(ws.id)}
+                  onClick={() => {
+                    setActiveWorkspaceId(ws.id);
+                    void refreshWorkspaces();
+                  }}
                 >
                   {ws.name}
                 </DropdownMenuItem>

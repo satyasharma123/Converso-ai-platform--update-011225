@@ -42,9 +42,9 @@ export async function getTeamMembers(workspaceId: string): Promise<TeamMember[]>
 
   // Map workspace_members to TeamMember format
   // Role comes from workspace_members.role (workspace-specific)
-  const teamMembers: TeamMember[] = members
-    .filter(m => m.profiles) // Filter out any null profiles
-    .map(m => ({
+  const teamMembers: TeamMember[] = (members as any[])
+    .filter((m) => m.profiles) // Filter out any null profiles
+    .map((m) => ({
       id: m.profiles.id,
       email: m.profiles.email,
       full_name: m.profiles.full_name,
@@ -98,18 +98,6 @@ export async function updateTeamMemberRole(
 
   if (error) {
     throw new Error(`Failed to update workspace member role: ${error.message}`);
-  }
-
-  // Also update user_roles for backward compatibility (optional, non-blocking)
-  const { error: roleErr } = await supabaseAdmin
-    .from('user_roles')
-    .upsert(
-      { user_id: userId, role },
-      { onConflict: 'user_id,role' }
-    );
-
-  if (roleErr) {
-    console.warn('user_roles upsert failed (non-blocking):', roleErr.message);
   }
 }
 
@@ -219,21 +207,6 @@ export async function createTeamMember(
     throw new Error(`Failed to upsert workspace member: ${memberUpsertErr.message}`);
   }
 
-  // D) Upsert user_roles (if table exists)
-  // If schema enforces unique(user_id, role), this is safe.
-  const { error: roleErr } = await supabaseAdmin
-    .from('user_roles')
-    .upsert(
-      { user_id: userId, role },
-      { onConflict: 'user_id,role' }
-    );
-
-  // If schema differs and this fails, DO NOT break team add.
-  // Log but allow membership to exist.
-  if (roleErr) {
-    console.warn('user_roles upsert failed:', roleErr.message);
-  }
-
   // E) Return a stable response for frontend
   const { data: finalProfile, error: finalProfileErr } = await supabaseAdmin
     .from('profiles')
@@ -245,22 +218,17 @@ export async function createTeamMember(
     throw new Error(`Failed to load created profile: ${finalProfileErr.message}`);
   }
 
-  // Get role from user_roles to ensure consistency
-  const { data: userRole } = await supabaseAdmin
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .maybeSingle();
+  const profileRow = finalProfile as any;
 
   return {
-    id: finalProfile.id,
-    email: finalProfile.email,
-    full_name: finalProfile.full_name, // This will be existing name if profile existed
-    role: (userRole?.role as 'admin' | 'sdr') || role,
-    status: finalProfile.status as 'invited' | 'active' | undefined,
+    id: profileRow.id,
+    email: profileRow.email,
+    full_name: profileRow.full_name, // This will be existing name if profile existed
+    role,
+    status: profileRow.status as 'invited' | 'active' | undefined,
     workspace_id: workspaceId,
-    created_at: finalProfile.created_at,
-    updated_at: finalProfile.updated_at,
+    created_at: profileRow.created_at,
+    updated_at: profileRow.updated_at,
   } as TeamMember;
 }
 
