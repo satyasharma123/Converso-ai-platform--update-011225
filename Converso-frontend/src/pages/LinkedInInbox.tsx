@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { useProfile } from "@/hooks/useProfile";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
@@ -59,7 +60,10 @@ export default function LinkedInInbox() {
     stage: 'all',
   });
   
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
 
   const activeFilterCount =
     (filterState.sdr !== 'all' ? 1 : 0) +
@@ -751,10 +755,10 @@ export default function LinkedInInbox() {
               ) : filteredConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center">
                   <p className="text-sm text-muted-foreground mb-2">
-                    {userRole === 'sdr' ? 'No Assigned Conversations' : 'No conversations found'}
+                    {!isAdmin ? 'No Assigned Conversations' : 'No conversations found'}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {userRole === 'sdr' 
+                    {!isAdmin
                       ? 'You don\'t have any LinkedIn conversations assigned to you yet.'
                       : 'The database is empty. Please seed the database.'}
                   </p>

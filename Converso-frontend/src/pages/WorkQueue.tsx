@@ -18,9 +18,13 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { LeadDetailsModal } from "@/components/Pipeline/LeadDetailsModal";
 import type { Conversation } from "@/hooks/useConversations";
 import { useSearchParams } from "react-router-dom";
+import { useWorkspace } from "@/context/WorkspaceContext";
 
 export default function WorkQueue() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
@@ -267,7 +271,7 @@ export default function WorkQueue() {
                     </Select>
 
                     {/* Assigned SDR Filter (Admin only) */}
-                    {userRole === 'admin' && (
+                    {isAdmin && (
                       <Select value={assignedSdrFilter} onValueChange={setAssignedSdrFilter}>
                         <SelectTrigger className="w-[140px] h-9">
                           <SelectValue placeholder="All SDRs" />
@@ -342,7 +346,7 @@ export default function WorkQueue() {
                     {sortKey === 'stage_name' && sortDirection === 'desc' && <ArrowDown className="h-3 w-3" />}
                   </div>
                 </TableHead>
-                {userRole === 'admin' && (
+                {isAdmin && (
                   <TableHead>
                     <div
                       className="flex items-center gap-1 cursor-pointer select-none"
@@ -394,7 +398,7 @@ export default function WorkQueue() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={userRole === 'admin' ? 8 : 7} className="h-64 text-center">
+                  <TableCell colSpan={isAdmin ? 8 : 7} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <ListTodo className="h-12 w-12 mb-4 opacity-20 animate-pulse" />
                       <p className="text-sm">Loading work queue...</p>
@@ -403,7 +407,7 @@ export default function WorkQueue() {
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={userRole === 'admin' ? 8 : 7} className="h-64 text-center">
+                  <TableCell colSpan={isAdmin ? 8 : 7} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <ListTodo className="h-12 w-12 mb-4 opacity-20" />
                       <p className="text-sm text-red-500">{error}</p>
@@ -412,7 +416,7 @@ export default function WorkQueue() {
                 </TableRow>
               ) : sortedItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={userRole === 'admin' ? 8 : 7} className="h-64 text-center">
+                  <TableCell colSpan={isAdmin ? 8 : 7} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <ListTodo className="h-12 w-12 mb-4 opacity-20" />
                       <p className="text-sm">
@@ -462,7 +466,7 @@ export default function WorkQueue() {
                     </TableCell>
 
                     {/* Assigned To (Admin only) */}
-                    {userRole === 'admin' && (
+                    {isAdmin && (
                       <TableCell className="align-middle whitespace-nowrap">
                         {item.assigned_sdr_id 
                           ? <span className="text-xs">{teamMembers.find(m => m.id === item.assigned_sdr_id)?.full_name || 'Unknown'}</span>

@@ -16,9 +16,13 @@ import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import type { Conversation } from "@/hooks/useConversations";
 import { LeadDetailsModal } from "@/components/Pipeline/LeadDetailsModal";
+import { useWorkspace } from "@/context/WorkspaceContext";
 
 export default function Dashboard() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const navigate = useNavigate();
@@ -66,13 +70,13 @@ export default function Dashboard() {
   const myWorkToday = dashboardItems
     .filter(item => {
       if (!item.pending_reply && !item.overdue) return false;
-      if (userRole === 'sdr' && item.assigned_sdr_id !== user?.id) return false;
+      if (!isAdmin && item.assigned_sdr_id !== user?.id) return false;
       return true;
     })
     .slice(0, 8);
 
   // SDR Leaderboard logic
-  const sdrUsers = userRole === 'sdr'
+  const sdrUsers = !isAdmin
     ? teamMembers.filter(m => m.id === user?.id)
     : teamMembers.filter(m => m.role === 'sdr');
 
@@ -144,7 +148,7 @@ export default function Dashboard() {
     })
     .filter((event) => {
       // SDR sees only their activity
-      if (userRole === "sdr") {
+      if (!isAdmin) {
         return event.sdrId === user?.id;
       }
       return true;

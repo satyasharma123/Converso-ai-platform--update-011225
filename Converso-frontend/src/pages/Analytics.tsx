@@ -9,6 +9,7 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useConversations } from "@/hooks/useConversations";
 import { workQueueApi, type WorkQueueItem } from "@/lib/backend-api";
 import { useState, useEffect, useMemo } from "react";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   calculateSDRLeaderboard,
   calculateLeadFunnel,
@@ -37,7 +38,10 @@ import {
 } from "recharts";
 
 export default function Analytics() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();
@@ -81,8 +85,15 @@ export default function Analytics() {
 
   // Calculate all analytics data using memoization
   const sdrLeaderboardData = useMemo(
-    () => calculateSDRLeaderboard(filteredWorkQueueItems, filteredConversations, teamMembers, userRole, user?.id),
-    [filteredWorkQueueItems, filteredConversations, teamMembers, userRole, user?.id]
+    () =>
+      calculateSDRLeaderboard(
+        filteredWorkQueueItems,
+        filteredConversations,
+        teamMembers,
+        isAdmin ? 'admin' : 'sdr',
+        user?.id
+      ),
+    [filteredWorkQueueItems, filteredConversations, teamMembers, isAdmin, user?.id]
   );
 
   const leadFunnelData = useMemo(
@@ -96,8 +107,8 @@ export default function Analytics() {
   );
 
   const emailsByDay = useMemo(
-    () => calculateEmailsByDay(filteredConversations, userRole, user?.id),
-    [filteredConversations, userRole, user?.id]
+    () => calculateEmailsByDay(filteredConversations, isAdmin ? 'admin' : 'sdr', user?.id),
+    [filteredConversations, isAdmin, user?.id]
   );
 
   const conversionFunnelData = useMemo(
@@ -106,8 +117,8 @@ export default function Analytics() {
   );
 
   const radarData = useMemo(
-    () => calculateSDRPerformanceRadar(sdrLeaderboardData, userRole, user?.id),
-    [sdrLeaderboardData, userRole, user?.id]
+    () => calculateSDRPerformanceRadar(sdrLeaderboardData, isAdmin ? 'admin' : 'sdr', user?.id),
+    [sdrLeaderboardData, isAdmin, user?.id]
   );
   
   return (

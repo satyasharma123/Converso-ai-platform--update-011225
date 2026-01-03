@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { useProfile } from "@/hooks/useProfile";
 import { LeadProfilePanel } from "@/components/Inbox/LeadProfilePanel";
 import { useConversations } from "@/hooks/useConversations";
@@ -79,7 +80,10 @@ export default function EmailInbox() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showCheckboxes, setShowCheckboxes] = useState(false);
   
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
   
   // Sync URL folder -> state (URL is source of truth)
   useEffect(() => {
@@ -913,7 +917,7 @@ export default function EmailInbox() {
                       <p className="text-sm text-muted-foreground">Loading...</p>
                     </div>
                   </div>
-                ) : userRole === 'sdr' && filteredConversations.length === 0 ? (
+                ) : !isAdmin && filteredConversations.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
                     <h3 className="text-sm font-semibold mb-1">No email assigned</h3>
@@ -921,7 +925,7 @@ export default function EmailInbox() {
                       Once an admin assigns email, they will appear here.
                     </p>
                   </div>
-                ) : userRole === 'admin' && connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (
+                ) : isAdmin && connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-blue-500 mb-3" />
                     <h3 className="text-sm font-semibold mb-1">No Email Accounts</h3>

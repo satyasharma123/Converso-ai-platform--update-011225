@@ -8,11 +8,15 @@ import { PipelineFilters } from "@/components/Pipeline/PipelineFilters";
 import { LeadDetailsModal } from "@/components/Pipeline/LeadDetailsModal";
 import { useState, useEffect } from "react";
 import type { Conversation } from "@/hooks/useConversations";
+import { useWorkspace } from "@/context/WorkspaceContext";
 
 const STORAGE_KEY = 'sales-pipeline-filters';
 
 export default function SalesPipeline() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
+  const { activeWorkspace, isOwner } = useWorkspace();
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
   const { data: userProfile } = useProfile();
   const { data: teamMembers = [] } = useTeamMembers();
   const { data: pipelineStages = [] } = usePipelineStages();

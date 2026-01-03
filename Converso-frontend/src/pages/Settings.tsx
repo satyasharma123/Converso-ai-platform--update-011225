@@ -31,7 +31,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ConnectedAccount } from "@backend/src/types";
 
 export default function Settings() {
-  const { user, userRole, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { activeWorkspace, isOwner } = useWorkspaceContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,15 +71,17 @@ export default function Settings() {
   // Get active tab from URL or default
   // SDRs can only access profile and integrations tabs
   // OWNER gets admin UI
-  const isAdminOrOwner = userRole === 'admin' || isOwner;
+  const workspaceRole = (activeWorkspace?.role || '').toString().toLowerCase();
+  const isAdmin = isOwner || workspaceRole === 'admin';
+  const isAdminOrOwner = isAdmin;
   const activeTab = searchParams.get('tab') || (isAdminOrOwner ? 'rules' : 'profile');
   
   // Redirect SDRs if they try to access admin-only tabs
   useEffect(() => {
-    if (userRole === 'sdr' && !isOwner && (activeTab === 'rules' || activeTab === 'pipeline' || activeTab === 'workspace')) {
+    if (!isAdmin && (activeTab === 'rules' || activeTab === 'pipeline' || activeTab === 'workspace')) {
       setSearchParams({ tab: 'profile' });
     }
-  }, [userRole, activeTab, setSearchParams]);
+  }, [isAdmin, activeTab, setSearchParams]);
 
   // Profile state
   const [fullName, setFullName] = useState("");
