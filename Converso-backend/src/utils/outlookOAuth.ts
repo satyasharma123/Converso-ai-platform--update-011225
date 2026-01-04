@@ -31,12 +31,33 @@ const SCOPES = [
   'offline_access', // Get refresh token
 ].join(' ');
 
+// TypeScript interfaces for OAuth responses
+interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: string;
+  scope: string;
+}
+
+interface UserInfo {
+  id: string;
+  displayName: string;
+  mail: string;
+  userPrincipalName: string;
+}
+
+interface ErrorResponse {
+  error: string;
+  error_description?: string;
+}
+
 /**
  * Generate Microsoft OAuth2 authorization URL
- * @param {string} state - Optional state parameter for CSRF protection
- * @returns {string} Authorization URL
+ * @param state - Optional state parameter for CSRF protection
+ * @returns Authorization URL
  */
-function generateAuthUrl(state = null) {
+export function generateAuthUrl(state: string | null = null): string {
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
@@ -52,10 +73,10 @@ function generateAuthUrl(state = null) {
 
 /**
  * Exchange authorization code for access token
- * @param {string} code - Authorization code from callback
- * @returns {Promise<Object>} Token response with access_token and refresh_token
+ * @param code - Authorization code from callback
+ * @returns Token response with access_token and refresh_token
  */
-async function exchangeCodeForToken(code) {
+export async function exchangeCodeForToken(code: string): Promise<TokenResponse> {
   const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -72,7 +93,7 @@ async function exchangeCodeForToken(code) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }));
+    const error: ErrorResponse = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(`Token exchange failed: ${error.error_description || error.error || response.statusText}`);
   }
 
@@ -81,10 +102,10 @@ async function exchangeCodeForToken(code) {
 
 /**
  * Refresh access token using refresh token
- * @param {string} refreshToken - Refresh token
- * @returns {Promise<Object>} New token response
+ * @param refreshToken - Refresh token
+ * @returns New token response
  */
-async function refreshAccessToken(refreshToken) {
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const response = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -101,7 +122,7 @@ async function refreshAccessToken(refreshToken) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: response.statusText }));
+    const error: ErrorResponse = await response.json().catch(() => ({ error: response.statusText }));
     throw new Error(`Token refresh failed: ${error.error_description || error.error || response.statusText}`);
   }
 
@@ -110,10 +131,10 @@ async function refreshAccessToken(refreshToken) {
 
 /**
  * Get user info from access token
- * @param {string} accessToken - Access token
- * @returns {Promise<Object>} User info
+ * @param accessToken - Access token
+ * @returns User info
  */
-async function getUserInfo(accessToken) {
+export async function getUserInfo(accessToken: string): Promise<UserInfo> {
   const response = await fetch('https://graph.microsoft.com/v1.0/me', {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -127,13 +148,11 @@ async function getUserInfo(accessToken) {
   return await response.json();
 }
 
-module.exports = {
-  generateAuthUrl,
-  exchangeCodeForToken,
-  refreshAccessToken,
-  getUserInfo,
+// Export constants for use in other modules
+export {
   CLIENT_ID,
   CLIENT_SECRET,
   REDIRECT_URI,
   SCOPES,
 };
+

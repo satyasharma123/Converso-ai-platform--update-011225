@@ -10,9 +10,7 @@ import { connectedAccountsService } from '../services/connectedAccounts';
 import { logger } from '../utils/logger';
 import { supabaseAdmin, supabase } from '../lib/supabase';
 import { initEmailSync } from '../services/emailSync';
-
-// Import Outlook OAuth utilities
-const outlookOAuth = require('../utils/outlookOAuth');
+import * as outlookOAuth from '../utils/outlookOAuth';
 
 const router = Router();
 
