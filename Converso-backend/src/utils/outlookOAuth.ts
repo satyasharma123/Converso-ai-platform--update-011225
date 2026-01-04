@@ -93,11 +93,23 @@ export async function exchangeCodeForToken(code: string): Promise<TokenResponse>
   });
 
   if (!response.ok) {
-    let error: ErrorResponse = { error: response.statusText };
+    let errorMessage = response.statusText;
+
     try {
-      error = await response.json();
-    } catch {}
-    throw new Error(`Token exchange failed: ${error.error_description || error.error || response.statusText}`);
+      const body: unknown = await response.json();
+      if (
+        typeof body === 'object' &&
+        body !== null &&
+        'error' in body
+      ) {
+        const err = body as ErrorResponse;
+        errorMessage = err.error_description || err.error;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+
+    throw new Error(`Token exchange failed: ${errorMessage}`);
   }
 
   return (await response.json()) as TokenResponse;
@@ -125,11 +137,23 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   });
 
   if (!response.ok) {
-    let error: ErrorResponse = { error: response.statusText };
+    let errorMessage = response.statusText;
+
     try {
-      error = await response.json();
-    } catch {}
-    throw new Error(`Token refresh failed: ${error.error_description || error.error || response.statusText}`);
+      const body: unknown = await response.json();
+      if (
+        typeof body === 'object' &&
+        body !== null &&
+        'error' in body
+      ) {
+        const err = body as ErrorResponse;
+        errorMessage = err.error_description || err.error;
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+
+    throw new Error(`Token refresh failed: ${errorMessage}`);
   }
 
   return (await response.json()) as TokenResponse;
