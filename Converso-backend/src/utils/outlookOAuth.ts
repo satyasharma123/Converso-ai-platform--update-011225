@@ -93,11 +93,14 @@ export async function exchangeCodeForToken(code: string): Promise<TokenResponse>
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json().catch(() => ({ error: response.statusText }));
+    let error: ErrorResponse = { error: response.statusText };
+    try {
+      error = await response.json();
+    } catch {}
     throw new Error(`Token exchange failed: ${error.error_description || error.error || response.statusText}`);
   }
 
-  return await response.json();
+  return (await response.json()) as TokenResponse;
 }
 
 /**
@@ -122,11 +125,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   });
 
   if (!response.ok) {
-    const error: ErrorResponse = await response.json().catch(() => ({ error: response.statusText }));
+    let error: ErrorResponse = { error: response.statusText };
+    try {
+      error = await response.json();
+    } catch {}
     throw new Error(`Token refresh failed: ${error.error_description || error.error || response.statusText}`);
   }
 
-  return await response.json();
+  return (await response.json()) as TokenResponse;
 }
 
 /**
@@ -145,7 +151,7 @@ export async function getUserInfo(accessToken: string): Promise<UserInfo> {
     throw new Error('Failed to get user info');
   }
 
-  return await response.json();
+  return (await response.json()) as UserInfo;
 }
 
 // Export constants for use in other modules
