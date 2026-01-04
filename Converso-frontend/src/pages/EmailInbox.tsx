@@ -926,7 +926,7 @@ export default function EmailInbox() {
                       Once an admin assigns email, they will appear here.
                     </p>
                   </div>
-                ) : isAdmin && connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 ? (
+                ) : isAdmin && connectedAccounts.filter(acc => acc.account_type === 'email').length === 0 && filteredConversations.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                     <AlertCircle className="h-10 w-10 text-blue-500 mb-3" />
                     <h3 className="text-sm font-semibold mb-1">No Email Accounts</h3>
