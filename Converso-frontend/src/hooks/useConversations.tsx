@@ -85,7 +85,7 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
     refetchOnWindowFocus: type === 'linkedin' || isEmail,
     // Ensure email inbox doesn't stay stuck with cached empty results after assignment.
     refetchOnMount: isEmail ? 'always' : false,
-    staleTime: 5 * 60 * 1000, // ✅ FIX: Data fresh for 5 minutes (was 30s!)
+    staleTime: isEmail ? 0 : 5 * 60 * 1000, // Email: always fresh (no cache), LinkedIn: 5 min cache
   });
 }
 
