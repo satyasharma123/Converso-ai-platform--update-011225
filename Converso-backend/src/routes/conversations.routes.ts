@@ -433,5 +433,57 @@ router.post(
   })
 );
 
+/**
+ * GET /api/conversations/with-intents
+ * Get conversations with their latest detected intents (lead intents only)
+ * Used to display intent badges in conversation lists
+ */
+router.get(
+  '/with-intents',
+  optionalAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user?.id || req.headers['x-user-id'] as string || req.query.userId as string;
+    const userRole = req.user?.role || req.headers['x-user-role'] as 'admin' | 'sdr' | null || 
+                     (req.query.userRole as 'admin' | 'sdr' | null) || null;
+    const type = req.query.type as 'email' | 'linkedin' | undefined;
+    const folder = req.query.folder as string | undefined;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const fallbackWorkspaceId = await getUserWorkspaceId(userId);
+    const workspaceId = resolveWorkspaceId(req, fallbackWorkspaceId);
+
+    // Get conversations
+    const conversations = await conversationsService.getConversations(
+      userId,
+      userRole,
+      type,
+      folder,
+      workspaceId
+    );
+
+    // Get intents for these conversations
+    const conversationIds = conversations.map(c => c.id);
+    const { getConversationsWithIntents } = await import('../api/conversations');
+    const intentMap = await getConversationsWithIntents(workspaceId, conversationIds);
+
+    // Merge intents with conversations
+    const conversationsWithIntents = conversations.map(conv => {
+      const intent = intentMap.get(conv.id);
+      return {
+        ...conv,
+        intent: intent || null,
+      };
+    });
+
+    res.json({ 
+      data: transformConversations(conversationsWithIntents),
+      intent_count: intentMap.size,
+    });
+  })
+);
+
 export default router;
 

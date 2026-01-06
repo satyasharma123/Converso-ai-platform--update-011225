@@ -364,6 +364,9 @@ async function insertMessage(
     senderLinkedinUrl = conversation?.sender_linkedin_url || null;
   }
 
+  const isFromLead = !message.is_sender;
+  const messageContent = message.text || message.body_text || '';
+  
   const { error } = await supabaseAdmin
     .from('messages')
     .upsert({
@@ -374,9 +377,9 @@ async function insertMessage(
       sender_attendee_id: message.sender_attendee_id || null,
       sender_name: senderName,
       sender_linkedin_url: senderLinkedinUrl,
-      content: message.text || message.body_text || '',
+      content: messageContent,
       created_at: safeTimestamp(message),
-      is_from_lead: !message.is_sender,
+      is_from_lead: isFromLead,
       attachments: message.attachments || null,
       reactions: message.reactions || null,
       provider: 'linkedin',
@@ -386,6 +389,20 @@ async function insertMessage(
     logger.error(`[Unipile Webhook] Failed to insert message ${message.id}`, error);
   } else {
     logger.info(`[Unipile Webhook] Inserted message ${message.id}`);
+    
+    // ✨ AUTO INTENT DETECTION: Analyze LinkedIn message for lead intent
+    if (isFromLead && conversation?.workspace_id) {
+      const { autoDetectIntentForMessage } = await import('../services/autoIntentDetection');
+      await autoDetectIntentForMessage({
+        conversation_id: conversationId,
+        workspace_id: conversation.workspace_id,
+        message_content: messageContent,
+        is_from_lead: true,
+        conversation_context: {
+          sender_name: senderName,
+        },
+      });
+    }
   }
 }
 

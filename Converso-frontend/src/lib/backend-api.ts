@@ -27,6 +27,16 @@ export const conversationsApi = {
   },
 
   /**
+   * Get conversations with AI-detected intents (Agent 1 & Agent 2)
+   */
+  async listWithIntents(type?: 'email' | 'linkedin', folder?: string): Promise<Conversation[]> {
+    const params: Record<string, string> = {};
+    if (type) params.type = type;
+    if (folder) params.folder = folder;
+    return apiClient.get<Conversation[]>('/api/conversations/with-intents', params);
+  },
+
+  /**
    * Get email senders grouped by sender_email for Sales Pipeline
    */
   async listEmailSenders(): Promise<SenderPipelineItem[]> {

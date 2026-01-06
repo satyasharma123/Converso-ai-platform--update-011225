@@ -489,6 +489,22 @@ export async function initEmailSync(
             logger.error(`Error creating message ${parsed.messageId}:`, msgError);
           } else {
             logger.info(`✅ Created message with body: ${parsed.subject} in ${normalizedFolder} folder (HTML: ${emailHtmlBody?.length || 0}b, Text: ${emailTextBody?.length || 0}b)`);
+            
+            // ✨ AUTO INTENT DETECTION: Analyze message for lead intent
+            if (newMessage && newMessage.is_from_lead) {
+              const { autoDetectIntentForMessage } = await import('./autoIntentDetection');
+              await autoDetectIntentForMessage({
+                conversation_id: newMessage.conversation_id,
+                workspace_id: workspaceId,
+                message_content: emailTextBody || emailHtmlBody || parsed.snippet || '',
+                is_from_lead: true,
+                conversation_context: {
+                  subject: parsed.subject,
+                  sender_name: parsed.from.name,
+                  sender_email: parsed.from.email,
+                },
+              });
+            }
           }
 
           totalSynced++;

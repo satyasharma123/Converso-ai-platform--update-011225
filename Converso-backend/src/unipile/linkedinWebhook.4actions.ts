@@ -515,8 +515,10 @@ async function syncChatMessages(
         const messageId = deterministicId(`msg-${message.id}`);
         const createdAt = safeTimestamp(message) || new Date().toISOString();
 
+        const messageContent = message.text || message.body_text || '';
+        
         // Insert message
-        const { error } = await supabaseAdmin.from('messages').upsert(
+        const { error, data: insertedMessage } = await supabaseAdmin.from('messages').upsert(
           {
             id: messageId,
             conversation_id: conversationId,
@@ -525,7 +527,7 @@ async function syncChatMessages(
             sender_attendee_id: senderAttendeeId,
             sender_name: senderName,
             sender_linkedin_url: senderLinkedinUrl,
-            content: message.text || message.body_text || '',
+            content: messageContent,
             created_at: createdAt,
             is_from_lead: isFromLead,
             attachments: message.attachments || null,
@@ -533,12 +535,35 @@ async function syncChatMessages(
             provider: 'linkedin',
           },
           { onConflict: 'linkedin_message_id' }
-        );
+        ).select().single();
 
         if (error) {
           logger.error(`[Webhook] Failed to insert message ${message.id}`, error);
         } else {
           syncedCount++;
+          
+          // ✨ AUTO INTENT DETECTION: Analyze LinkedIn message for lead intent
+          if (isFromLead && insertedMessage) {
+            // Get workspace_id from conversation
+            const { data: conv } = await supabaseAdmin
+              .from('conversations')
+              .select('workspace_id')
+              .eq('id', conversationId)
+              .single();
+            
+            if (conv?.workspace_id) {
+              const { autoDetectIntentForMessage } = await import('../services/autoIntentDetection');
+              await autoDetectIntentForMessage({
+                conversation_id: conversationId,
+                workspace_id: conv.workspace_id,
+                message_content: messageContent,
+                is_from_lead: true,
+                conversation_context: {
+                  sender_name: senderName,
+                },
+              });
+            }
+          }
         }
       } catch (err) {
         logger.error(`[Webhook] Error processing message ${message.id}`, err);

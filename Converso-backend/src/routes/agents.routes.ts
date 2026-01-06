@@ -519,5 +519,340 @@ router.put('/config/:workspaceId/:agentType/config-data', async (req: Request, r
   }
 });
 
+// ============================================================================
+// AGENT 3: REPLY GENERATION ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/agents/generate-reply
+ * Generate a reply draft for a conversation
+ */
+router.post('/generate-reply', async (req: Request, res: Response) => {
+  try {
+    const {
+      conversation_id,
+      workspace_id,
+      user_id,
+      user_role,
+      conversation_history,
+      custom_instructions,
+    } = req.body;
+
+    // Validate required fields
+    if (!conversation_id || !workspace_id || !user_id || !user_role) {
+      return res.status(400).json({
+        error: 'Missing required fields: conversation_id, workspace_id, user_id, user_role',
+      });
+    }
+
+    // Validate user_role
+    if (user_role !== 'admin' && user_role !== 'sdr' && user_role !== 'owner') {
+      return res.status(400).json({
+        error: 'user_role must be "admin", "owner", or "sdr"',
+      });
+    }
+
+    // Import service
+    const { generateReply } = await import('../services/replyGeneration');
+
+    // Generate reply
+    const result = await generateReply({
+      conversation_id,
+      workspace_id,
+      user_id,
+      user_role,
+      conversation_history,
+      custom_instructions,
+    });
+
+    if (!result.success) {
+      if (result.permission_denied) {
+        return res.status(403).json({
+          error: result.error,
+          permission_denied: true,
+        });
+      }
+      
+      return res.status(400).json({
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Error in generate-reply endpoint:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/agents/regenerate-reply
+ * Regenerate a reply draft (user requested)
+ */
+router.post('/regenerate-reply', async (req: Request, res: Response) => {
+  try {
+    const {
+      conversation_id,
+      workspace_id,
+      user_id,
+      user_role,
+      conversation_history,
+      custom_instructions,
+    } = req.body;
+
+    // Validate required fields
+    if (!conversation_id || !workspace_id || !user_id || !user_role) {
+      return res.status(400).json({
+        error: 'Missing required fields: conversation_id, workspace_id, user_id, user_role',
+      });
+    }
+
+    // Validate user_role
+    if (user_role !== 'admin' && user_role !== 'sdr' && user_role !== 'owner') {
+      return res.status(400).json({
+        error: 'user_role must be "admin", "owner", or "sdr"',
+      });
+    }
+
+    // Import service
+    const { regenerateReply } = await import('../services/replyGeneration');
+
+    // Regenerate reply
+    const result = await regenerateReply({
+      conversation_id,
+      workspace_id,
+      user_id,
+      user_role,
+      conversation_history,
+      custom_instructions,
+    });
+
+    if (!result.success) {
+      if (result.permission_denied) {
+        return res.status(403).json({
+          error: result.error,
+          permission_denied: true,
+        });
+      }
+      
+      return res.status(400).json({
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Error in regenerate-reply endpoint:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/agents/reply-config/:workspaceId
+ * Get reply generation configuration for workspace
+ */
+router.get('/reply-config/:workspaceId', async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.params;
+    const { user_role } = req.query;
+
+    if (!user_role || (user_role !== 'admin' && user_role !== 'sdr')) {
+      return res.status(400).json({
+        error: 'user_role query parameter is required and must be "admin" or "sdr"',
+      });
+    }
+
+    const config = await getAgentConfiguration(workspaceId, 'reply_generation');
+
+    if (!config) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reply generation configuration not found',
+      });
+    }
+
+    // Check if user can access
+    const { canUserGenerateReply } = await import('../services/replyGeneration');
+    const permissionCheck = await canUserGenerateReply(
+      workspaceId,
+      user_role as 'admin' | 'sdr'
+    );
+
+    return res.status(200).json({
+      success: true,
+      config,
+      can_use: permissionCheck.allowed,
+      reason: permissionCheck.reason,
+    });
+  } catch (error: any) {
+    console.error('Error fetching reply config:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/agents/reply-config/:workspaceId
+ * Update reply generation configuration (Admin only)
+ */
+router.put('/reply-config/:workspaceId', async (req: Request, res: Response) => {
+  try {
+    const { workspaceId } = req.params;
+    const { config_data, user_role } = req.body;
+
+    // Only admin can update config
+    if (user_role !== 'admin') {
+      return res.status(403).json({
+        error: 'Only admins can update reply generation configuration',
+      });
+    }
+
+    if (!config_data) {
+      return res.status(400).json({
+        error: 'config_data is required',
+      });
+    }
+
+    const config = await updateAgentConfigData(
+      workspaceId,
+      'reply_generation',
+      config_data
+    );
+
+    return res.status(200).json({
+      success: true,
+      config,
+      message: 'Reply generation configuration updated successfully',
+    });
+  } catch (error: any) {
+    console.error('Error updating reply config:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+// ============================================================================
+// AGENT 2: LEAD ACTION ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/agents/apply-manual-tags
+ * Manually apply tags to a conversation (user-triggered)
+ */
+router.post('/apply-manual-tags', async (req: Request, res: Response) => {
+  try {
+    const { conversation_id, tags } = req.body;
+
+    if (!conversation_id || !tags || !Array.isArray(tags)) {
+      return res.status(400).json({
+        error: 'Missing required fields: conversation_id, tags (array)',
+      });
+    }
+
+    const { applyManualTags } = await import('../services/leadActionAgent');
+    const result = await applyManualTags(conversation_id, tags);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tags applied successfully',
+    });
+  } catch (error: any) {
+    console.error('Error applying manual tags:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/agents/remove-tags
+ * Remove tags from a conversation
+ */
+router.post('/remove-tags', async (req: Request, res: Response) => {
+  try {
+    const { conversation_id } = req.body;
+
+    if (!conversation_id) {
+      return res.status(400).json({
+        error: 'Missing required field: conversation_id',
+      });
+    }
+
+    const { removeTags } = await import('../services/leadActionAgent');
+    const result = await removeTags(conversation_id);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tags removed successfully',
+    });
+  } catch (error: any) {
+    console.error('Error removing tags:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/agents/run-lead-action
+ * Manually trigger Agent 2 for a conversation
+ */
+router.post('/run-lead-action', async (req: Request, res: Response) => {
+  try {
+    const { conversation_id, workspace_id } = req.body;
+
+    if (!conversation_id || !workspace_id) {
+      return res.status(400).json({
+        error: 'Missing required fields: conversation_id, workspace_id',
+      });
+    }
+
+    const { runLeadActionAgent } = await import('../services/leadActionAgent');
+    const result = await runLeadActionAgent(conversation_id, workspace_id);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      actions_taken: result.actions_taken,
+      message: 'Lead action agent completed successfully',
+    });
+  } catch (error: any) {
+    console.error('Error running lead action agent:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
 export default router;
 

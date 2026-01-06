@@ -1611,3 +1611,57 @@ export async function getWorkQueueFromView(
   logger.info(`[Work Queue View] Returning ${data.length} raw items`);
   return data;
 }
+
+/**
+ * Get conversations with their latest detected intent (lead intents only)
+ * Used to display intent badges in conversation lists
+ * 
+ * @param workspaceId - Workspace ID
+ * @param conversationIds - Optional array of specific conversation IDs to fetch intents for
+ * @returns Map of conversation_id -> latest lead-quality intent
+ */
+export async function getConversationsWithIntents(
+  workspaceId: string,
+  conversationIds?: string[]
+): Promise<Map<string, any>> {
+  const intentMap = new Map<string, any>();
+  
+  // Lead-quality intent types that should be displayed
+  const LEAD_INTENTS = ['pricing_inquiry', 'demo_request', 'meeting_request', 'interested', 'follow_up'];
+  
+  try {
+    // Build query for conversation intents
+    let query = supabaseAdmin
+      .from('conversation_intents')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .in('primary_intent', LEAD_INTENTS)
+      .order('detected_at', { ascending: false });
+    
+    // Optionally filter by specific conversation IDs
+    if (conversationIds && conversationIds.length > 0) {
+      query = query.in('conversation_id', conversationIds);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      logger.error('[Conversations With Intents] Error fetching intents:', error);
+      return intentMap;
+    }
+    
+    // Build map: conversation_id -> latest intent
+    // Only keep the most recent intent per conversation
+    for (const intent of (data || [])) {
+      if (!intentMap.has(intent.conversation_id)) {
+        intentMap.set(intent.conversation_id, intent);
+      }
+    }
+    
+    logger.info(`[Conversations With Intents] Found ${intentMap.size} conversations with lead intents`);
+    return intentMap;
+  } catch (error: any) {
+    logger.error('[Conversations With Intents] Error:', error);
+    return intentMap;
+  }
+}

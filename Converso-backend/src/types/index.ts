@@ -202,7 +202,7 @@ export interface AgentAction {
   workspace_id: string;
   
   // Agent Info
-  agent_type: 'intent_detection' | 'response_generation' | 'lead_scoring' | 'auto_assignment';
+  agent_type: 'intent_detection' | 'response_generation' | 'reply_generation' | 'lead_action' | 'lead_scoring' | 'auto_assignment';
   agent_version?: string;
   
   // Action Details
@@ -233,7 +233,7 @@ export interface AgentConfiguration {
   workspace_id: string;
   
   // Agent Details
-  agent_type: 'intent_detection' | 'response_generation' | 'lead_scoring' | 'auto_assignment';
+  agent_type: 'intent_detection' | 'response_generation' | 'reply_generation' | 'lead_action' | 'lead_scoring' | 'auto_assignment';
   agent_name: string;
   
   // Configuration
@@ -300,4 +300,91 @@ export interface DetectIntentResponse {
   intent?: ConversationIntent;
   error?: string;
   processing_time_ms?: number;
+}
+
+// ============================================================================
+// AGENT 3: REPLY GENERATION TYPES
+// ============================================================================
+
+/**
+ * Reply Generation Configuration
+ * Controls how Agent 3 generates replies for qualified conversations
+ */
+export interface ReplyGenerationConfig {
+  // Mode selection (mutually exclusive)
+  mode: 'draft_only' | 'auto_send';
+  
+  // SDR permissions
+  allow_sdr_access: boolean;
+  
+  // Tag requirements (at least one must be present)
+  required_tags: ('meeting_requested' | 'info_requested')[];
+  
+  // Safety guardrails
+  safety_rules: {
+    no_commitments: boolean;
+    no_pricing: boolean;
+    no_calendar_links: boolean;
+    no_legal_medical_financial: boolean;
+  };
+  
+  // Tone settings
+  tone: 'professional' | 'friendly' | 'formal';
+  max_draft_length: number; // characters
+  include_signature: boolean;
+}
+
+/**
+ * Generate Reply Request
+ * Input for generating a reply draft
+ */
+export interface GenerateReplyRequest {
+  conversation_id: string;
+  workspace_id: string;
+  user_id: string;
+  user_role: 'owner' | 'admin' | 'sdr';
+  
+  // Context
+  conversation_history?: {
+    sender_name?: string;
+    messages?: Array<{
+      content: string;
+      is_from_lead: boolean;
+      created_at: string;
+    }>;
+    subject?: string;
+    detected_intent?: string;
+  };
+  
+  // Optional override instructions
+  custom_instructions?: string;
+}
+
+/**
+ * Generate Reply Response
+ * Output from reply generation
+ */
+export interface GenerateReplyResponse {
+  success: boolean;
+  reply_draft?: string;
+  metadata?: {
+    intent_addressed: string;
+    tone_used: string;
+    word_count: number;
+    generation_time_ms: number;
+  };
+  error?: string;
+  permission_denied?: boolean;
+}
+
+/**
+ * Send Reply Request
+ * Used when auto-send mode is enabled
+ */
+export interface SendReplyRequest {
+  conversation_id: string;
+  workspace_id: string;
+  user_id: string;
+  reply_content: string;
+  channel: 'email' | 'linkedin';
 }

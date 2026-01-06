@@ -12,6 +12,7 @@ import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { IntentBadge, LeadTagPill } from "@/components/AIAgents";
 
 export interface Conversation {
   id: string;
@@ -49,6 +50,16 @@ export interface Conversation {
   emailFolder?: string | null;
   derived_folder?: string | null;
   derivedFolder?: string | null;
+  // ✅ AI Agent fields (Agent 1 & Agent 2)
+  intent?: {
+    primary_intent: string;
+    secondary_intents?: string[];
+    confidence_score: number;
+    detected_keywords?: string[];
+    sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed';
+  };
+  lead_tags?: string[];
+  manually_tagged?: boolean;
 }
 
 interface ConversationListProps {
@@ -281,6 +292,36 @@ export function ConversationList({
               <p className="text-xs text-muted-foreground line-clamp-2">
                 {stripHtml(displayPreview)}
               </p>
+
+              {/* AI Agent Row: Intent Badge + Lead Tags */}
+              {(conversation.intent || (conversation.lead_tags && conversation.lead_tags.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {/* Intent Badge (Agent 1) */}
+                  {conversation.intent && (
+                    <IntentBadge
+                      primaryIntent={conversation.intent.primary_intent}
+                      secondaryIntents={conversation.intent.secondary_intents}
+                      confidenceScore={conversation.intent.confidence_score}
+                      detectedKeywords={conversation.intent.detected_keywords}
+                      sentiment={conversation.intent.sentiment}
+                      showDetails={false}
+                    />
+                  )}
+                  
+                  {/* Lead Tags (Agent 2) */}
+                  {conversation.lead_tags && conversation.lead_tags.length > 0 && (
+                    <>
+                      {conversation.lead_tags.map((tag) => (
+                        <LeadTagPill
+                          key={tag}
+                          tag={tag as any}
+                          isManual={conversation.manually_tagged}
+                        />
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Fourth Row: Account Badge + SDR Badge */}
               <div className="flex items-center justify-between gap-2 pt-3">
