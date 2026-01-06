@@ -25,6 +25,7 @@ import emailTemplatesRoutes from './emailTemplates.routes';
 import testRoutes from './test.routes';
 import testWebhookRoutes from './test.webhook.routes';
 import eventsRoutes from './events.routes';
+import agentRoutes from './agents.routes';
 
 const router = Router();
 
@@ -54,6 +55,7 @@ router.use('/linkedin/webhook', linkedinWebhookRoutes);
 router.use('/linkedin/fix', linkedinFixRoutes);
 router.use('/unipile/webhook', unipileWebhookRoutes);
 router.use('/events', eventsRoutes);
+router.use('/agents', agentRoutes);
 
 // Test routes (remove in production)
 if (process.env.NODE_ENV !== 'production') {

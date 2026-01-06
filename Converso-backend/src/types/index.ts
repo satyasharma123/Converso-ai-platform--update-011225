@@ -150,3 +150,154 @@ export interface SenderPipelineItem {
   workspace_id: string;
   conversation_ids: string[];
 }
+
+// ============================================================================
+// AI AGENT SYSTEM TYPES (Added for Intent Detection & Agent Framework)
+// ============================================================================
+
+/**
+ * Conversation Intent Detection Result
+ * Stores AI-detected intents for incoming conversations
+ */
+export interface ConversationIntent {
+  id: string;
+  conversation_id: string;
+  workspace_id: string;
+  
+  // Intent Detection
+  primary_intent: 
+    | 'pricing_inquiry'
+    | 'demo_request'
+    | 'support_question'
+    | 'meeting_request'
+    | 'objection'
+    | 'follow_up'
+    | 'interested'
+    | 'not_interested'
+    | 'other';
+  secondary_intents?: string[];
+  confidence_score: number; // 0.0 to 1.0
+  
+  // Metadata
+  intent_metadata?: Record<string, any>;
+  detected_keywords?: string[];
+  sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed';
+  
+  // Agent Info
+  detected_by?: string;
+  model_version?: string;
+  
+  // Timestamps
+  detected_at?: string;
+  created_at?: string;
+}
+
+/**
+ * Agent Action Log
+ * Tracks all actions performed by AI agents
+ */
+export interface AgentAction {
+  id: string;
+  conversation_id: string;
+  workspace_id: string;
+  
+  // Agent Info
+  agent_type: 'intent_detection' | 'response_generation' | 'lead_scoring' | 'auto_assignment';
+  agent_version?: string;
+  
+  // Action Details
+  action_type: string;
+  action_description?: string;
+  action_data?: Record<string, any>;
+  
+  // Execution Status
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+  error_message?: string;
+  
+  // Performance
+  execution_time_ms?: number;
+  
+  // Timestamps
+  triggered_at?: string;
+  executed_at?: string;
+  completed_at?: string;
+  created_at?: string;
+}
+
+/**
+ * Agent Configuration
+ * Workspace-specific settings for AI agents
+ */
+export interface AgentConfiguration {
+  id: string;
+  workspace_id: string;
+  
+  // Agent Details
+  agent_type: 'intent_detection' | 'response_generation' | 'lead_scoring' | 'auto_assignment';
+  agent_name: string;
+  
+  // Configuration
+  is_enabled: boolean;
+  config_data: Record<string, any>;
+  
+  // Priority
+  priority?: number;
+  
+  // Trigger Conditions
+  trigger_conditions?: Record<string, any>;
+  
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Intent Detection Configuration
+ * Specific config structure for Intent Detection Agent
+ */
+export interface IntentDetectionConfig {
+  confidence_threshold: number; // Minimum confidence to record intent (0.0-1.0)
+  enable_sentiment_analysis: boolean;
+  detect_urgency: boolean;
+  intent_categories: string[];
+  custom_keywords?: Record<string, string[]>; // Intent -> keywords mapping
+}
+
+/**
+ * Agent Action Request
+ * Used when triggering agent actions programmatically
+ */
+export interface CreateAgentActionRequest {
+  conversation_id: string;
+  workspace_id: string;
+  agent_type: AgentAction['agent_type'];
+  action_type: string;
+  action_description?: string;
+  action_data?: Record<string, any>;
+}
+
+/**
+ * Intent Detection Request
+ * Input for intent detection service
+ */
+export interface DetectIntentRequest {
+  conversation_id: string;
+  workspace_id: string;
+  message_content: string;
+  conversation_context?: {
+    subject?: string;
+    sender_name?: string;
+    conversation_history?: string[];
+  };
+}
+
+/**
+ * Intent Detection Response
+ * Output from intent detection service
+ */
+export interface DetectIntentResponse {
+  success: boolean;
+  intent?: ConversationIntent;
+  error?: string;
+  processing_time_ms?: number;
+}
