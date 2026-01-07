@@ -994,6 +994,9 @@ export default function EmailInbox() {
                     folder_sender_name: (selectedConv as any).folder_sender_name || (selectedConv as any).folderSenderName || null,
                     folder_sender_email: (selectedConv as any).folder_sender_email || (selectedConv as any).folderSenderEmail || null,
                     folder_is_from_lead: (selectedConv as any).folder_is_from_lead ?? (selectedConv as any).folderIsFromLead ?? null,
+                    intent: (selectedConv as any).intent,
+                    lead_tags: (selectedConv as any).lead_tags,
+                    manually_tagged: (selectedConv as any).manually_tagged,
                   }} 
                   messages={messagesForSelected as any}
                 />

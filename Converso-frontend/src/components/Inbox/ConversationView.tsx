@@ -16,6 +16,7 @@ import { useSendLinkedInMessage } from "@/hooks/useLinkedInMessages";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { LeadTagPill } from "@/components/AIAgents";
 
 /**
  * Helper: Normalize attachment URL from various LinkedIn schema fields
@@ -111,6 +112,16 @@ interface ConversationViewProps {
     received_on_account_id?: string | null;
     is_favorite?: boolean;
     isFavorite?: boolean;
+    // AI Agent fields
+    intent?: {
+      primary_intent: string;
+      secondary_intents?: string[];
+      confidence_score: number;
+      detected_keywords?: string[];
+      sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed';
+    };
+    lead_tags?: string[];
+    manually_tagged?: boolean;
   };
   messages: Message[];
 }
@@ -510,6 +521,18 @@ export function ConversationView({ conversation, messages }: ConversationViewPro
               <p className="text-xs text-muted-foreground truncate">
                 Talking from {conversation.account_name || conversation.senderEmail || 'LinkedIn'}
               </p>
+              {/* Lead Tags (Agent 2) - BELOW sender info */}
+              {conversation.lead_tags && conversation.lead_tags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {conversation.lead_tags.map((tag) => (
+                    <LeadTagPill
+                      key={tag}
+                      tag={tag as any}
+                      isManual={conversation.manually_tagged}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">

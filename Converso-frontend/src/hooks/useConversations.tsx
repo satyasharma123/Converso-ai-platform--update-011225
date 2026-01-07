@@ -72,9 +72,8 @@ export function useConversations(type?: 'email' | 'linkedin', folder?: string, e
       }
 
       // For specific type requests (used by Inbox):
-      // - Email: use existing endpoint (for inbox, not pipeline)
-      // - LinkedIn: use existing endpoint
-      // ✨ NEW: Fetch with intents for AI Agent display
+      // - Email: use with-intents endpoint to get AI agent data
+      // - LinkedIn: use with-intents endpoint to get AI agent data
       return conversationsApi.listWithIntents(type, folder);
     },
     // IMPORTANT: wait for active workspace id so requests include X-Workspace-Id deterministically

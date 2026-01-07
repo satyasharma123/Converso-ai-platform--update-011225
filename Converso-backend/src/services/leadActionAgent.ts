@@ -305,13 +305,22 @@ export async function applyManualTags(
   tags: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // If tags array is empty, clear tags and reset manually_tagged
+    const updateData = tags.length === 0 
+      ? {
+          lead_tags: null,
+          manually_tagged: false,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          lead_tags: tags,
+          manually_tagged: true, // Mark as manually tagged
+          updated_at: new Date().toISOString(),
+        };
+
     const { error } = await supabaseAdmin
       .from('conversations')
-      .update({
-        lead_tags: tags,
-        manually_tagged: true, // Mark as manually tagged
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', conversationId);
     
     if (error) {
@@ -321,7 +330,11 @@ export async function applyManualTags(
       };
     }
     
-    console.log(`[Agent 2] ✅ Manually applied tags ${tags.join(', ')} to conversation ${conversationId}`);
+    if (tags.length === 0) {
+      console.log(`[Agent 2] ✅ Cleared tags for conversation ${conversationId}`);
+    } else {
+      console.log(`[Agent 2] ✅ Manually applied tags ${tags.join(', ')} to conversation ${conversationId}`);
+    }
     
     return { success: true };
   } catch (error: any) {

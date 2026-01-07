@@ -795,6 +795,9 @@ export default function LinkedInInbox() {
                     received_on_account_id: (selectedConv as any).received_on_account_id || (selectedConv as any).receivedOnAccountId,
                     is_favorite: (selectedConv as any).is_favorite,
                     isFavorite: (selectedConv as any).isFavorite,
+                    intent: (selectedConv as any).intent,
+                    lead_tags: (selectedConv as any).lead_tags,
+                    manually_tagged: (selectedConv as any).manually_tagged,
                   }} 
                   messages={dedupedMessagesForSelected.map(msg => {
                     const rawIsFromLead = (msg as any).isFromLead ?? (msg as any).is_from_lead;

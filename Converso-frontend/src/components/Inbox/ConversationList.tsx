@@ -1,4 +1,4 @@
-import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2, Reply, Forward, ReplyAll } from "lucide-react";
+import { Mail, Linkedin, Clock, MoreVertical, Check, CheckCheck, UserPlus, GitBranch, Archive, Star, StarOff, Trash2, Reply, Forward, ReplyAll, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from "@/components/ui/dropdown-menu";
@@ -13,6 +13,7 @@ import { useTeamMembers } from "@/hooks/useTeamMembers";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { IntentBadge, LeadTagPill } from "@/components/AIAgents";
+import { useQueryClient } from "@tanstack/react-query";
 
 export interface Conversation {
   id: string;
@@ -77,6 +78,8 @@ export function ConversationList({
   onToggleSelect,
   showCheckboxes = false,
 }: ConversationListProps) {
+  const queryClient = useQueryClient();
+  
   const toggleRead = useToggleRead();
   const assignConversation = useAssignConversation();
   const updateStage = useUpdateConversationStage();
@@ -171,6 +174,54 @@ export function ConversationList({
         toast.error('Failed to delete email');
       }
     });
+  };
+
+  const handleApplyLeadTag = async (conversationId: string, tag: string) => {
+    try {
+      const response = await fetch('/api/agents/apply-manual-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          tags: [tag], // Single tag
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to apply tag');
+      }
+
+      // Refresh conversations
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success(`Tag "${tag}" applied successfully`);
+    } catch (error) {
+      console.error('Error applying tag:', error);
+      toast.error('Failed to apply tag');
+    }
+  };
+
+  const handleClearLeadTags = async (conversationId: string) => {
+    try {
+      const response = await fetch('/api/agents/apply-manual-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          tags: [], // Empty array to clear tags
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear tags');
+      }
+
+      // Refresh conversations
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Tags cleared successfully');
+    } catch (error) {
+      console.error('Error clearing tags:', error);
+      toast.error('Failed to clear tags');
+    }
   };
 
   if (conversations.length === 0) {
@@ -416,6 +467,40 @@ export function ConversationList({
                   {stages.length === 0 && (
                     <DropdownMenuItem disabled>No stages available</DropdownMenuItem>
                   )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              {/* Lead Tag - Manual Override (Submenu like Assign/Stage) */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
+                  <Tag className="h-4 w-4 mr-2" />
+                  Lead Tag
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="bg-popover border shadow-md z-50">
+                  <DropdownMenuItem 
+                    onClick={(e) => { e.stopPropagation(); handleApplyLeadTag(conversation.id, 'meeting_requested'); }}
+                  >
+                    Meeting Requested
+                    {conversation.lead_tags?.includes('meeting_requested') && " ✓"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={(e) => { e.stopPropagation(); handleApplyLeadTag(conversation.id, 'info_requested'); }}
+                  >
+                    Info Requested
+                    {conversation.lead_tags?.includes('info_requested') && " ✓"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={(e) => { e.stopPropagation(); handleApplyLeadTag(conversation.id, 'lead'); }}
+                  >
+                    Lead
+                    {conversation.lead_tags?.includes('lead') && " ✓"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={(e) => { e.stopPropagation(); handleClearLeadTags(conversation.id); }}
+                    className="text-muted-foreground"
+                  >
+                    Clear Tags
+                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 

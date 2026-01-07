@@ -32,6 +32,7 @@ import ReactQuill, { Quill } from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { cn } from "@/lib/utils";
 import "./email-editor.css";
+import { LeadTagPill } from "@/components/AIAgents";
 
 const FONT_OPTIONS = ["sans-serif", "serif", "monospace", "arial", "times-new-roman", "courier-new"];
 const SIZE_OPTIONS = ["12px", "14px", "16px", "18px", "20px", "24px"];
@@ -104,6 +105,16 @@ interface EmailViewProps {
     emailFolder?: string | null;
     derived_folder?: string | null;
     derivedFolder?: string | null;
+    // AI Agent fields
+    intent?: {
+      primary_intent: string;
+      secondary_intents?: string[];
+      confidence_score: number;
+      detected_keywords?: string[];
+      sentiment?: 'positive' | 'neutral' | 'negative' | 'mixed';
+    };
+    lead_tags?: string[];
+    manually_tagged?: boolean;
   };
   messages: Message[];
 }
@@ -1527,8 +1538,22 @@ useEffect(() => {
           
           {/* Subject and Actions */}
           <div className="flex items-start justify-between px-6 pb-2">
-            <h2 className="text-lg font-semibold">{conversation.subject || "No Subject"}</h2>
-            <div className="flex items-center gap-1">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold">{conversation.subject || "No Subject"}</h2>
+              {/* Lead Tags (Agent 2) */}
+              {conversation.lead_tags && conversation.lead_tags.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {conversation.lead_tags.map((tag) => (
+                    <LeadTagPill
+                      key={tag}
+                      tag={tag as any}
+                      isManual={conversation.manually_tagged}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
               <Button 
                 variant="ghost" 
                 size="icon" 
