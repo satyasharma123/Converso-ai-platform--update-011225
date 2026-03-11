@@ -320,7 +320,7 @@ export function LeadProfilePanel({ lead, conversationId, conversation }: LeadPro
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {teamMembers?.filter(m => m.role === 'sdr').map((member) => (
+                    {teamMembers?.map((member) => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.full_name}
                       </SelectItem>
