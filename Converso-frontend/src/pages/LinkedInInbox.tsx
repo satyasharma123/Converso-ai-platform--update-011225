@@ -2,7 +2,7 @@ import { AppLayout } from "@/components/Layout/AppLayout";
 import { LinkedInConversationList } from "@/components/Inbox/LinkedInConversationList";
 import { ConversationView } from "@/components/Inbox/ConversationView";
 import { BulkActions } from "@/components/Inbox/BulkActions";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, RefreshCcw, X } from "lucide-react";
@@ -35,6 +35,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+const LINKEDIN_INBOX_SCROLL_KEY = "linkedin-inbox-conversation-list-scroll";
+const LINKEDIN_INBOX_SELECTED_CONVERSATION_KEY = "linkedin-inbox-selected-conversation";
+const LINKEDIN_INBOX_SESSION_ACTIVE_KEY = "linkedin-inbox-session-active";
+
 export default function LinkedInInbox() {
   const location = useLocation();
   const { conversationId } = useParams();
@@ -59,6 +63,11 @@ export default function LinkedInInbox() {
     sdr: 'all',
     stage: 'all',
   });
+
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRestoredRef = useRef(false);
+  const scrollSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conversationRestoredRef = useRef(false);
   
   const { user } = useAuth();
   const { activeWorkspace, isOwner } = useWorkspace();
@@ -109,13 +118,82 @@ export default function LinkedInInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, accountFilter, debouncedSearch]);
   
-  // Sync URL conversationId -> state
+  // Sync URL conversationId -> state and persist to sessionStorage
   useEffect(() => {
-    setSelectedConversation(conversationId || null);
+    if (conversationId) {
+      setSelectedConversation(conversationId);
+      sessionStorage.setItem(LINKEDIN_INBOX_SELECTED_CONVERSATION_KEY, conversationId);
+    } else {
+      setSelectedConversation(null);
+    }
+  }, [conversationId]);
+
+  // Save conversation list scroll position (debounced) for restore on tab return
+  const saveListScrollPosition = useCallback(() => {
+    if (listScrollRef.current) {
+      sessionStorage.setItem(LINKEDIN_INBOX_SCROLL_KEY, String(listScrollRef.current.scrollTop));
+    }
+  }, []);
+
+  const handleListScroll = useCallback(() => {
+    if (scrollSaveTimeoutRef.current) clearTimeout(scrollSaveTimeoutRef.current);
+    scrollSaveTimeoutRef.current = setTimeout(saveListScrollPosition, 150);
+  }, [saveListScrollPosition]);
+
+  // On unmount (e.g. tab switch), persist current scroll so we can restore when coming back
+  useEffect(() => {
+    return () => {
+      if (scrollSaveTimeoutRef.current) clearTimeout(scrollSaveTimeoutRef.current);
+      saveListScrollPosition();
+    };
+  }, [saveListScrollPosition]);
+
+  // Detect if this is a fresh page load vs returning from tab switch
+  useEffect(() => {
+    // Mark this session as active
+    sessionStorage.setItem(LINKEDIN_INBOX_SESSION_ACTIVE_KEY, 'true');
+    
+    // Clear session flag on actual page unload (not tab switch)
+    const handleBeforeUnload = () => {
+      // This only fires on actual page refresh/close, not on React Router navigation
+      sessionStorage.removeItem(LINKEDIN_INBOX_SESSION_ACTIVE_KEY);
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, [conversationId]);
   
+  // Restore last opened conversation on tab return (not on page refresh)
+  useEffect(() => {
+    if (conversationRestoredRef.current) return;
+    
+    const wasActive = sessionStorage.getItem(LINKEDIN_INBOX_SESSION_ACTIVE_KEY);
+    const isPageRefresh = wasActive === null;
+    
+    if (isPageRefresh) {
+      sessionStorage.removeItem(LINKEDIN_INBOX_SELECTED_CONVERSATION_KEY);
+      sessionStorage.removeItem(LINKEDIN_INBOX_SCROLL_KEY);
+      conversationRestoredRef.current = true;
+      return;
+    }
+    
+    if (!conversationId && !location.state?.selectedConversationId) {
+      const savedConversationId = sessionStorage.getItem(LINKEDIN_INBOX_SELECTED_CONVERSATION_KEY);
+      if (savedConversationId) {
+        conversationRestoredRef.current = true;
+        navigate(`/inbox/linkedin/${savedConversationId}`, { replace: true });
+      } else {
+        conversationRestoredRef.current = true;
+      }
+    } else {
+      conversationRestoredRef.current = true;
+    }
+  }, [conversationId, location.state, navigate]);
+  
   // Handle navigation from Sales Pipeline (preserve existing behavior)
-  // Priority: URL conversationId > location.state > null
   useEffect(() => {
     if (!conversationId && location.state?.selectedConversationId) {
       const convId = location.state.selectedConversationId;
@@ -463,6 +541,32 @@ export default function LinkedInInbox() {
       selected: selectedConversations.includes(conv.id),
     }));
 
+  // Restore conversation list scroll when mounting after tab return (not on full page refresh)
+  useEffect(() => {
+    if (scrollRestoredRef.current || isLoading || filteredConversations.length === 0) return;
+    
+    const wasActive = sessionStorage.getItem(LINKEDIN_INBOX_SESSION_ACTIVE_KEY);
+    const isPageRefresh = wasActive === null;
+    
+    if (isPageRefresh) {
+      sessionStorage.removeItem(LINKEDIN_INBOX_SCROLL_KEY);
+      scrollRestoredRef.current = true;
+      return;
+    }
+    
+    const saved = sessionStorage.getItem(LINKEDIN_INBOX_SCROLL_KEY);
+    if (saved === null) return;
+    const savedScroll = parseInt(saved, 10);
+    if (isNaN(savedScroll) || savedScroll <= 0) return;
+    scrollRestoredRef.current = true;
+    setTimeout(() => {
+      const container = listScrollRef.current;
+      if (container && savedScroll) {
+        container.scrollTop = Number(savedScroll);
+      }
+    }, 100);
+  }, [isLoading, filteredConversations.length]);
+
   const handleToggleSelect = (id: string) => {
     setSelectedConversations(prev => 
       prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]
@@ -747,7 +851,11 @@ export default function LinkedInInbox() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <div className="h-full overflow-y-auto bg-background rounded-lg border">
+            <div
+              ref={listScrollRef}
+              className="h-full overflow-y-auto bg-background rounded-lg border"
+              onScroll={handleListScroll}
+            >
               {isLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-sm text-muted-foreground">Loading conversations...</p>
